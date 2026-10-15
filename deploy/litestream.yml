@@ -1,0 +1,13 @@
+# Litestream copies the SQLite database to S3-compatible storage (Backblaze B2 here). Values come from
+# environment variables set on the host, never from this file.
+dbs:
+  - path: ${APP_DB_PATH}
+    replicas:
+      - type: s3
+        bucket: ${LITESTREAM_BUCKET}
+        path: recruiting-hq
+        endpoint: ${LITESTREAM_ENDPOINT}
+        region: ${LITESTREAM_REGION}
+        access-key-id: ${LITESTREAM_ACCESS_KEY_ID}
+        secret-access-key: ${LITESTREAM_SECRET_ACCESS_KEY}
+        sync-interval: 1s

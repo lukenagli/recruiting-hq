@@ -1,0 +1,31 @@
+# secrets
+.env
+.env.*
+!.env.example
+
+# private recruiting material (real guides, question banks, transcripts) never goes to GitHub
+data/private/
+Recruiting Files/
+
+# python
+.venv/
+__pycache__/
+*.pyc
+
+# node
+node_modules/
+frontend/dist/
+
+# local runtime files
+*.db
+*.db-journal
+logs/
+
+# local-only notes and tool settings
+FINAL_PROJECT_HANDOFF.md
+.claude/
+*.db-wal
+*.db-shm
+# everything under data/ is local except the made-up sample set
+data/*
+!data/sample/

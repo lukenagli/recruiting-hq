@@ -1,0 +1,12 @@
+.env
+.env.*
+.venv/
+.git/
+.claude/
+data/
+Recruiting Files/
+frontend/node_modules/
+frontend/dist/
+**/__pycache__/
+*.db
+FINAL_PROJECT_HANDOFF.md

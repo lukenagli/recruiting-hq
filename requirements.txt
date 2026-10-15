@@ -1,0 +1,8 @@
+pydantic-ai-slim[openai,anthropic]>=2.54,<3
+openai
+fastapi
+uvicorn[standard]
+python-dotenv
+openpyxl
+python-multipart
+cryptography
