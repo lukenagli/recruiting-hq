@@ -38,3 +38,10 @@ services:
         sync: false
       - key: EMAIL_FROM
         sync: false
+      # Or send through the Gmail API (works from cloud servers, where Google refuses SMTP password logins).
+      - key: GMAIL_CLIENT_ID
+        sync: false
+      - key: GMAIL_CLIENT_SECRET
+        sync: false
+      - key: GMAIL_REFRESH_TOKEN
+        sync: false
