@@ -3,6 +3,7 @@ import Assistant from './Assistant'
 import BankView from './BankView'
 import Deals from './Deals'
 import Home from './Home'
+import Letters from './Letters'
 import Login from './Login'
 import { get, post } from './api'
 import type { User } from './api'
@@ -56,7 +57,8 @@ export default function App() {
   if (section === 'map') page = <MapView />
   if (section === 'deals') page = <Deals />
   if (section === 'settings') page = <Settings user={user} />
-  if (section === 'bank' && arg) page = <BankView bank={arg} />
+  if (section === 'letters') page = <Letters bank={arg ?? ''} />
+  if (section === 'bank' && arg) page = <BankView bank={arg} initial={query.get('sel') ?? ''} />
 
   return (
     <>
@@ -73,6 +75,9 @@ export default function App() {
           </a>
           <a href="#/deals" className={section === 'deals' ? 'active' : ''}>
             My Deals
+          </a>
+          <a href="#/letters" className={section === 'letters' ? 'active' : ''}>
+            Cover Letters
           </a>
           <a href="#/settings" className={section === 'settings' ? 'active' : ''}>
             Settings

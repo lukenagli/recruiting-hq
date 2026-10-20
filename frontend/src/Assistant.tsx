@@ -8,14 +8,14 @@ type Message = { role: 'user' | 'assistant'; text: string; undone?: boolean } & 
 
 const STORE = 'assistant-thread'
 const EXAMPLES = [
-  'I spoke with Jordan Lee from Citi this morning on Zoom. She asked why Citi and suggested I email…',
-  'I applied to Guggenheim today',
-  'My Barclays contact invited me to their happy hour on Friday',
+  'I had a coffee chat with Jordan Lee from Citi this morning on Zoom. We talked about…',
+  'I got invited to the next round at Guggenheim',
+  'I applied to Morgan Stanley today',
 ]
 
 function load(key: string): Message[] {
   try {
-    return JSON.parse(sessionStorage.getItem(key) ?? '[]')
+    return JSON.parse(localStorage.getItem(key) ?? '[]')
   } catch {
     return []
   }
@@ -23,8 +23,54 @@ function load(key: string): Message[] {
 
 function stepLine(s: AssistantStep) {
   if (s.result.refused) return `Not saved: ${s.result.reason}`
-  if (s.tool === 'lookup') return `Looked up "${String(s.args.query)}"${s.result.found ? '' : ' (nothing found)'}`
+  if (s.tool === 'lookup') return `Looked up ${String(s.args.query)}${s.result.found ? '' : ' (nothing found)'}`
   return s.result.did ?? s.tool
+}
+
+/** One assistant reply: the answer, a one-line summary of what changed (details on request), any thank-you drafts. */
+function Reply({ m, canUndo, onUndo, onChanged }: { m: Message; canUndo: boolean; onUndo: () => void; onChanged: () => void }) {
+  const [open, setOpen] = useState(false)
+  const writes = (m.steps ?? []).filter((s) => s.tool !== 'lookup' && !s.result.refused)
+  const refused = (m.steps ?? []).filter((s) => s.result.refused)
+  return (
+    <div className="msg assistant">
+      <p>{m.text}</p>
+      {(writes.length > 0 || refused.length > 0) && (
+        <button className="msg-summary" onClick={() => setOpen(!open)}>
+          {writes.length > 0 && `${m.undone ? 'Undone: ' : 'Saved '}${writes.length} ${writes.length === 1 ? 'change' : 'changes'}`}
+          {refused.length > 0 && `${writes.length ? ' · ' : ''}${refused.length} not saved`}
+          <span>{open ? 'Hide' : 'Details'}</span>
+        </button>
+      )}
+      {open && (
+        <ul className="steps">
+          {(m.steps ?? []).map((s, j) => (
+            <li key={j} className={s.result.refused ? 'refused' : s.tool === 'lookup' ? 'read' : 'wrote'}>{stepLine(s)}</li>
+          ))}
+          {m.usage && (
+            <li className="read">
+              {m.usage.input_tokens.toLocaleString()} tokens in ({m.usage.cached_input_tokens.toLocaleString()} cached), {m.usage.output_tokens.toLocaleString()} out
+            </li>
+          )}
+        </ul>
+      )}
+      {m.drafts?.map((d, j) =>
+        d.ok && d.id ? (
+          <details className="msg-draft" key={j}>
+            <summary>Thank-you draft for {d.who}</summary>
+            <DraftCard id={d.id} body={d.body ?? ''} check={d.check ?? ''} send={d.send ?? ''} warnings={d.warnings} onSent={onChanged} />
+          </details>
+        ) : (
+          <p key={j} className="notice error">{d.reason}</p>
+        ),
+      )}
+      {canUndo && (
+        <button className="link undo" onClick={onUndo}>
+          Undo these changes
+        </button>
+      )}
+    </div>
+  )
 }
 
 export default function Assistant({ userId, onChanged }: { userId: number; onChanged: () => void }) {
@@ -37,35 +83,37 @@ export default function Assistant({ userId, onChanged }: { userId: number; onCha
   const thread = useRef<HTMLDivElement>(null)
   const input = useRef<HTMLTextAreaElement>(null)
 
-  // Grow the box with what is typed or dictated, so long recaps stay readable and Send stays in view.
+  useEffect(() => {
+    try {
+      localStorage.setItem(store, JSON.stringify(messages.slice(-40)))
+    } catch {
+      /* storage unavailable: the thread just won't survive a refresh */
+    }
+  }, [messages, store])
+
+  useEffect(() => {
+    thread.current?.scrollTo({ top: thread.current.scrollHeight, behavior: 'smooth' })
+  }, [messages, busy, open])
+
+  // Grow the box with what is typed or dictated, up to a limit, so Send never moves out of view.
   useEffect(() => {
     const el = input.current
     if (!el) return
     el.style.height = 'auto'
-    el.style.height = `px`
+    el.style.height = `${Math.min(el.scrollHeight, 160)}px`
   }, [draft, open])
 
   useEffect(() => {
-    try {
-      sessionStorage.setItem(store, JSON.stringify(messages.slice(-30)))
-    } catch {
-      /* storage unavailable: the thread just won't survive a refresh */
-    }
-    thread.current?.scrollTo(0, thread.current.scrollHeight)
-  }, [messages, open, busy])
+    if (open) input.current?.focus()
+  }, [open])
 
   async function send() {
     // Read the box itself: some dictation tools put text in without telling the page it changed.
     const text = (input.current?.value ?? draft).trim()
-    if (busy) return
-    if (!text) {
-      input.current?.focus()
-      return
-    }
+    if (busy || !text) return
     const history = messages.map((m) => ({ role: m.role, text: m.text }))
     setMessages((m) => [...m, { role: 'user', text }])
     setDraft('')
-    setOpen(true)
     setBusy(true)
     try {
       const out = await post<AssistantReply>('/api/assistant', { message: text, history })
@@ -91,101 +139,90 @@ export default function Assistant({ userId, onChanged }: { userId: number; onCha
   const lastChange = [...messages].reverse().find((m) => m.changed && !m.undone)?.run_id
 
   return (
-    <div className={`assistant ${open ? 'open' : ''}`}>
+    <>
+      {!open && (
+        <button className="assistant-fab" onClick={() => setOpen(true)} aria-label="Open the assistant">
+          <svg viewBox="0 0 24 24" aria-hidden><path d="M4 5h16v10H8l-4 4z" /></svg>
+          Assistant
+        </button>
+      )}
       {open && (
-        <div className="assistant-thread" ref={thread}>
-          <div className="assistant-bar">
-            <strong>Tracker assistant</strong>
+        <aside className="assistant-panel" aria-label="Tracker assistant">
+          <header className="assistant-head">
+            <strong>Assistant</strong>
             <span>
+              <button className="btn" onClick={() => setRecording(true)} title="Record a chat or dictate a recap">
+                Record
+              </button>
               {messages.length > 0 && (
                 <button className="link" onClick={() => setMessages([])}>
                   Clear
                 </button>
               )}
-              <button className="link" onClick={() => setOpen(false)}>
-                Hide
+              <button className="link" onClick={() => setOpen(false)} aria-label="Close the assistant">
+                Close
               </button>
             </span>
-          </div>
-          {messages.length === 0 && (
-            <div className="assistant-empty">
-              <p>Tell me what happened and I'll file it in your tracker. For example:</p>
-              {EXAMPLES.map((e) => (
-                <button key={e} className="example" onClick={() => setDraft(e)}>
-                  {e}
-                </button>
-              ))}
-            </div>
-          )}
-          {messages.map((m, i) => (
-            <div key={i} className={`msg ${m.role}`}>
-              <p>{m.text}</p>
-              {m.steps && m.steps.length > 0 && (
-                <ul className="steps">
-                  {m.steps.map((s, j) => (
-                    <li key={j} className={s.result.refused ? 'refused' : s.tool === 'lookup' ? 'read' : 'wrote'}>
-                      {stepLine(s)}
-                    </li>
-                  ))}
-                </ul>
-              )}
-              {m.drafts?.map((d, j) =>
-                d.ok && d.id ? (
-                  <DraftCard key={j} id={d.id} body={d.body ?? ''} check={d.check ?? ''} send={d.send ?? ''} warnings={d.warnings} onSent={onChanged} />
-                ) : (
-                  <p key={j} className="notice error">{d.reason}</p>
-                ),
-              )}
-              {m.role === 'assistant' && (m.usage || m.changed) && (
-                <div className="msg-foot">
-                  {m.usage && (
-                    <span title="Tokens used by this request">
-                      {m.usage.input_tokens.toLocaleString()} in ({m.usage.cached_input_tokens.toLocaleString()} cached) · {m.usage.output_tokens.toLocaleString()} out · {m.usage.requests} model {m.usage.requests === 1 ? 'call' : 'calls'}
-                    </span>
-                  )}
-                  {m.undone && <em>Undone</em>}
-                  {m.changed && !m.undone && m.run_id === lastChange && (
-                    <button className="link" onClick={() => undo(m.run_id!)}>
-                      Undo these changes
-                    </button>
-                  )}
+          </header>
+
+          <div className="assistant-thread" ref={thread}>
+            {messages.length === 0 && (
+              <div className="assistant-empty">
+                <p>Tell me what happened and I'll update your tracker: chats, events, referrals, applications, next steps.</p>
+                {EXAMPLES.map((e) => (
+                  <button key={e} className="example" onClick={() => setDraft(e)}>
+                    {e}
+                  </button>
+                ))}
+              </div>
+            )}
+            {messages.map((m, i) =>
+              m.role === 'user' ? (
+                <div key={i} className="msg user">
+                  <p>{m.text}</p>
                 </div>
-              )}
-            </div>
-          ))}
-          {busy && <div className="msg assistant pending">Working on it…</div>}
-        </div>
-      )}
-      <form
-        className="assistant-input"
-        onSubmit={(e) => {
-          e.preventDefault()
-          send()
-        }}
-      >
-        <textarea
-          ref={input}
-          rows={1}
-          value={draft}
-          onInput={(e) => setDraft(e.currentTarget.value)}
-          placeholder="Tell me what happened, or what to add or change…"
-          onFocus={() => setOpen(true)}
-          onChange={(e) => setDraft(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter' && !e.shiftKey) {
+              ) : (
+                <Reply key={i} m={m} canUndo={!!m.changed && !m.undone && m.run_id === lastChange} onUndo={() => undo(m.run_id!)} onChanged={onChanged} />
+              ),
+            )}
+            {busy && (
+              <div className="msg assistant pending">
+                <span className="dots" aria-label="Working">
+                  <i />
+                  <i />
+                  <i />
+                </span>
+              </div>
+            )}
+          </div>
+
+          <form
+            className="assistant-compose"
+            onSubmit={(e) => {
               e.preventDefault()
               send()
-            }
-          }}
-        />
-        <button type="button" className="mic" title="Record a chat or dictate a recap" onClick={() => setRecording(true)}>
-          <svg viewBox="0 0 24 24" aria-hidden><path d="M12 3a3 3 0 0 0-3 3v5a3 3 0 0 0 6 0V6a3 3 0 0 0-3-3Z" /><path d="M5 11a7 7 0 0 0 14 0M12 18v3" /></svg>
-          Record
-        </button>
-        <button type="submit" disabled={busy}>
-          {busy ? '…' : 'Send'}
-        </button>
-      </form>
+            }}
+          >
+            <textarea
+              ref={input}
+              rows={1}
+              value={draft}
+              placeholder="What happened? (Enter to send, Shift+Enter for a new line)"
+              onChange={(e) => setDraft(e.target.value)}
+              onInput={(e) => setDraft(e.currentTarget.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                  e.preventDefault()
+                  send()
+                }
+              }}
+            />
+            <button type="submit" className="primary" disabled={busy}>
+              Send
+            </button>
+          </form>
+        </aside>
+      )}
       {recording && (
         <Recorder
           onClose={() => setRecording(false)}
@@ -197,6 +234,6 @@ export default function Assistant({ userId, onChanged }: { userId: number; onCha
           }}
         />
       )}
-    </div>
+    </>
   )
 }

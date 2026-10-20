@@ -6,3 +6,5 @@ python-dotenv
 openpyxl
 python-multipart
 cryptography
+python-docx
+pypdf

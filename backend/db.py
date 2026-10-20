@@ -112,7 +112,8 @@ CREATE TABLE IF NOT EXISTS interactions (
     format       TEXT,            -- In person | Phone | Zoom | blank when not recorded
     status       TEXT NOT NULL,   -- done | upcoming | todo
     summary      TEXT,
-    thank_you    TEXT             -- ISO date sent, "sent", "n/a", or blank when still owed
+    thank_you    TEXT,            -- ISO date sent, "sent", "n/a", or blank when still owed
+    invite_only  TEXT DEFAULT ''  -- events: "yes" if only some candidates were invited
 )""",
     # An arrow on a bank's journey map. Each end is "person:<id>" or "interaction:<id>".
     "links": """
@@ -135,6 +136,10 @@ CREATE TABLE IF NOT EXISTS my_banks (
     notes     TEXT,
     status    TEXT DEFAULT '',   -- blank while live, "out" once cut or dropped (reason in notes)
     stage     TEXT DEFAULT '',   -- "" not started, then yale | bank | dinner | superday | offer
+    recruiter_name   TEXT DEFAULT '',  -- who the cover letter is addressed to
+    recruiter_title  TEXT DEFAULT '',
+    address          TEXT DEFAULT '',  -- office address for the cover letter (overrides the built-in one)
+    office           TEXT DEFAULT '',  -- office applied to, e.g. New York
     PRIMARY KEY (user_id, bank)
 )""",
     # What the user has learned about each bank itself (program, staffing, headcount, process).
@@ -203,6 +208,38 @@ CREATE TABLE IF NOT EXISTS agent_runs (
     undone               INTEGER NOT NULL DEFAULT 0
 )""",
 }
+
+# Columns added to existing tables after they first shipped: (table, column).
+LATER_COLUMNS = [
+    ("users", "api_provider"), ("users", "api_key_enc"), ("users", "api_key_hint"),
+    ("interactions", "invite_only"),
+    ("my_banks", "recruiter_name"), ("my_banks", "recruiter_title"), ("my_banks", "address"), ("my_banks", "office"),
+]
+
+# What each user tells the app about themselves, used to write their cover letters.
+PROFILE_SCHEMA = """
+CREATE TABLE IF NOT EXISTS user_profiles (
+    user_id         INTEGER PRIMARY KEY,
+    resume_text     TEXT DEFAULT '',   -- extracted from an uploaded resume, or pasted
+    story           TEXT DEFAULT '',   -- why banking, why this industry, stories to use, things never to say
+    example_letter  TEXT DEFAULT '',   -- a letter the user already likes, used as a style reference
+    contact_line    TEXT DEFAULT '',   -- footer: address | phone | email
+    school_line     TEXT DEFAULT '',   -- e.g. first-year MBA candidate at the Yale School of Management
+    updated_at      TEXT DEFAULT ''
+);
+
+CREATE TABLE IF NOT EXISTS cover_letters (
+    id           INTEGER PRIMARY KEY,
+    user_id      INTEGER NOT NULL,
+    bank         TEXT NOT NULL,
+    paragraphs   TEXT NOT NULL,       -- JSON list of the body paragraphs
+    warnings     TEXT NOT NULL DEFAULT '[]',
+    edited       INTEGER NOT NULL DEFAULT 0,
+    created_at   TEXT NOT NULL,
+    updated_at   TEXT NOT NULL,
+    UNIQUE (user_id, bank)
+);
+"""
 
 # Child tables: they belong to a user through their parent row, so they need no user_id of their own.
 CHILD_SCHEMA = """
@@ -288,14 +325,15 @@ def init_db() -> None:
     try:
         with conn:
             conn.executescript(SHARED_SCHEMA)
-            for column in ("api_provider", "api_key_enc", "api_key_hint"):  # added after accounts first shipped
-                if column not in _columns(conn, "users"):
-                    conn.execute(f"ALTER TABLE users ADD COLUMN {column} TEXT DEFAULT ''")
             if "user_id" not in _columns(conn, "people") and _columns(conn, "people"):
                 _upgrade_to_accounts(conn)
             for ddl in USER_TABLES.values():
                 conn.execute(ddl)
             conn.executescript(CHILD_SCHEMA)
+            conn.executescript(PROFILE_SCHEMA)
+            for table, column in LATER_COLUMNS:
+                if column not in _columns(conn, table):
+                    conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} TEXT DEFAULT ''")
             # The calendar used to live in a private JSON file; copy it in the first time.
             if config.RECRUITING_CALENDAR.is_file() and not conn.execute("SELECT 1 FROM calendar_items").fetchone():
                 for item in json.loads(config.RECRUITING_CALENDAR.read_text(encoding="utf-8")):

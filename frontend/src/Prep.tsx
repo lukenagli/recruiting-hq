@@ -4,7 +4,6 @@ import { Loading, Logo, useApi } from './ui'
 
 const ROUND_HELP: Record<string, string> = {
   'Coffee Chat': 'Informal call with a banker or 2Y',
-  HireVue: 'Recorded video screen',
   'Round 1': 'First-round interview',
   'Round 2': 'Second-round interview',
   Superday: 'Final round, back-to-back interviews',

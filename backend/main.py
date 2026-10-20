@@ -5,12 +5,12 @@ from pathlib import Path
 
 from fastapi import Depends, FastAPI, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from pydantic_ai import Agent
 
-from . import accounts, assistant, auth, budget, config, deals, importer, llm, network, research, thank_you, transfer, user_keys
+from . import accounts, assistant, auth, budget, config, cover_letters, deals, importer, llm, network, profile, research, thank_you, transfer, user_keys
 from .auth import admin_user, current_user
 from .db import connect, init_db
 from .llm import get_model, usage_dict
@@ -86,6 +86,11 @@ def home(user: dict = Depends(current_user)):
 @app.get("/api/banks")
 def banks(user: dict = Depends(current_user)):
     return network.bank_list(user["id"])
+
+
+@app.get("/api/timeline")
+def recruiting_timeline(user: dict = Depends(current_user)):
+    return network.timeline(user["id"])
 
 
 @app.get("/api/banks/{bank}")
@@ -250,6 +255,66 @@ async def look_up_background(person_id: int, user: dict = Depends(current_user))
 @app.post("/api/people/{person_id}/background/clear")
 def clear_background(person_id: int, user: dict = Depends(current_user)):
     return research.clear(user["id"], person_id)
+
+
+# ---- Profile and cover letters ----
+
+@app.get("/api/profile")
+def get_profile(user: dict = Depends(current_user)):
+    return profile.get(user["id"])
+
+
+@app.post("/api/profile")
+def save_profile(fields: dict, user: dict = Depends(current_user)):
+    return profile.save(user["id"], fields)
+
+
+@app.post("/api/profile/resume")
+async def upload_resume(file: UploadFile, user: dict = Depends(current_user)):
+    data = await file.read()
+    if len(data) > 5_000_000:
+        raise HTTPException(status_code=400, detail="That file is over 5 MB.")
+    try:
+        text = profile.text_from_upload(file.filename or "", data)
+    except ValueError as err:
+        raise HTTPException(status_code=400, detail=str(err))
+    if len(text.strip()) < 200:
+        raise HTTPException(status_code=400, detail="Could not read much text from that file. Try the Word version, or paste the text instead.")
+    return profile.save(user["id"], {"resume_text": text})
+
+
+@app.get("/api/cover-letters")
+def list_cover_letters(user: dict = Depends(current_user)):
+    return cover_letters.overview(user["id"])
+
+
+@app.get("/api/cover-letters/{bank}")
+def get_cover_letter(bank: str, user: dict = Depends(current_user)):
+    return cover_letters.get(user["id"], bank)
+
+
+@app.post("/api/cover-letters/{bank}/write")
+async def write_cover_letter(bank: str, user: dict = Depends(current_user)):
+    return await cover_letters.write(user["id"], ai_for(user), bank)
+
+
+class LetterEdits(BaseModel):
+    paragraphs: list[str] | None = None
+    details: dict = {}
+
+
+@app.post("/api/cover-letters/{bank}")
+def edit_cover_letter(bank: str, req: LetterEdits, user: dict = Depends(current_user)):
+    return cover_letters.save_edits(user["id"], bank, req.paragraphs, req.details)
+
+
+@app.get("/api/cover-letters/{bank}/docx")
+def download_cover_letter(bank: str, user: dict = Depends(current_user)):
+    parts = user["name"].split() or ["Cover"]
+    name = f"{parts[-1]}_{' '.join(parts[:-1]) or parts[-1]} Cover Letter ({bank}).docx"  # e.g. Nagli_Luke Cover Letter (Citi).docx
+    return Response(cover_letters.docx_bytes(user["id"], bank),
+                    media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                    headers={"Content-Disposition": f'attachment; filename="{name}"'})
 
 
 # ---- Moving data and admin tasks ----

@@ -21,7 +21,9 @@ from . import normalize as nz
 from .db import connect, init_db
 from .llm import Chosen, usage_dict
 
-FACT_CATEGORIES = ["Internship program", "Training", "Staffing", "Headcount", "Recruiting process", "Offices", "Why this bank", "Other"]
+# The bank overview's fixed fields, plus "Talking points" (what stands out, kept for cover letters, not shown in the overview).
+FACT_CATEGORIES = ["Spots for SOM", "Program", "Homework", "Final project", "Training", "Staffing", "Team size", "Offices",
+                   "Recruiting process", "Talking points"]
 KINDS = {"coffee_chat", "event", "interview", "step"}
 STATUSES = {"done", "upcoming", "todo"}
 FORMATS = {"", "In person", "Phone", "Zoom", "Email"}
@@ -65,11 +67,12 @@ is unclear), ask one short question instead of guessing.
 - Write summaries in first person as the student's own notes, short and factual.
 - Thank-you notes: a 2Y (second-year student) they have already spoken with before does not get another \
 thank-you note, so set thank_you to "n/a" for a repeat chat with a 2Y. Everyone else is owed one.
-- When the notes include something about the bank itself (how the internship or training works, how \
-staffing works, headcount, the recruiting process or timeline, what makes the bank different), also save \
-each point with `save_fact` so it appears on that bank's fact sheet. One fact per call, one sentence each. \
-A fact sheet is about the bank, never about a person: what someone works on, their background or their \
-interests belongs in that person's notes or the chat summary, not in `save_fact`.
+- When the notes include something about the bank itself, also save each point with `save_fact` so it fills \
+that bank's overview: how many offers it gives SOM students, whether the internship is generalist or \
+group-specific, homework, a final project, training, how staffing works, team size, offices, or the steps \
+of its recruiting process. What makes the bank stand out (culture, strategy, why someone chose it) goes in \
+"Talking points", which feeds cover letters. One fact per call, one sentence each. Never save facts about a \
+person (their background, what they work on, who said what): that belongs in the person's notes or the chat summary.
 - Someone the student knows of at a bank but has not spoken with (for example a presenter they did not \
 meet) is saved with not_spoken_with set to true.
 - When someone led to something else (a referral, an invitation, a suggestion), record it with `connect_steps`.
@@ -263,7 +266,7 @@ def save_person(
 def save_entry(
     ctx: RunContext[Deps], bank: str, kind: str, title: str = "", people: list[str] = [], entry_id: int | None = None,
     date: str = "", date_note: str = "", format: str = "", status: str = "", summary: str = "", thank_you: str = "",
-    asked_me: list[str] = [], i_asked: list[str] = [], person_notes: dict[str, str] = {},
+    asked_me: list[str] = [], i_asked: list[str] = [], person_notes: dict[str, str] = {}, invite_only: bool = False,
 ) -> dict:
     """Log a coffee chat, event, interview or next step, or update one that exists (pass entry_id from lookup).
 
@@ -284,6 +287,7 @@ def save_entry(
         asked_me: Questions they asked the student.
         i_asked: Questions the student asked them.
         person_notes: For events, a note per person met, keyed by their name.
+        invite_only: For events, True if only some candidates were invited (a dinner, an invite-only day).
     """
     args = dict(bank=bank, kind=kind, title=title, people=people, entry_id=entry_id, date=date, date_note=date_note, format=format,
                 status=status, summary=summary, thank_you=thank_you, asked_me=asked_me, i_asked=i_asked, person_notes=person_notes)
@@ -310,6 +314,8 @@ def save_entry(
                     (uid, bank, kind, title, date, nz.clean(date_note), format, status or "done", nz.clean(summary), thank_you),
                 ).lastrowid
                 did = f"Logged {title} ({bank})"
+                if invite_only:
+                    conn.execute("UPDATE interactions SET invite_only = 'yes' WHERE id = ?", (entry_id,))
             else:
                 row = conn.execute("SELECT bank, title FROM interactions WHERE id = ? AND user_id = ?", (entry_id, uid)).fetchone()
                 if row is None:
@@ -433,8 +439,8 @@ def save_fact(ctx: RunContext[Deps], bank: str, category: str, fact: str, source
 
     Args:
         bank: The bank the fact is about.
-        category: One of: Internship program, Training, Staffing, Headcount, Recruiting process, Offices,
-            Why this bank, Other.
+        category: One of: Spots for SOM, Program (generalist or group), Homework, Final project, Training,
+            Staffing, Team size, Offices, Recruiting process, Talking points (what stands out, for cover letters).
         fact: One plain sentence stating the fact, as the student reported it.
         source: Who or what it came from, e.g. "Jordan Lee" or "Corporate presentation, Oct 12".
     """

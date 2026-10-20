@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { post } from './api'
 import type { AiSettings, User } from './api'
+import ProfileEditor from './ProfileEditor'
 import { Loading, useApi } from './ui'
 
 const PROVIDERS = [
@@ -85,6 +86,8 @@ export default function Settings({ user }: { user: User }) {
           </button>
         </form>
       </section>
+
+      <ProfileEditor />
     </div>
   )
 }

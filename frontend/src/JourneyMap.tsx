@@ -1,191 +1,196 @@
-import type { BankDetail } from './api'
-import { STATUS_LABEL, fmtDate, roleOf } from './ui'
+import type { BankDetail, Interaction, Person } from './api'
+import { STATUS_LABEL, fmtDate } from './ui'
 
-type Node = {
-  id: string
+/**
+ * How the process at one bank unfolded, step by step in date order. Each column is one date; arrows run from
+ * one step to the next. An open event everyone could attend (a corporate presentation, an open Day on Wall Street)
+ * gets a dashed connector instead of an arrow, because earlier chats did not lead to it. Referrals show on both
+ * cards. Chats with Yale 2Ys and classmates, the unofficial side of the process, sit in their own lane below.
+ */
+
+type Card = {
+  id: string // what clicking selects: person:<id> or interaction:<id>
+  kind: 'chat' | 'event' | 'interview' | 'step' | 'waiting'
   title: string
   sub: string
   status: string
-  shape: 'person' | 'event'
-  sort: string
-  group: string
-  groupRank: number
-  yale: boolean
+  date: string
+  people: { id: number; name: string }[] // attendees shown inside an event card
+  personIds: number[] // everyone this card stands for (to attach referrals)
+  open: boolean // an open event: no arrow into it
 }
-type Edge = { src: string; dst: string; label: string }
 
-const W = 204
-const H = 52
-const COL = 262
-const ROW = 62
-const HEADING = 26
-const ME = 'me'
-const YALE_ORDER = { yes: 0, student: 0, '': 1, no: 2 }
+const KIND_LABEL = { chat: 'Coffee chat', event: 'Event', interview: 'Interview', step: 'Next step', waiting: 'Reached out' }
 
-/** People and events become nodes; anything with no recorded lead-in hangs off "You". */
+function firstDate(text: string) {
+  return text.match(/\d{4}-\d{2}-\d{2}/)?.[0] ?? ''
+}
+
+function isYale(p: Person) {
+  return p.alum === 'student' || p.origin === 'classmate'
+}
+
 function build(detail: BankDetail) {
-  const nodes: Node[] = []
-  const edges: Edge[] = detail.links.map((l) => ({ src: l.src, dst: l.dst, label: l.label }))
+  const byId = new Map(detail.contacts.map((p) => [p.id, p]))
+  const bankSide = detail.contacts.filter((p) => !isYale(p) && p.origin !== 'listed')
+  const cards: Card[] = []
+  const placed = new Set<number>()
 
-  for (const p of detail.contacts) {
-    if (p.origin === 'listed') continue // known contacts Luke has not spoken with are listed below, not drawn
-    const chat = p.chats[0]
-    const when = chat?.date ? fmtDate(chat.date) : ''
-    const role = roleOf(p.title)
-    nodes.push({
-      id: `person:${p.id}`,
-      title: p.name,
-      sub: [STATUS_LABEL[p.status], when].filter(Boolean).join(' · '),
-      status: p.status,
-      shape: 'person',
-      // Within a role: Yale alumni first, then by date.
-      sort: `${YALE_ORDER[p.alum ?? '']}${chat?.date || p.outreach || '9'}`,
-      group: role.label,
-      groupRank: role.rank,
-      yale: p.alum === 'yes',
-    })
-  }
   for (const i of detail.interactions) {
-    if (i.kind === 'coffee_chat') continue
-    const id = `interaction:${i.id}`
-    nodes.push({
-      id,
-      title: i.title,
-      sub: [STATUS_LABEL[i.status as 'done'], i.date ? fmtDate(i.date, true) : i.date_note].filter(Boolean).join(' · '),
-      status: i.status,
-      shape: 'event',
-      sort: i.date || '9',
-      group: 'Events and next steps',
-      groupRank: 99,
-      yale: false,
-    })
-    for (const j of i.people) {
-      const person = detail.contacts.find((p) => p.id === j.person_id)
-      if (person?.origin === 'event') edges.push({ src: id, dst: `person:${j.person_id}`, label: 'met' })
+    const members = i.people.map((j) => byId.get(j.person_id)).filter((p): p is Person => !!p)
+    if (i.kind === 'coffee_chat') {
+      const bankers = members.filter((p) => !isYale(p))
+      if (bankers.length === 0) continue // chats with 2Ys go in the Yale lane
+      bankers.forEach((p) => placed.add(p.id))
+      const one = bankers.length === 1 ? bankers[0] : null
+      cards.push({
+        id: one ? `person:${one.id}` : `interaction:${i.id}`,
+        kind: 'chat',
+        title: bankers.map((p) => p.name).join(' & '),
+        sub: one ? [one.title, one.grp].filter(Boolean).join(', ') : i.title,
+        status: i.status,
+        date: i.date,
+        people: [],
+        personIds: bankers.map((p) => p.id),
+        open: false,
+      })
+    } else {
+      const attendees = members.filter((p) => p.origin !== 'listed')
+      attendees.forEach((p) => placed.add(p.id))
+      cards.push({
+        id: `interaction:${i.id}`,
+        kind: i.kind === 'event' ? 'event' : i.kind === 'interview' ? 'interview' : 'step',
+        title: i.title,
+        sub: i.date_note || i.format || '',
+        status: i.status,
+        date: i.date,
+        people: attendees.map((p) => ({ id: p.id, name: p.name })),
+        personIds: attendees.map((p) => p.id),
+        open: i.kind === 'event' && (i as Interaction & { invite_only?: string }).invite_only !== 'yes',
+      })
     }
   }
-  const hasLeadIn = new Set(edges.map((e) => e.dst))
-  for (const n of nodes) if (!hasLeadIn.has(n.id)) edges.push({ src: ME, dst: n.id, label: '' })
-
-  // Column = longest chain of steps back to "You".
-  const depth = new Map<string, number>([[ME, 0]])
-  for (let pass = 0; pass < nodes.length + 1; pass++)
-    for (const e of edges) {
-      const d = (depth.get(e.src) ?? 0) + 1
-      if (depth.has(e.src) && d > (depth.get(e.dst) ?? 0) && d <= nodes.length + 1) depth.set(e.dst, d)
-    }
-
-  const columns: Node[][] = []
-  for (const n of nodes) (columns[(depth.get(n.id) ?? 1) - 1] ??= []).push(n)
-
-  // First column is grouped by role (2Ys, Associates, VPs, MDs) with a heading per group.
-  // Later columns sit level with whatever led to them.
-  const pos = new Map<string, { x: number; y: number }>()
-  const headings: { y: number; label: string }[] = []
-  const leadY = (id: string) => {
-    const ys = edges.filter((e) => e.dst === id && pos.has(e.src)).map((e) => pos.get(e.src)!.y)
-    return ys.length ? ys.reduce((a, b) => a + b, 0) / ys.length : 0
-  }
-  let bottom = 0
-  columns.forEach((col, c) => {
-    if (!col) return
-    if (c === 0) col.sort((a, b) => a.groupRank - b.groupRank || a.sort.localeCompare(b.sort))
-    else col.sort((a, b) => leadY(a.id) - leadY(b.id) || a.groupRank - b.groupRank || a.sort.localeCompare(b.sort))
-    let next = 8
-    let group = ''
-    col.forEach((n) => {
-      if (c === 0 && n.group !== group) {
-        group = n.group
-        headings.push({ y: next + 16, label: group })
-        next += HEADING
-      }
-      const y = c === 0 ? next : Math.max(next, leadY(n.id))
-      pos.set(n.id, { x: 100 + c * COL, y })
-      next = y + ROW
-      bottom = Math.max(bottom, y + H)
+  // People reached out to who have not met yet (awaiting a reply, or a referral not acted on).
+  for (const p of bankSide) {
+    if (placed.has(p.id)) continue
+    cards.push({
+      id: `person:${p.id}`,
+      kind: 'waiting',
+      title: p.name,
+      sub: [p.title, p.grp].filter(Boolean).join(', '),
+      status: p.status,
+      date: firstDate(p.outreach),
+      people: [],
+      personIds: [p.id],
+      open: false,
     })
-  })
-  const first = (columns[0] ?? []).map((n) => pos.get(n.id)!.y)
-  pos.set(ME, { x: 16, y: first.length ? (Math.min(...first) + Math.max(...first) + H) / 2 - 22 : 20 })
-  return { nodes, edges, pos, headings, width: 100 + columns.length * COL - (COL - W) + 16, height: bottom + 16 }
-}
+  }
 
-function clip(text: string, max: number) {
-  return text.length > max ? `${text.slice(0, max - 1)}…` : text
+  // Columns by date; anything without a date goes last.
+  const dates = Array.from(new Set(cards.map((c) => c.date || '~'))).sort()
+  const columns = dates.map((d) => ({ date: d === '~' ? '' : d, cards: cards.filter((c) => (c.date || '~') === d) }))
+
+  // Referrals and suggestions, written onto both ends.
+  const cardFor = (ref: string) => {
+    const [kind, raw] = ref.split(':')
+    const id = Number(raw)
+    return kind === 'person' ? cards.find((c) => c.personIds.includes(id)) : cards.find((c) => c.id === ref)
+  }
+  const nameOf = (ref: string) => {
+    const [kind, raw] = ref.split(':')
+    return kind === 'person' ? byId.get(Number(raw))?.name ?? '' : detail.interactions.find((i) => i.id === Number(raw))?.title ?? ''
+  }
+  const notes = new Map<Card, string[]>()
+  for (const l of detail.links) {
+    const from = cardFor(l.src)
+    const to = cardFor(l.dst)
+    if (from && to) {
+      notes.set(to, [...(notes.get(to) ?? []), `${l.label || 'led here'}: ${nameOf(l.src)}`])
+      notes.set(from, [...(notes.get(from) ?? []), `→ ${l.label || 'led to'} ${nameOf(l.dst)}`])
+    }
+  }
+
+  const yale = detail.contacts
+    .filter((p) => isYale(p) && p.origin !== 'listed')
+    .map((p) => ({ p, date: p.chats[0]?.date || firstDate(p.outreach) }))
+    .sort((a, b) => (a.date || '~').localeCompare(b.date || '~'))
+  return { columns, notes, yale }
 }
 
 export default function JourneyMap(props: { detail: BankDetail; selected: string; onSelect: (id: string) => void }) {
-  const { nodes, edges, pos, headings, width, height } = build(props.detail)
-  if (nodes.length === 0) return <p className="muted">No contacts or events at this bank yet.</p>
+  const { columns, notes, yale } = build(props.detail)
 
   return (
-    <div className="journey">
-      <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`} role="img" aria-label="Journey map">
-        {edges.map((e, i) => {
-          const a = pos.get(e.src)
-          const b = pos.get(e.dst)
-          if (!a || !b) return null
-          const x1 = a.x + (e.src === ME ? 44 : W)
-          const y1 = a.y + (e.src === ME ? 22 : H / 2)
-          const y2 = b.y + H / 2
-          const mid = (x1 + b.x) / 2
-          const active = props.selected === e.src || props.selected === e.dst
-          return (
-            <g key={i} className={`edge ${active ? 'active' : ''}`}>
-              <path d={`M${x1},${y1} C${mid},${y1} ${mid},${y2} ${b.x},${y2}`} />
-              {e.label && (
-                <text x={(x1 + b.x) / 2} y={(y1 + y2) / 2 - 5} textAnchor="middle">
-                  {e.label}
-                </text>
-              )}
-            </g>
-          )
-        })}
+    <div className="process">
+      {columns.length === 0 ? (
+        <p className="muted">No conversations or events with {props.detail.bank} yet.</p>
+      ) : (
+        <div className="flow">
+          {columns.map((col, c) => {
+            const next = columns[c + 1]
+            const dashed = next && next.cards.every((card) => card.open)
+            return (
+              <div className="flow-step" key={col.date || 'undated'}>
+                <div className="flow-col">
+                  <div className="flow-date">{col.date ? fmtDate(col.date, true) : 'Date not set'}</div>
+                  {col.cards.map((card) => (
+                    <div
+                      key={card.id + card.title}
+                      role="button"
+                      tabIndex={0}
+                      className={`flow-card k-${card.kind} s-${card.status} ${props.selected === card.id ? 'selected' : ''} ${card.open ? 'open-event' : ''}`}
+                      onClick={() => props.onSelect(card.id)}
+                      onKeyDown={(e) => e.key === 'Enter' && props.onSelect(card.id)}
+                    >
+                      <span className="flow-kind">
+                        {KIND_LABEL[card.kind]}
+                        {card.open ? ' · open to all' : ''}
+                        <em>{STATUS_LABEL[card.status as keyof typeof STATUS_LABEL] ?? ''}</em>
+                      </span>
+                      <strong>{card.title}</strong>
+                      {card.sub && <small>{card.sub}</small>}
+                      {card.people.length > 0 && (
+                        <span className="flow-people">
+                          {card.people.map((p) => (
+                            <button
+                              key={p.id}
+                              className={`chip mini ${props.selected === `person:${p.id}` ? 'on' : ''}`}
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                props.onSelect(`person:${p.id}`)
+                              }}
+                            >
+                              {p.name}
+                            </button>
+                          ))}
+                        </span>
+                      )}
+                      {(notes.get(card) ?? []).map((n) => (
+                        <span className="flow-note" key={n}>{n}</span>
+                      ))}
+                    </div>
+                  ))}
+                </div>
+                {next && <div className={`flow-arrow ${dashed ? 'dashed' : ''}`} aria-hidden />}
+              </div>
+            )
+          })}
+        </div>
+      )}
 
-        {headings.map((h) => (
-          <text key={h.label} x={100} y={h.y} className="group-heading">
-            {h.label}
-          </text>
-        ))}
-
-        <g transform={`translate(${pos.get(ME)!.x},${pos.get(ME)!.y})`}>
-          <circle cx="22" cy="22" r="22" className="me" />
-          <text x="22" y="26" textAnchor="middle" className="me-label">
-            You
-          </text>
-        </g>
-
-        {nodes.map((n) => {
-          const p = pos.get(n.id)!
-          return (
-            <g
-              key={n.id}
-              transform={`translate(${p.x},${p.y})`}
-              className={`node s-${n.status} ${n.shape} ${props.selected === n.id ? 'selected' : ''}`}
-              onClick={() => props.onSelect(n.id)}
-              tabIndex={0}
-              onKeyDown={(ev) => ev.key === 'Enter' && props.onSelect(n.id)}
-            >
-              <rect width={W} height={H} rx={n.shape === 'person' ? 26 : 10} />
-              <circle cx="20" cy={H / 2} r="6" className="status-dot" />
-              <text x="36" y="22" className="node-title">
-                {clip(n.title, n.yale ? 19 : 24)}
-              </text>
-              <text x="36" y="38" className="node-sub">
-                {clip(n.sub, 30)}
-              </text>
-              {n.yale && (
-                <g className="yale-badge">
-                  <rect x={W - 50} y="9" width="36" height="16" rx="8" />
-                  <text x={W - 32} y="21" textAnchor="middle">
-                    Yale
-                  </text>
-                </g>
-              )}
-            </g>
-          )
-        })}
-      </svg>
+      {yale.length > 0 && (
+        <div className="yale-lane">
+          <span className="yale-label">Yale network (2Ys and classmates)</span>
+          <div className="chips">
+            {yale.map(({ p, date }) => (
+              <button key={p.id} className={`chip ${props.selected === `person:${p.id}` ? 'on' : ''}`} onClick={() => props.onSelect(`person:${p.id}`)}>
+                {p.name}
+                <em>{[date && fmtDate(date), STATUS_LABEL[p.status]].filter(Boolean).join(' · ')}</em>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   )
 }

@@ -3,7 +3,7 @@ import { post } from './api'
 import type { BankDetail, Interaction, Person, ThankYouDraft } from './api'
 import DraftCard from './DraftCard'
 import JourneyMap from './JourneyMap'
-import { Loading, Logo, StagePips, StatusTag, YALE_LABEL, fmtDate, roleOf, useApi } from './ui'
+import { Loading, Logo, StatusTag, YALE_LABEL, fmtDate, roleOf, useApi } from './ui'
 
 function when(i: { date: string; date_note: string }) {
   if (!i.date) return i.date_note || 'date not recorded'
@@ -182,17 +182,32 @@ function EventPanel({ i, detail, onSelect }: { i: Interaction; detail: BankDetai
   )
 }
 
-export default function BankView({ bank }: { bank: string }) {
+// The bank overview's fixed fields: what matters about the bank itself, not who said what.
+// [topic, label, shown only when something is known]
+const OVERVIEW_FIELDS: [string, string, boolean][] = [
+  ['Spots for SOM', 'Offers to SOM students', true],
+  ['Program', 'Generalist or group', false],
+  ['Homework', 'Homework', false],
+  ['Final project', 'Final project', false],
+  ['Training', 'Training', false],
+  ['Staffing', 'Staffing', false],
+  ['Team size', 'Team size', false],
+  ['Recruiting process', 'Recruiting process', true],
+]
+
+export default function BankView({ bank, initial = '' }: { bank: string; initial?: string }) {
   const { data, error, reload } = useApi<BankDetail>(`/api/banks/${encodeURIComponent(bank)}`)
   const [selected, setSelected] = useState('')
-  useEffect(() => setSelected(''), [bank])
+  // Arriving from a dot on the recruiting map opens that person or event and scrolls to it.
+  useEffect(() => {
+    setSelected(initial)
+    if (initial) setTimeout(() => document.querySelector('.journey-layout')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 300)
+  }, [bank, initial])
   if (!data) return <Loading error={error} />
 
   const app = data.application
   const person = data.contacts.find((p) => `person:${p.id}` === selected)
   const event = data.interactions.find((i) => `interaction:${i.id}` === selected)
-  const names = new Map(data.contacts.map((p) => [p.id, p.name]))
-  const timeline = [...data.interactions].sort((a, b) => (a.date || '9').localeCompare(b.date || '9'))
 
   return (
     <div>
@@ -201,39 +216,48 @@ export default function BankView({ bank }: { bank: string }) {
         <Logo bank={data.bank} domain={data.domain} size={56} />
         <div>
           <h1>{data.bank}</h1>
-          <p className="lede">
-            {data.people} {data.people === 1 ? 'person' : 'people'} · {data.spoke} spoken
-            {data.scheduled ? ` · ${data.scheduled} scheduled` : ''}
-            {app.prefs ? ` · group preference: ${app.prefs}` : ''}
-          </p>
+          {app.prefs && <p className="lede">Recruiting for {app.prefs.split('>')[0].trim()}</p>}
         </div>
-        <StagePips stage={data.stage} labels />
       </div>
 
       {app.status === 'out' && <p className="notice out">No longer in this process. {app.notes}</p>}
       {app.status !== 'out' && app.notes && <p className="notice">{app.notes}</p>}
 
-      <div className="facts">
-        <div>
+      <h2>Overview</h2>
+      <div className="overview">
+        <div className="ov-item ov-app">
           <small>Application</small>
-          <strong>{app.status === 'out' ? 'Out of process' : app.applied === 'Yes' ? 'Submitted' : app.applied === 'No' ? 'Not applied yet' : 'Not tracked'}</strong>
+          <strong>
+            {app.status === 'out' ? 'Out of process' : app.applied === 'Yes' ? 'Submitted' : app.deadline ? `Due ${fmtDate(app.deadline, true)}` : 'No deadline listed'}
+          </strong>
+          <span className="ov-links">
+            {app.link && <a href={app.link} target="_blank" rel="noreferrer">Application</a>}
+            <a href={`#/letters/${encodeURIComponent(data.bank)}`}>Cover letter</a>
+            <a href={`#/prep?bank=${encodeURIComponent(data.bank)}`}>Practice questions</a>
+          </span>
         </div>
-        <div>
-          <small>Deadline</small>
-          <strong>{app.deadline ? fmtDate(app.deadline, true) : 'Not listed'}</strong>
-        </div>
-        <div>
-          <small>Application link</small>
-          {app.link ? <a href={app.link} target="_blank" rel="noreferrer">Open posting</a> : <strong>Not listed</strong>}
-        </div>
-        <div>
-          <small>Interview questions on file</small>
-          <a href={`#/prep?bank=${encodeURIComponent(data.bank)}`}>{data.questions_on_file} questions → practice</a>
-        </div>
+        {OVERVIEW_FIELDS.map(([field, label, onlyWhenKnown]) => {
+          const items = data.facts.filter((f) => f.category === field)
+          if (onlyWhenKnown && items.length === 0) return null
+          return (
+            <div className={`ov-item ${items.length ? '' : 'unknown'}`} key={field}>
+              <small>{label}</small>
+              {items.length === 0 ? (
+                <span className="muted">Not known yet</span>
+              ) : (
+                items.map((f) => (
+                  <span key={f.id} title={f.source ? `From ${f.source}` : undefined}>
+                    {f.fact}
+                  </span>
+                ))
+              )}
+            </div>
+          )
+        })}
       </div>
 
-      <h2>How I got here</h2>
-      <p className="muted">Click anyone or any event to see the details.</p>
+      <h2>How it has gone</h2>
+      <p className="muted">Each step in date order. Click a card for the details.</p>
       <div className="journey-layout">
         <JourneyMap detail={data} selected={selected} onSelect={setSelected} />
         {person ? (
@@ -242,34 +266,10 @@ export default function BankView({ bank }: { bank: string }) {
           <EventPanel i={event} detail={data} onSelect={setSelected} />
         ) : (
           <div className="panel empty">
-            <p className="muted">Select a person or event on the map.</p>
+            <p className="muted">Select a step or a person.</p>
           </div>
         )}
       </div>
-
-      <h2>Fact sheet</h2>
-      {data.facts.length === 0 ? (
-        <p className="muted">Nothing recorded about {data.bank} itself yet. Facts from your chats land here.</p>
-      ) : (
-        <div className="factsheet">
-          {Array.from(new Set(data.facts.map((f) => f.category))).map((category) => (
-            <div className="card" key={category}>
-              <h3>{category}</h3>
-              <ul>
-                {data.facts
-                  .filter((f) => f.category === category)
-                  .map((f) => (
-                    <li key={f.id}>
-                      {f.fact}
-                      {f.source && <small> · {f.source}</small>}
-                    </li>
-                  ))}
-              </ul>
-            </div>
-          ))}
-        </div>
-      )}
-
       <h2>
         Everyone at {data.bank} <small>{data.contacts.length} contacts, including people I have not spoken with</small>
       </h2>
@@ -311,30 +311,6 @@ export default function BankView({ bank }: { bank: string }) {
         </table>
       </div>
 
-      <h2>Timeline</h2>
-      {timeline.length === 0 && <p className="muted">Nothing logged for this bank yet.</p>}
-      <ol className="timeline">
-        {timeline.map((i) => (
-          <li key={i.id} className={`s-${i.status}`}>
-            <button
-              onClick={() => {
-                setSelected(i.kind === 'coffee_chat' && i.people[0] ? `person:${i.people[0].person_id}` : `interaction:${i.id}`)
-                document.querySelector('.journey-layout')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
-              }}
-            >
-              <span className="t-date">{i.date ? fmtDate(i.date, true) : i.date_note || 'No date'}</span>
-              <span className="t-body">
-                <strong>{i.title}</strong>
-                <small>
-                  {i.kind !== 'coffee_chat' && i.people.length > 0 && `Met ${i.people.map((j) => names.get(j.person_id)).join(', ')}. `}
-                  {i.summary}
-                </small>
-              </span>
-              <StatusTag status={i.status as 'done'} />
-            </button>
-          </li>
-        ))}
-      </ol>
     </div>
   )
 }

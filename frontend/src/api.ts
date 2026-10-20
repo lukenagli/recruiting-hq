@@ -1,5 +1,5 @@
 // In development the API runs separately on port 8000; the built site is served by the API server itself.
-const API_URL = import.meta.env.VITE_API_URL ?? (import.meta.env.DEV ? 'http://localhost:8000' : '')
+export const API_URL = import.meta.env.VITE_API_URL ?? (import.meta.env.DEV ? 'http://localhost:8000' : '')
 
 /** Tell the app the login has lapsed, so it can show the login screen. */
 async function check(res: Response) {
@@ -181,4 +181,34 @@ export type Question = {
   topic: string
   question: string
   answer_notes: string
+}
+
+export type Profile = { resume_text: string; story: string; example_letter: string; contact_line: string; school_line: string; updated_at: string }
+
+export type CoverLetter = {
+  bank: string
+  exists: boolean
+  paragraphs: string[]
+  warnings: string[]
+  edited: boolean
+  updated_at: string
+  date: string
+  recipient: string[]
+  salutation: string
+  signature: string
+  recruiter_name: string
+  recruiter_title: string
+  address: string
+  office: string
+}
+
+export type LetterSummary = { bank: string; domain: string; exists: boolean; warnings: number; updated_at: string; edited: boolean; recruiter: string }
+
+/** Send a file (multipart form). */
+export async function upload<T>(path: string, file: File): Promise<T> {
+  const form = new FormData()
+  form.append('file', file)
+  const res = await fetch(`${API_URL}${path}`, { method: 'POST', body: form, credentials: 'include' })
+  await check(res)
+  return res.json()
 }
