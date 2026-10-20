@@ -22,7 +22,15 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 from backend.reference import chunk_pages  # noqa: E402
 
-FILES = ROOT / "Recruiting Files"
+# Your own Recruiting folder in OneDrive is the source of truth (numbered folders like "3. Finance Club Meetings");
+# the project's "Recruiting Files" copy is only used if that folder is not on this computer.
+ONEDRIVE = Path.home() / "OneDrive - Yale University" / "Recruiting"
+FILES = ONEDRIVE if ONEDRIVE.is_dir() else ROOT / "Recruiting Files"
+
+
+def folder(name: str) -> Path | None:
+    """The subfolder whose name ends with `name`, with or without a number in front."""
+    return next((d for d in sorted(FILES.iterdir()) if d.is_dir() and d.name.endswith(name)), None)
 
 
 def pdf_pages(path: Path) -> list[str]:
@@ -38,16 +46,30 @@ def docx_pages(path: Path) -> list[str]:
     return [text[i:i + 3000] for i in range(0, len(text), 3000)] or [""]
 
 
+def read(path: Path) -> list[str] | None:
+    """The file's page texts, or None (with a note) if it cannot be read, e.g. still syncing or damaged."""
+    try:
+        return pdf_pages(path) if path.suffix.lower() == ".pdf" else docx_pages(path)
+    except Exception as exc:
+        print(f"  skipped {path.name}: could not read it ({type(exc).__name__}). Open it once in Word or Acrobat to check it.")
+        return None
+
+
 def sources() -> list[tuple[str, bool, list[dict]]]:
     out = []
-    for f in sorted((FILES / "Finance Club Meetings").glob("*.pdf")):
+    club, biws, banks = folder("Finance Club Meetings"), folder("Breaking into Wall Street Guides"), folder("Interview Question Banks")
+    for f in sorted(club.glob("*.pdf")) if club else []:
         name = re.sub(r"\s*-\s*\d{2}\.\d{2}", "", f.stem)
-        out.append((f"Finance Club: {name}", False, chunk_pages(pdf_pages(f))))
-    for f in sorted((FILES / "Breaking into Wall Street Guides").glob("*.pdf")):
-        out.append((f"BIWS {f.stem} guide", True, chunk_pages(pdf_pages(f))))
-    answers = FILES / "Interview Question Banks" / "Interview Answers.docx"
-    if answers.exists():
-        out.append(("My interview answers", True, chunk_pages(docx_pages(answers))))
+        if (pages := read(f)) is not None:
+            out.append((f"Finance Club: {name}", False, chunk_pages(pages)))
+    for f in sorted(biws.glob("*.pdf")) if biws else []:
+        if (pages := read(f)) is not None:
+            out.append((f"BIWS {f.stem} guide", True, chunk_pages(pages)))
+    # Your interview answers: the OneDrive copy first, then the project's copy if that one cannot be read.
+    for answers in [banks / "Interview Answers.docx" if banks else None, ROOT / "Recruiting Files" / "Interview Question Banks" / "Interview Answers.docx"]:
+        if answers and answers.exists() and (pages := read(answers)) is not None:
+            out.append(("My interview answers", True, chunk_pages(pages)))
+            break
     return out
 
 
@@ -66,7 +88,7 @@ def call(base: str, path: str, body: dict | None, token: str = ""):
 if len(sys.argv) < 2 or not sys.argv[1].startswith("http"):
     sys.exit(__doc__)
 site = sys.argv[1].rstrip("/")
-print("Reading study material on this computer...")
+print(f"Reading study material in {FILES} ...")
 found = sources()
 for name, private, passages in found:
     print(f"  {name}: {len(passages)} passages ({'private to you' if private else 'shared with the club'})")
