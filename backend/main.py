@@ -213,6 +213,22 @@ async def practice_answer(req: AnswerRequest, user: dict = Depends(current_user)
     return out
 
 
+class FollowUpRequest(BaseModel):
+    question: str
+    history: list[dict] = []
+
+
+@app.post("/api/practice/attempts/{attempt_id}/ask")
+async def practice_ask(attempt_id: int, req: FollowUpRequest, user: dict = Depends(current_user)):
+    """A follow-up question about a practice question and its explanation."""
+    if not req.question.strip():
+        raise HTTPException(status_code=400, detail="Type a question first.")
+    out = await practice.ask(user["id"], ai_for(user), attempt_id, req.question, req.history)
+    if out is None:
+        raise HTTPException(status_code=404, detail="Practice question not found")
+    return out
+
+
 @app.post("/api/practice/attempts/{attempt_id}/mark")
 def practice_mark(attempt_id: int, req: MarkRequest, user: dict = Depends(current_user)):
     return practice.mark(user["id"], attempt_id, req.verdict)
@@ -379,6 +395,20 @@ def setup_templates(req: TemplatesRequest, user: dict = Depends(current_user)):
     templates.save_email_templates(user["id"], req.email_templates)
     if req.email_rules is not None:
         profile.save(user["id"], {"email_rules": req.email_rules})
+    return onboarding.state(user["id"])
+
+
+class ClubTemplatesRequest(BaseModel):
+    force: bool = False
+
+
+@app.post("/api/admin/club-templates")
+def make_club_templates(req: ClubTemplatesRequest, user: dict = Depends(admin_user)):
+    """Make the admin's email templates the standard every Yale account starts with."""
+    out = templates.set_club_standard(user["id"], req.force)
+    if not out["ok"]:
+        raise HTTPException(status_code=409, detail="Your templates contain personal details that would go to everyone: "
+                            + "; ".join(out["problems"]) + ". Put them in [brackets] first, or confirm to publish anyway.")
     return onboarding.state(user["id"])
 
 

@@ -80,7 +80,7 @@ export function EmailTemplates({ state, onChange }: { state: SetupState; onChang
     <section className="template-block">
       <h3>Email templates</h3>
       <p className="fine">
-        These start as the Finance Club templates. Edit them to match exactly what you send. Parts in [square brackets] change for each email;
+        These start as the club's standard templates. Edit them to match exactly what you send. Parts in [square brackets] change for each email;
         everything else is kept word for word. The assistant drafts any of these for you ("draft an outreach email to …"), and thank-yous are
         drafted automatically after you log a chat.
       </p>
@@ -105,7 +105,7 @@ export function EmailTemplates({ state, onChange }: { state: SetupState; onChang
             />
             {k.default && (texts[k.kind] ?? '') !== k.default && (
               <button type="button" className="link" onClick={() => setTexts({ ...texts, [k.kind]: k.default })}>
-                Reset to the Finance Club template
+                Reset to the club standard
               </button>
             )}
           </div>
@@ -115,6 +115,49 @@ export function EmailTemplates({ state, onChange }: { state: SetupState; onChang
       <button type="button" className="primary" disabled={busy || !changed} onClick={save}>
         {busy ? 'Saving…' : changed ? 'Save email templates' : 'Saved'}
       </button>
+      {state.is_admin && <ClubStandard changed={changed} onChange={onChange} />}
     </section>
+  )
+}
+
+/** Admin only: make your saved templates the standard every Yale account starts with. */
+function ClubStandard({ changed, onChange }: { changed: boolean; onChange: (s: SetupState) => void }) {
+  const [busy, setBusy] = useState(false)
+  const [problem, setProblem] = useState('')
+  const [done, setDone] = useState(false)
+
+  async function publish(force: boolean) {
+    setBusy(true)
+    setProblem('')
+    try {
+      onChange(await post<SetupState>('/api/admin/club-templates', { force }))
+      setDone(true)
+    } catch (e) {
+      setProblem((e as Error).message)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <div className="club-standard">
+      <strong>Club standard</strong>
+      <p className="fine">
+        Make your saved templates the starting point for every Yale account. Anyone who has not edited a template gets your updates too. Keep
+        personal details (your name, phone, email) in [brackets] so they are filled in for each person.
+      </p>
+      {problem && (
+        <div className="notice error">
+          {problem}{' '}
+          <button type="button" className="link danger-link" onClick={() => publish(true)} disabled={busy}>
+            Publish anyway
+          </button>
+        </div>
+      )}
+      {done && !problem && <p className="notice ok">Your templates are now the club standard.</p>}
+      <button type="button" className="ghost" disabled={busy || changed} onClick={() => publish(false)} title={changed ? 'Save your changes first' : ''}>
+        {busy ? 'Publishing…' : 'Make these the standard for every account'}
+      </button>
+    </div>
   )
 }

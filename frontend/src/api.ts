@@ -322,6 +322,7 @@ export type SetupState = {
   email_templates: Record<string, string>
   email_kinds: { kind: string; label: string; help: string; default: string }[]
   cover_template: { has_template: boolean; filename: string }
+  is_admin: boolean
   done: Record<'ai' | 'resume' | 'banks' | 'templates', boolean>
 }
 

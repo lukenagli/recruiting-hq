@@ -31,6 +31,7 @@ def state(uid: int) -> dict:
         "email_templates": templates.email_templates(uid),
         "email_kinds": templates.email_options(),
         "cover_template": templates.cover_template_info(uid),
+        "is_admin": _is_admin(uid),
         "done": {
             "ai": bool(key.get("ready")),
             "resume": bool(prof["resume_text"].strip()),
@@ -38,6 +39,12 @@ def state(uid: int) -> dict:
             "templates": templates.cover_template_info(uid)["has_template"],
         },
     }
+
+
+def _is_admin(uid: int) -> bool:
+    with connect(read_only=True) as conn:
+        row = conn.execute("SELECT is_admin FROM users WHERE id = ?", (uid,)).fetchone()
+    return bool(row and row["is_admin"])
 
 
 def save_banks(uid: int, banks: list[str], groups: list[str]) -> dict:

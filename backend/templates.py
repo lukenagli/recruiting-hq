@@ -66,8 +66,20 @@ EMAIL_KINDS = {
 MAX_EMAIL = 4000
 
 
-def email_templates(uid: int) -> dict:
-    """{kind: text} with the club defaults for anything the user has not set."""
+def club_standard() -> dict:
+    """The club's standard templates: set by the site's admin from their own, else the Finance Club deck versions."""
+    init_db()
+    with connect(read_only=True) as conn:
+        row = conn.execute("SELECT value FROM app_settings WHERE key = 'club_email_templates'").fetchone()
+    try:
+        saved = json.loads(row["value"]) if row else {}
+    except ValueError:
+        saved = {}
+    return {k: saved.get(k, v["default"]) for k, v in EMAIL_KINDS.items()}
+
+
+def _saved(uid: int) -> dict:
+    """Only the templates this user has changed from the club standard."""
     init_db()
     with connect(read_only=True) as conn:
         row = conn.execute("SELECT email_templates, email_template FROM user_profiles WHERE user_id = ?", (uid,)).fetchone()
@@ -79,27 +91,81 @@ def email_templates(uid: int) -> dict:
             saved = {}
         if "post_chat" not in saved and (row["email_template"] or "").strip():
             saved["post_chat"] = row["email_template"]  # from before there were several templates
-    return {k: saved.get(k, v["default"]) for k, v in EMAIL_KINDS.items()}
+    return saved
+
+
+def _same(a: str, b: str) -> bool:
+    return " ".join(a.split()) == " ".join(b.split())
+
+
+def email_templates(uid: int) -> dict:
+    """{kind: text}: the user's own version where they changed one, else the club standard (which follows updates)."""
+    saved, standard = _saved(uid), club_standard()
+    return {k: saved.get(k, standard[k]) for k in EMAIL_KINDS}
 
 
 def is_default(kind: str, text: str) -> bool:
-    return " ".join(text.split()) == " ".join(EMAIL_KINDS[kind]["default"].split())
+    """True for the Finance Club deck's own wording (the thank-you writer has a rule-checked path for it)."""
+    return _same(text, EMAIL_KINDS[kind]["default"])
 
 
 def save_email_templates(uid: int, updates: dict) -> dict:
-    current = email_templates(uid)
+    """Keep only the templates that differ from the club standard, so unchanged ones keep following it."""
+    saved, standard = _saved(uid), club_standard()
     for kind, text in updates.items():
         if kind in EMAIL_KINDS:
-            current[kind] = str(text).replace("\r\n", "\n").strip()[:MAX_EMAIL]
+            text = str(text).replace("\r\n", "\n").strip()[:MAX_EMAIL]
+            if _same(text, standard[kind]):
+                saved.pop(kind, None)
+            else:
+                saved[kind] = text
     init_db()
     with connect() as conn:
         conn.execute("INSERT OR IGNORE INTO user_profiles (user_id) VALUES (?)", (uid,))
-        conn.execute("UPDATE user_profiles SET email_templates = ?, email_template = '' WHERE user_id = ?", (json.dumps(current), uid))
-    return current
+        conn.execute("UPDATE user_profiles SET email_templates = ?, email_template = '' WHERE user_id = ?", (json.dumps(saved), uid))
+    return email_templates(uid)
+
+
+PHONE = re.compile(r"\(?\b\d{3}\)?[\s.-]?\d{3}[\s.-]\d{4}\b")
+
+
+def personal_details(uid: int, texts: dict) -> list[str]:
+    """Places where a template contains the admin's own name, email or a phone number (which would go to everyone)."""
+    init_db()
+    with connect(read_only=True) as conn:
+        user = conn.execute("SELECT name, email FROM users WHERE id = ?", (uid,)).fetchone()
+    found = []
+    names = [w for w in (user["name"] or "").split() if len(w) > 2] if user else []
+    for kind, text in texts.items():
+        label = EMAIL_KINDS[kind]["label"]
+        outside = re.sub(r"\[[^\]]*\]", " ", text)  # bracketed placeholders are fine
+        for n in names:
+            if re.search(rf"\b{re.escape(n)}\b", outside, re.I):
+                found.append(f"{label} contains your name \"{n}\"")
+        if user and user["email"] and user["email"].lower() in outside.lower():
+            found.append(f"{label} contains your email address")
+        if PHONE.search(outside):
+            found.append(f"{label} contains a phone number")
+    return found
+
+
+def set_club_standard(uid: int, force: bool = False) -> dict:
+    """Make this (admin) user's current templates the standard for every account."""
+    mine = email_templates(uid)
+    problems = personal_details(uid, mine)
+    if problems and not force:
+        return {"ok": False, "problems": problems}
+    init_db()
+    with connect() as conn:
+        conn.execute("INSERT INTO app_settings (key, value) VALUES ('club_email_templates', ?) "
+                     "ON CONFLICT(key) DO UPDATE SET value = excluded.value", (json.dumps(mine),))
+        conn.execute("UPDATE user_profiles SET email_templates = '{}' WHERE user_id = ?", (uid,))  # they now are the standard
+    return {"ok": True, "problems": problems}
 
 
 def email_options() -> list[dict]:
-    return [{"kind": k, "label": v["label"], "help": v["help"], "default": v["default"]} for k, v in EMAIL_KINDS.items()]
+    standard = club_standard()
+    return [{"kind": k, "label": v["label"], "help": v["help"], "default": standard[k]} for k, v in EMAIL_KINDS.items()]
 
 
 # ---------------- Cover letter Word template ----------------

@@ -152,6 +152,68 @@ function Meta({ q }: { q: PracticeQuestion }) {
   )
 }
 
+type Turn = { role: 'user' | 'coach'; text: string; sources?: Graded['sources'] }
+
+/** Ask follow-up questions about a practice question and its explanation. */
+function FollowUp({ attemptId }: { attemptId: number }) {
+  const [turns, setTurns] = useState<Turn[]>([])
+  const [text, setText] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('')
+
+  async function ask(e: React.FormEvent) {
+    e.preventDefault()
+    const question = text.trim()
+    if (!question) return
+    setBusy(true)
+    setError('')
+    setText('')
+    setTurns((t) => [...t, { role: 'user', text: question }])
+    try {
+      const out = await post<{ reply: string; sources: Graded['sources'] }>(`/api/practice/attempts/${attemptId}/ask`, {
+        question,
+        history: turns.map((t) => ({ role: t.role === 'user' ? 'user' : 'assistant', text: t.text })),
+      })
+      setTurns((t) => [...t, { role: 'coach', text: out.reply, sources: out.sources }])
+    } catch (err) {
+      setError((err as Error).message)
+      setText(question)
+      setTurns((t) => t.slice(0, -1))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <div className="followup">
+      <strong>Ask about this question</strong>
+      {turns.map((t, i) => (
+        <div key={i} className={`fu-turn fu-${t.role}`}>
+          <p>{t.text}</p>
+          {t.sources && t.sources.length > 0 && (
+            <small>
+              From your library: {t.sources.map((s) => `${s.source}${s.location ? `, ${s.location}` : ''}`).join(' · ')}
+            </small>
+          )}
+        </div>
+      ))}
+      {busy && <p className="muted fu-thinking">Thinking…</p>}
+      {error && <p className="notice error">{error}</p>}
+      <form className="fu-form" onSubmit={ask}>
+        <input
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          placeholder={turns.length ? 'Ask another follow-up…' : 'e.g. Why do we subtract cash? What if the options were out of the money?'}
+          disabled={busy}
+        />
+        <button className="primary" disabled={busy || !text.trim()}>
+          Ask
+        </button>
+      </form>
+    </div>
+  )
+}
+
 export default function Practice({ options, start }: { options: PrepOptions; start?: Partial<Setup> }) {
   const school = useSchool()
   const [setup, setSetupState] = useState<Setup>(() => ({ ...loadSetup(), ...start }))
@@ -310,6 +372,7 @@ export default function Practice({ options, start }: { options: PrepOptions; sta
                   )}
                 </div>
               )}
+              <FollowUp key={graded.attempt_id} attemptId={graded.attempt_id} />
               <div className="pq-mark">
                 <span>{graded.verdict ? 'Disagree with the grade?' : 'Mark yourself:'}</span>
                 {(['correct', 'partial', 'incorrect'] as Verdict[]).map((v) => (

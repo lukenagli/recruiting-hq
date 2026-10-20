@@ -657,3 +657,17 @@ main { padding-bottom: 90px; }
 .templates-card .template-block:first-child { margin-top: 0; }
 .pq-sources { display: block; margin-top: 8px; font-size: 12px; }
 .pq-sources em { font-style: normal; color: var(--muted); }
+
+/* Practice follow-up questions */
+.followup { margin: 14px 0 4px; padding: 12px 14px; border: 1px solid var(--line); border-radius: 12px; background: var(--bg); }
+.fu-turn { margin: 8px 0; }
+.fu-turn p { margin: 0; white-space: pre-wrap; }
+.fu-user p { font-weight: 600; }
+.fu-coach { padding-left: 12px; border-left: 3px solid var(--blue); }
+.fu-coach small { display: block; margin-top: 4px; font-size: 12px; }
+.fu-thinking { margin: 6px 0; }
+.fu-form { display: flex; gap: 8px; margin-top: 8px; }
+.fu-form input { flex: 1; font: inherit; border: 1.5px solid var(--line); border-radius: 10px; padding: 8px 10px; background: var(--card); color: var(--ink); }
+.fu-form .primary { margin: 0; }
+.club-standard { margin-top: 18px; padding-top: 14px; border-top: 1px dashed var(--line); }
+.club-standard .ghost { margin-top: 6px; }

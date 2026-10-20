@@ -45,6 +45,12 @@ CREATE TABLE IF NOT EXISTS calendar_items (
     source  TEXT
 );
 
+-- Site-wide settings, such as the club's standard email templates (key -> JSON value).
+CREATE TABLE IF NOT EXISTS app_settings (
+    key    TEXT PRIMARY KEY,
+    value  TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS imports (
     id          INTEGER PRIMARY KEY,
     source      TEXT NOT NULL,
