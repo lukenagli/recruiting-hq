@@ -3,7 +3,7 @@ import { post, upload } from './api'
 import type { Profile } from './api'
 import { Loading, useApi } from './ui'
 
-/** What the cover letter writer knows about you. */
+/** Your resume and story: what the cover letter writer and practice grader know about you. */
 export default function ProfileEditor() {
   const { data, error, reload } = useApi<Profile>('/api/profile')
   const [form, setForm] = useState<Profile | null>(null)
@@ -18,7 +18,7 @@ export default function ProfileEditor() {
     setBusy(true)
     setMessage('')
     try {
-      await post('/api/profile', form)
+      await post('/api/profile', { resume_text: form!.resume_text, story: form!.story })
       setMessage('Saved.')
       reload()
     } catch (e) {
@@ -45,16 +45,8 @@ export default function ProfileEditor() {
 
   return (
     <section className="card profile-editor">
-      <h3>Your profile for cover letters</h3>
-      <p className="muted">Cover letters use only what is here and in your tracker, so the more specific this is, the better they are.</p>
-      <label className="field">
-        How you describe yourself <small>(finishes "My name is …, and I am …")</small>
-        <input value={form.school_line} onChange={set('school_line')} placeholder="e.g. a first-year MBA candidate at your school" />
-      </label>
-      <label className="field">
-        Letter footer <small>(address | phone | email)</small>
-        <input value={form.contact_line} onChange={set('contact_line')} placeholder="123 Main Street, New Haven, CT | (555) 555-5555 | you@yale.edu" />
-      </label>
+      <h3>Resume and story</h3>
+      <p className="muted">Cover letters and practice feedback use only what is here and in your tracker, so the more specific this is, the better they are.</p>
       <label className="field">
         Resume <small>(upload a .docx or .pdf, or paste the text)</small>
         <input type="file" accept=".docx,.pdf,.txt" onChange={(e) => sendResume(e.target.files?.[0])} disabled={busy} />
@@ -64,13 +56,9 @@ export default function ProfileEditor() {
         Your story and rules <small>(target groups per bank, why banking, why the industry, stories to use, anything never to say)</small>
         <textarea rows={8} value={form.story} onChange={set('story')} />
       </label>
-      <label className="field">
-        A cover letter you already like <small>(optional, used for voice only)</small>
-        <textarea rows={6} value={form.example_letter} onChange={set('example_letter')} />
-      </label>
       {message && <p className="notice">{message}</p>}
       <button className="primary" disabled={busy} onClick={save}>
-        {busy ? 'Saving…' : 'Save profile'}
+        {busy ? 'Saving…' : 'Save resume and story'}
       </button>
     </section>
   )

@@ -19,6 +19,7 @@ from pydantic_ai import Agent
 from pydantic_ai.usage import UsageLimits
 
 from . import profile as user_profile
+from . import templates
 from .db import connect, init_db
 from pydantic_ai import NativeOutput
 
@@ -147,10 +148,12 @@ async def draft(uid: int, chosen: Chosen, interaction_id: int, person_id: int | 
 
     started = datetime.now().isoformat(timespec="seconds")
     prof = user_profile.get(uid)
-    if prof["email_template"].strip():
+    template = templates.email_templates(uid)["post_chat"]
+    # The club's standard thank-you uses the rule-checked writer below; an edited template is filled as written.
+    if template.strip() and not templates.is_default("post_chat", template):
         with connect(read_only=True) as conn:
             me = conn.execute("SELECT name FROM users WHERE id = ?", (uid,)).fetchone()["name"]
-        body, issues, total = await draft_custom(uid, chosen, prof["email_template"], prof["email_rules"], dict(chat), person, notes, when, me)
+        body, issues, total = await draft_custom(uid, chosen, template, prof["email_rules"], dict(chat), person, notes, when, me)
         return _save(uid, interaction_id, person, bank, first, send_at, send_note, body, issues, total, started)
 
     total = {"input_tokens": 0, "cached_input_tokens": 0, "output_tokens": 0, "requests": 0}
@@ -202,13 +205,15 @@ STANDARD_TEMPLATE = (
 )
 SLOT = re.compile(r"\[([^\[\]\n]{1,120})\]")
 KNOWN_SLOTS = {
-    "first": ("first name", "their first name", "name", "contact first name", "contact name", "recipient"),
-    "full": ("full name", "their full name", "contact full name"),
+    "first": ("first name", "their first name", "name", "contact first name", "contact name", "recipient", "banker name",
+              "banker first name", "banker or 2y", "banker or 2y name", "banker or 2y's name", "banker or 2y’s name", "2y name"),
+    "full": ("full name", "their full name", "contact full name", "banker first & last name", "banker or 2y first & last name",
+             "banker full name"),
     "bank": ("bank", "firm", "company", "bank name", "firm name"),
     "group": ("group", "team", "their group", "their team"),
     "when": ("when", "day", "date", "time", "today/yesterday", "day of the week", "when we met"),
     "me": ("my name", "your name", "my first name", "sign-off", "signature"),
-    "me_full": ("my full name", "your full name"),
+    "me_full": ("my full name", "your full name", "student name", "student first & last name", "student full name"),
 }
 
 FILL_INSTRUCTIONS = """\
@@ -221,6 +226,8 @@ Rules:
 - Use only details in the notes you are given. Never invent a name, deal, number, group or fact.
 - Follow the student's own rules exactly when given.
 - Each fill is plain text on one line: no brackets, no line breaks, no quotation marks around it.
+- If the notes do not contain what a bracket asks for (a phone number, a class year, a detail never discussed), \
+return an empty string for it. It will be left in brackets for the student to fill; never guess.
 - Start a fill in lowercase unless it begins a sentence or starts with a proper noun.
 """
 
@@ -243,8 +250,8 @@ def template_problem(text: str) -> str | None:
                 "[something we talked about], so the rest of your email is kept word for word.")
     if text.count("[") != text.count("]") or "[[" in text:
         return "A bracket is not closed. Each changing part should look like [this]."
-    if len(slots) > 12:
-        return "That template has more than 12 bracketed parts. Keep the brackets to the parts that really change."
+    if len(slots) > 25:
+        return "That template has more than 25 bracketed parts. Keep the brackets to the parts that really change."
     return None
 
 
@@ -258,8 +265,6 @@ def fill_problems(fills: list[str], expected: int) -> list[str]:
     if len(fills) != expected:
         found.append(f"there are {expected} brackets to fill but you gave {len(fills)} fills")
     for i, f in enumerate(fills, 1):
-        if not f.strip():
-            found.append(f"fill {i} is empty")
         if re.search(r"[\[\]\n]", f):
             found.append(f"fill {i} has a bracket or line break")
         if len(f.split()) > 45:
@@ -297,8 +302,12 @@ async def draft_custom(uid: int, chosen: Chosen, template: str, rules: str, chat
         key = _known(hint)
         if key and known[key]:
             out.append(known[key])
-        elif ai_i < len(fills):
+        elif ai_i < len(fills) and fills[ai_i]:
             out.append(fills[ai_i])
+            ai_i += 1
+        elif ai_i < len(fills):  # the notes did not have it: leave the bracket for the student
+            out.append(f"[{hint}]")
+            issues.append(f"[{hint}] still needs filling in")
             ai_i += 1
         else:
             out.append(f"[{hint}]")  # left for the user to fill

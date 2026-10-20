@@ -1,7 +1,8 @@
 import { useState } from 'react'
 import { post } from './api'
-import type { AiSettings, User } from './api'
+import type { AiSettings, SetupState, User } from './api'
 import ProfileEditor from './ProfileEditor'
+import { CoverTemplate, EmailTemplates } from './Templates'
 import { PracticeHistory } from './Progress'
 import { Loading, useApi } from './ui'
 
@@ -89,14 +90,28 @@ export default function Settings({ user }: { user: User }) {
       </section>
 
       <section className="card">
-        <h3>Your setup</h3>
-        <p>School, banks and groups, resume, and the templates your cover letters and thank-you emails follow.</p>
-        <a className="primary as-button" href="#/setup">Open setup</a>
+        <h3>Banks and groups</h3>
+        <p>The banks you are recruiting with and the groups you want, in order.</p>
+        <a className="primary as-button" href="#/setup?step=banks">Edit banks and groups</a>
       </section>
 
       <ProfileEditor />
 
+      <TemplatesCard />
+
       <PracticeHistory />
     </div>
+  )
+}
+
+/** Cover letter and email templates, the same editors as in setup. */
+function TemplatesCard() {
+  const { data, error, reload } = useApi<SetupState>('/api/setup')
+  if (!data) return <Loading error={error} />
+  return (
+    <section className="card setup-card templates-card">
+      <CoverTemplate state={data} onChange={reload} />
+      <EmailTemplates key={JSON.stringify(data.email_templates)} state={data} onChange={reload} />
+    </section>
   )
 }

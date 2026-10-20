@@ -30,6 +30,7 @@ def _email_matches(email: str, domain: str) -> bool:
 
 
 def describe(school: str, level: str, class_year: str = "", email: str = "") -> dict:
+    school = school or "Yale SOM"  # the app is Yale SOM only for now
     known = KNOWN.get(school, {})
     level = level or known.get("level", "mba")
     short = known.get("short") or (school.split(" ")[-1] if school else "")

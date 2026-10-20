@@ -11,7 +11,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from pydantic_ai import Agent
 
-from . import accounts, assistant, auth, budget, config, cover_letters, deal_docs, deals, importer, legal, llm, network, onboarding, practice, profile, schools, research, thank_you, transfer, user_keys
+from . import accounts, assistant, auth, budget, config, cover_letters, deal_docs, deals, importer, legal, llm, network, onboarding, practice, profile, schools, research, templates, thank_you, transfer, user_keys
 from .auth import admin_user, current_user
 from .db import connect, init_db
 from .llm import get_model, usage_dict
@@ -339,8 +339,7 @@ class BanksRequest(BaseModel):
 
 
 class TemplatesRequest(BaseModel):
-    cover_letter: str | None = None
-    email_template: str | None = None
+    email_templates: dict[str, str] = {}
     email_rules: str | None = None
 
 
@@ -372,31 +371,45 @@ def setup_banks(req: BanksRequest, user: dict = Depends(current_user)):
 
 @app.post("/api/setup/templates")
 def setup_templates(req: TemplatesRequest, user: dict = Depends(current_user)):
-    fields = {}
-    if req.cover_letter is not None:
-        fields["example_letter"] = req.cover_letter
-    if req.email_template is not None:
-        problem = thank_you.template_problem(req.email_template)
+    """Save the user's email templates (any of: outreach, calendar_invite, post_chat, slots_expired)."""
+    for kind, text in req.email_templates.items():
+        problem = thank_you.template_problem(text) if kind == "post_chat" else None
         if problem:
-            raise HTTPException(status_code=400, detail=problem)
-        fields["email_template"] = req.email_template
+            raise HTTPException(status_code=400, detail=f"{templates.EMAIL_KINDS.get(kind, {}).get('label', kind)}: {problem}")
+    templates.save_email_templates(user["id"], req.email_templates)
     if req.email_rules is not None:
-        fields["email_rules"] = req.email_rules
-    profile.save(user["id"], fields)
+        profile.save(user["id"], {"email_rules": req.email_rules})
     return onboarding.state(user["id"])
 
 
-@app.post("/api/setup/template-upload")
-async def setup_template_upload(file: UploadFile, user: dict = Depends(current_user)):
-    """Read a cover letter template from a Word or PDF file and return its text for review (not saved yet)."""
+@app.post("/api/setup/cover-template")
+async def upload_cover_template(file: UploadFile, user: dict = Depends(current_user)):
+    """Save the user's cover letter Word file; new letters are written into a copy of it."""
     data = await file.read()
     if len(data) > 5_000_000:
         raise HTTPException(status_code=400, detail="That file is over 5 MB.")
-    try:
-        text = profile.text_from_upload(file.filename or "", data)
-    except ValueError as err:
-        raise HTTPException(status_code=400, detail=str(err))
-    return {"text": text.strip()[:8000]}
+    if not (file.filename or "").lower().endswith(".docx"):
+        raise HTTPException(status_code=400, detail="Upload the Word (.docx) version of your cover letter.")
+    out = templates.save_cover_template(user["id"], file.filename or "cover letter.docx", data)
+    if not out["ok"]:
+        raise HTTPException(status_code=400, detail=out["reason"])
+    return onboarding.state(user["id"])
+
+
+@app.delete("/api/setup/cover-template")
+def delete_cover_template(user: dict = Depends(current_user)):
+    templates.remove_cover_template(user["id"])
+    return onboarding.state(user["id"])
+
+
+@app.get("/api/setup/cover-template/file")
+def download_cover_template(user: dict = Depends(current_user)):
+    info = templates.cover_template_info(user["id"])
+    name = info["filename"] if info["has_template"] else "Yale SOM Cover Letter Template.docx"
+    safe = re.sub(r"[^\w.\-() ]", "_", name)[:120]
+    return Response(content=templates.cover_template_bytes(user["id"]),
+                    media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                    headers={"Content-Disposition": f'attachment; filename="{safe}"'})
 
 
 @app.post("/api/setup/finish")

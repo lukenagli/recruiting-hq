@@ -230,6 +230,8 @@ LATER_COLUMNS = [
     # Who the user is, set in the first-run setup (schools.py turns these into wording and features).
     ("user_profiles", "school"), ("user_profiles", "level"), ("user_profiles", "class_year"), ("user_profiles", "target_groups"),
     ("user_profiles", "email_template"), ("user_profiles", "email_rules"), ("user_profiles", "onboarded_at"),
+    # The user's cover letter Word file (letters are written into a copy of it) and their email templates (JSON).
+    ("user_profiles", "cover_template"), ("user_profiles", "cover_template_name"), ("user_profiles", "email_templates"),
     # Where each deal number came from: document | official | web | user, plus the document page and exact quote.
     ("deal_points", "source_kind"), ("deal_points", "doc_id"), ("deal_points", "page"), ("deal_points", "quote"),
     # A scanned or screenshot PDF has no text layer: "yes" until the AI has transcribed it, then "read".

@@ -21,7 +21,7 @@ from pydantic_ai.usage import UsageLimits
 
 from . import banks as bank_info
 from . import profile as profiles
-from . import schools
+from . import schools, templates
 from .db import connect, init_db
 from .llm import Chosen, usage_dict
 
@@ -304,67 +304,93 @@ def overview(uid: int) -> list[dict]:
              "recruiter": recruiters.get(b) or ""} for b in banks]
 
 
-def docx_bytes(uid: int, bank: str) -> bytes:
-    """The letter as a Word file: the school's letterhead for Yale SOM accounts, the student's name otherwise."""
-    import docx
-    from docx.enum.text import WD_ALIGN_PARAGRAPH
-    from docx.oxml import OxmlElement
-    from docx.oxml.ns import qn
-    from docx.shared import Inches, Pt, RGBColor
+def _set_text(paragraph, text: str) -> None:
+    """Replace a paragraph's text, keeping the formatting of its first run; [[NEED: ...]] markers are highlighted."""
+    from copy import deepcopy
 
-    letter, prof = get(uid, bank), profiles.get(uid)
-    doc = docx.Document()
-    for section in doc.sections:
-        section.left_margin = section.right_margin = section.top_margin = section.bottom_margin = Inches(1)
-        footer = section.footer.paragraphs[0]
-        footer.text = prof["contact_line"]
-        footer.alignment = WD_ALIGN_PARAGRAPH.CENTER
-        for run in footer.runs:
-            run.font.size = Pt(9)
-    style = doc.styles["Normal"]
-    style.font.name = "Times New Roman"
-    style.font.size = Pt(11)
-    style.paragraph_format.space_after = Pt(0)
-
-    head = doc.add_paragraph()
-    if schools.for_user(uid)["school"] == "Yale SOM":
-        for text, size, caps in (("Yale ", 16, False), ("SCHOOL OF MANAGEMENT", 12, True)):
-            run = head.add_run(text)
-            run.font.size, run.font.color.rgb, run.font.small_caps = Pt(size), RGBColor(0x0F, 0x2A, 0x5F), caps
-    else:
-        head.alignment = WD_ALIGN_PARAGRAPH.CENTER
-        run = head.add_run(letter["signature"])
-        run.bold, run.font.size = True, Pt(14)
-    border = OxmlElement("w:pBdr")  # the blue rule under the school name
-    bottom = OxmlElement("w:bottom")
-    for key, value in (("w:val", "single"), ("w:sz", "12"), ("w:space", "4"), ("w:color", "2E5C9A")):
-        bottom.set(qn(key), value)
-    border.append(bottom)
-    head._p.get_or_add_pPr().append(border)
-
-    def line(text: str = "", space_after: int = 0, justify: bool = False):
-        p = doc.add_paragraph(text)
-        p.paragraph_format.space_after = Pt(space_after)
-        if justify:
-            p.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
-        return p
-
-    line()
-    line(letter["date"], 11)
-    for i, text in enumerate(letter["recipient"]):
-        line(text, 11 if i == len(letter["recipient"]) - 1 else 0)
-    line(letter["salutation"], 11)
     from docx.enum.text import WD_COLOR_INDEX
 
-    for paragraph in letter["paragraphs"]:
-        p = line("", 11, justify=True)
-        for piece in re.split(r"(\[\[NEED:[^\]]*\]\])", paragraph):
-            if piece:
-                run = p.add_run(piece)
-                if piece.startswith("[[NEED:"):
-                    run.font.highlight_color = WD_COLOR_INDEX.YELLOW
-    line("Sincerely,", 22)
-    line(letter["signature"])
+    runs = paragraph.runs
+    rpr = deepcopy(runs[0]._r.rPr) if runs and runs[0]._r.rPr is not None else None
+    for r in runs:
+        r._r.getparent().remove(r._r)
+    for piece in re.split(r"(\[\[NEED:[^\]]*\]\])", text):
+        if not piece:
+            continue
+        run = paragraph.add_run(piece)
+        if rpr is not None:
+            run._r.insert(0, deepcopy(rpr))
+        if piece.startswith("[[NEED:"):
+            run.font.highlight_color = WD_COLOR_INDEX.YELLOW
+
+
+def docx_bytes(uid: int, bank: str) -> bytes:
+    """The letter as a Word file, written into a copy of the user's own cover letter (or the Yale SOM template),
+    so the fonts, margins and spacing are exactly theirs: date, recipient block, salutation, body and signature are
+    replaced, everything else in the file is kept."""
+    from copy import deepcopy
+
+    import docx
+    from docx.text.paragraph import Paragraph
+
+    letter = get(uid, bank)
+    doc = docx.Document(io.BytesIO(templates.cover_template_bytes(uid)))
+    spots = templates.layout(doc)
+    if spots is None:  # an unusable upload slipped through: fall back to the Yale SOM template
+        doc = docx.Document(str(templates.DEFAULT_COVER))
+        spots = templates.layout(doc)
+    paras = list(doc.paragraphs)
+
+    if spots["date"] is not None:
+        date_p = paras[spots["date"]]
+        _set_text(date_p, templates.DATE.sub(letter["date"], date_p.text, count=1))
+
+    # Recipient block: reuse the template's lines, adding or dropping lines to match.
+    slots = [paras[i] for i in spots["recipient"]]
+    lines = letter["recipient"]
+    if slots:
+        for slot, text in zip(slots, lines):
+            _set_text(slot, text)
+        last = slots[min(len(slots), len(lines)) - 1]
+        for text in lines[len(slots):]:
+            el = deepcopy(last._p)
+            last._p.addnext(el)
+            last = Paragraph(el, last._parent)
+            _set_text(last, text)
+        for extra in slots[len(lines):]:
+            extra._p.getparent().remove(extra._p)
+
+    _set_text(paras[spots["salutation"]], letter["salutation"])
+
+    # Body: rebuild everything between the salutation and the closing in the template's own paragraph style,
+    # keeping its blank-line spacing between paragraphs.
+    sal, close = spots["salutation"], spots["close"]
+    between = paras[sal + 1:close]
+    model = deepcopy(paras[spots["body"][0]]._p)
+    blank_model = next((deepcopy(p._p) for p in between if not p.text.strip()), None)
+    blank_after_sal = bool(between) and not between[0].text.strip()
+    blank_before_close = bool(between) and not between[-1].text.strip()
+    blank_between = blank_model is not None and any(not p.text.strip() for p in paras[spots["body"][0]:spots["body"][-1]])
+    for p in between:
+        p._p.getparent().remove(p._p)
+    close_p = paras[close]
+
+    def add(el, text=None):
+        close_p._p.addprevious(el)
+        if text is not None:
+            _set_text(Paragraph(el, close_p._parent), text)
+
+    if blank_after_sal:
+        add(deepcopy(blank_model))
+    for n, text in enumerate(letter["paragraphs"]):
+        add(deepcopy(model), text)
+        if blank_between and n < len(letter["paragraphs"]) - 1:
+            add(deepcopy(blank_model))
+    if blank_before_close and blank_model is not None:
+        add(deepcopy(blank_model))
+
+    if spots["signature"] is not None and letter["signature"]:
+        _set_text(paras[spots["signature"]], letter["signature"])
     out = io.BytesIO()
     doc.save(out)
     return out.getvalue()

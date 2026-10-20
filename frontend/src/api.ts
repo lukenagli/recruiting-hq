@@ -318,8 +318,10 @@ export type SetupState = {
   bank_choices: { bank: string; domain: string }[]
   ai: AiSettings
   options: { schools: string[]; levels: Record<string, string>; industry_groups: string[]; product_groups: string[] }
-  standard_email: string
-  done: Record<'school' | 'ai' | 'resume' | 'banks' | 'templates', boolean>
+  email_templates: Record<string, string>
+  email_kinds: { kind: string; label: string; help: string; default: string }[]
+  cover_template: { has_template: boolean; filename: string }
+  done: Record<'ai' | 'resume' | 'banks' | 'templates', boolean>
 }
 
 export async function uploadWith<T>(path: string, file: File, fields: Record<string, string>): Promise<T> {

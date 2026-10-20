@@ -1,15 +1,16 @@
 import { useEffect, useState } from 'react'
 import { post, upload } from './api'
+import { CoverTemplate, EmailTemplates } from './Templates'
 import type { SetupState } from './api'
 import { Loading, Logo, useApi } from './ui'
 
 /**
- * First-run setup, one short step at a time: school, AI key, resume, banks and groups, writing templates.
- * Every step saves as soon as you continue, everything but the school can be skipped, and the whole thing
- * can be reopened from Settings.
+ * First-run setup, one short step at a time: AI key, resume, banks and groups, writing templates.
+ * Every step saves as soon as you continue, every step can be skipped, and the whole thing can be reopened
+ * from Settings. Everyone is a Yale SOM MBA student for now.
  */
 
-const STEPS = ['School', 'AI key', 'Resume', 'Banks', 'Templates', 'Done']
+const STEPS = ['AI key', 'Resume', 'Banks', 'Templates', 'Done']
 
 const PROVIDERS = [
   {
@@ -42,99 +43,6 @@ function Nav({ step, onBack, children }: { step: number; onBack?: () => void; ch
       )}
       <div className="setup-nav-right">{children}</div>
     </div>
-  )
-}
-
-function SchoolStep({ s, next }: { s: SetupState; next: () => void }) {
-  const known = s.options.schools
-  const [choice, setChoice] = useState(s.profile.school && !known.includes(s.profile.school) ? 'Other' : s.profile.school || '')
-  const [other, setOther] = useState(known.includes(s.profile.school) ? '' : s.profile.school)
-  const [level, setLevel] = useState(s.profile.level || (choice === 'University of Arizona' ? 'undergrad' : 'mba'))
-  const [year, setYear] = useState(s.profile.class_year)
-  const [line, setLine] = useState(s.profile.school_line)
-  const [contact, setContact] = useState(s.profile.contact_line)
-  const [error, setError] = useState('')
-  const [busy, setBusy] = useState(false)
-  const school = choice === 'Other' ? other.trim() : choice
-
-  async function save() {
-    setBusy(true)
-    setError('')
-    try {
-      await post('/api/setup/school', { school, level, class_year: year, school_line: line, contact_line: contact })
-      next()
-    } catch (e) {
-      setError((e as Error).message)
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  return (
-    <>
-      <h2>Where are you recruiting from?</h2>
-      <p className="setup-why">This sets the wording in your cover letters (Summer Associate or Summer Analyst) and which school resources you see.</p>
-      <div className="choice-row">
-        {[...known, 'Other'].map((k) => (
-          <button
-            key={k}
-            type="button"
-            className={`choice-pill ${choice === k ? 'on' : ''}`}
-            onClick={() => {
-              setChoice(k)
-              if (k === 'University of Arizona') setLevel('undergrad')
-              if (k === 'Yale SOM') setLevel('mba')
-            }}
-          >
-            {k === 'Other' ? 'Another school' : k}
-          </button>
-        ))}
-      </div>
-      {choice === 'Yale SOM' && (
-        <p className="fine">The Finance Club's question banks, deadlines and calendar are included for accounts signed up with a @yale.edu email.</p>
-      )}
-      {choice === 'Other' && (
-        <label className="field">
-          School name
-          <input value={other} onChange={(e) => setOther(e.target.value)} placeholder="e.g. University of Michigan Ross" autoFocus />
-        </label>
-      )}
-      {choice && (
-        <>
-          <div className="field-row">
-            <label className="field">
-              Program
-              <select value={level} onChange={(e) => setLevel(e.target.value)}>
-                <option value="mba">MBA (Summer Associate)</option>
-                <option value="undergrad">Undergraduate (Summer Analyst)</option>
-              </select>
-            </label>
-            <label className="field">
-              Class of <small>(optional)</small>
-              <input value={year} onChange={(e) => setYear(e.target.value)} placeholder="e.g. 2028" inputMode="numeric" />
-            </label>
-          </div>
-          <label className="field">
-            How you describe yourself in a cover letter <small>(optional, you can change it later)</small>
-            <input
-              value={line}
-              onChange={(e) => setLine(e.target.value)}
-              placeholder={level === 'mba' ? `a first-year MBA candidate at ${school || 'your school'}` : `a junior at ${school || 'your school'} studying Finance`}
-            />
-          </label>
-          <label className="field">
-            Contact line for the bottom of your letters <small>(optional)</small>
-            <input value={contact} onChange={(e) => setContact(e.target.value)} placeholder="City, State | (555) 555-5555 | you@school.edu" />
-          </label>
-        </>
-      )}
-      {error && <p className="notice error">{error}</p>}
-      <Nav step={0}>
-        <button className="primary" disabled={!school || busy} onClick={save}>
-          {busy ? 'Saving…' : 'Continue'}
-        </button>
-      </Nav>
-    </>
   )
 }
 
@@ -205,7 +113,7 @@ function KeyStep({ s, next, back }: { s: SetupState; next: () => void; back: () 
         way they allow.
       </p>
       {error && <p className="notice error">{error}</p>}
-      <Nav step={1} onBack={back}>
+      <Nav step={0} onBack={back}>
         <button className="ghost" onClick={next}>
           {s.ai.ready ? 'Continue' : 'Skip for now'}
         </button>
@@ -247,7 +155,7 @@ function ResumeStep({ s, next, back, reload }: { s: SetupState; next: () => void
         <span>{done ? 'Choose another file to replace it.' : 'Word (.docx) or PDF'}</span>
       </label>
       {error && <p className="notice error">{error}</p>}
-      <Nav step={2} onBack={back}>
+      <Nav step={1} onBack={back}>
         <button className={done ? 'primary' : 'ghost'} onClick={next}>
           {done ? 'Continue' : 'Skip for now'}
         </button>
@@ -350,7 +258,7 @@ function BanksStep({ s, next, back }: { s: SetupState; next: () => void; back: (
         />
       </label>
       {error && <p className="notice error">{error}</p>}
-      <Nav step={3} onBack={back}>
+      <Nav step={2} onBack={back}>
         <button className="primary" disabled={busy} onClick={save}>
           {busy ? 'Saving…' : banks.length ? `Continue with ${banks.length} ${banks.length === 1 ? 'bank' : 'banks'}` : 'Skip for now'}
         </button>
@@ -359,97 +267,16 @@ function BanksStep({ s, next, back }: { s: SetupState; next: () => void; back: (
   )
 }
 
-function TemplatesStep({ s, next, back }: { s: SetupState; next: () => void; back: () => void }) {
-  const [letter, setLetter] = useState<string | null>(null)
-  const [hasLetter, setHasLetter] = useState(s.profile.has_cover_template)
-  const [email, setEmail] = useState(s.profile.email_template)
-  const [rules, setRules] = useState(s.profile.email_rules)
-  const [busy, setBusy] = useState(false)
-  const [error, setError] = useState('')
-
-  async function readLetter(file: File | undefined) {
-    if (!file) return
-    setBusy(true)
-    setError('')
-    try {
-      const out = await upload<{ text: string }>('/api/setup/template-upload', file)
-      setLetter(out.text)
-    } catch (e) {
-      setError((e as Error).message)
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  async function save() {
-    setBusy(true)
-    setError('')
-    try {
-      await post('/api/setup/templates', { ...(letter !== null ? { cover_letter: letter } : {}), email_template: email, email_rules: rules })
-      if (letter !== null) setHasLetter(!!letter.trim())
-      next()
-    } catch (e) {
-      setError((e as Error).message)
-    } finally {
-      setBusy(false)
-    }
-  }
-
+function TemplatesStep({ s, next, back, reload }: { s: SetupState; next: () => void; back: () => void; reload: () => void }) {
   return (
     <>
-      <h2>Your writing templates</h2>
-      <p className="setup-why">Your cover letters and thank-you emails will follow these exactly. Skip either one to use the standard format.</p>
-
-      <section className="template-block">
-        <h3>Cover letter</h3>
-        <p className="fine">
-          Upload a cover letter you have written or your school's sample. New letters copy its structure, length and voice, written fresh for each bank.
-        </p>
-        {letter === null ? (
-          <label className={`dropzone small ${hasLetter ? 'done' : ''}`}>
-            <input type="file" accept=".pdf,.docx,.txt" onChange={(e) => readLetter(e.target.files?.[0])} disabled={busy} />
-            <strong>{busy ? 'Reading…' : hasLetter ? '✓ Template saved' : 'Choose a cover letter'}</strong>
-            <span>{hasLetter ? 'Choose another file to replace it.' : 'Word (.docx) or PDF'}</span>
-          </label>
-        ) : (
-          <label className="field">
-            Check the text we read from your file
-            <textarea rows={8} value={letter} onChange={(e) => setLetter(e.target.value)} />
-          </label>
-        )}
-      </section>
-
-      <section className="template-block">
-        <h3>Thank-you email</h3>
-        <p className="fine">
-          Paste the thank-you email you send after a coffee chat, and put the parts that change in [square brackets]. Everything outside the brackets
-          is kept word for word. <strong>[First name]</strong>, <strong>[Bank]</strong>, <strong>[when]</strong> and <strong>[My name]</strong> are filled
-          in automatically; anything else in brackets, like <strong>[something we talked about]</strong>, is written from your notes on the chat.
-        </p>
-        <textarea rows={9} value={email} onChange={(e) => setEmail(e.target.value)} placeholder={s.standard_email} />
-        <div className="template-tools">
-          {!email && (
-            <button type="button" className="link" onClick={() => setEmail(s.standard_email)}>
-              Start from the standard template
-            </button>
-          )}
-          {email && (
-            <button type="button" className="link" onClick={() => setEmail('')}>
-              Use the standard template instead
-            </button>
-          )}
-        </div>
-        {email && (
-          <label className="field">
-            Rules the email must follow <small>(optional)</small>
-            <input value={rules} onChange={(e) => setRules(e.target.value)} placeholder="e.g. No exclamation points. Each sentence under 30 words." />
-          </label>
-        )}
-      </section>
-      {error && <p className="notice error">{error}</p>}
-      <Nav step={4} onBack={back}>
-        <button className="primary" disabled={busy} onClick={save}>
-          {busy ? 'Saving…' : 'Continue'}
+      <h2>Your templates</h2>
+      <p className="setup-why">Your cover letters and emails follow these exactly. The Finance Club versions are already filled in; change anything you write differently.</p>
+      <CoverTemplate state={s} onChange={reload} />
+      <EmailTemplates state={s} onChange={reload} />
+      <Nav step={3} onBack={back}>
+        <button className="primary" onClick={next}>
+          Continue
         </button>
       </Nav>
     </>
@@ -458,11 +285,10 @@ function TemplatesStep({ s, next, back }: { s: SetupState; next: () => void; bac
 
 function DoneStep({ s, back, finish }: { s: SetupState; back: () => void; finish: () => void }) {
   const items: [keyof SetupState['done'], string, string][] = [
-    ['school', 'School', s.profile.school],
     ['ai', 'AI connected', s.ai.ready ? (s.ai.provider_label || 'Site key') : 'Grading, letters and emails stay off until you add a key in Settings'],
     ['resume', 'Resume', s.profile.has_resume ? 'Uploaded' : 'Add it in Settings before writing cover letters'],
     ['banks', 'Banks', s.banks.length ? s.banks.join(', ') : 'Add banks any time from the Recruiting Map'],
-    ['templates', 'Templates', s.done.templates ? 'Saved' : 'Using the standard formats'],
+    ['templates', 'Cover letter template', s.cover_template.has_template ? s.cover_template.filename : 'Using the Yale SOM template'],
   ]
   return (
     <>
@@ -482,7 +308,7 @@ function DoneStep({ s, back, finish }: { s: SetupState; back: () => void; finish
         From here, tell the Assistant (bottom right) about every coffee chat or event, in plain words or by voice. It keeps your map, thank-you emails
         and cover letters up to date.
       </p>
-      <Nav step={5} onBack={back}>
+      <Nav step={4} onBack={back}>
         <button className="primary big" onClick={finish}>
           Go to my dashboard
         </button>
@@ -504,7 +330,11 @@ export default function Setup({ onDone }: { onDone: () => void }) {
   if (!data) return <Loading error={error} />
   if (step === -1) {
     // open at the first step not done yet, so someone who stopped halfway picks up where they left off
-    const order: (keyof SetupState['done'])[] = ['school', 'ai', 'resume', 'banks', 'templates']
+    if (window.location.hash.includes('step=banks')) {
+      setStep(2)
+      return <Loading error="" />
+    }
+    const order: (keyof SetupState['done'])[] = ['ai', 'resume', 'banks']
     const first = order.findIndex((k) => !data.done[k])
     setStep(first === -1 ? 0 : first)
     return <Loading error="" />
@@ -525,19 +355,18 @@ export default function Setup({ onDone }: { onDone: () => void }) {
     <div className="setup">
       <div className="setup-progress" aria-label={`Step ${step + 1} of ${STEPS.length}`}>
         {STEPS.map((label, i) => (
-          <button key={label} className={i === step ? 'on' : i < step ? 'past' : ''} onClick={() => i <= step || data.done.school ? go(i) : undefined}>
+          <button key={label} className={i === step ? 'on' : i < step ? 'past' : ''} onClick={() => go(i)}>
             <i />
             <span>{label}</span>
           </button>
         ))}
       </div>
       <div className="card setup-card" key={`${step}-${version}`}>
-        {step === 0 && <SchoolStep s={data} next={next} />}
-        {step === 1 && <KeyStep s={data} next={next} back={back} />}
-        {step === 2 && <ResumeStep s={data} next={next} back={back} reload={reload} />}
-        {step === 3 && <BanksStep s={data} next={next} back={back} />}
-        {step === 4 && <TemplatesStep s={data} next={next} back={back} />}
-        {step === 5 && <DoneStep s={data} back={back} finish={finish} />}
+        {step === 0 && <KeyStep s={data} next={next} back={back} />}
+        {step === 1 && <ResumeStep s={data} next={next} back={back} reload={reload} />}
+        {step === 2 && <BanksStep s={data} next={next} back={back} />}
+        {step === 3 && <TemplatesStep s={data} next={next} back={back} reload={reload} />}
+        {step === 4 && <DoneStep s={data} back={back} finish={finish} />}
       </div>
     </div>
   )

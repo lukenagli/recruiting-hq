@@ -45,7 +45,7 @@ export default function Login(props: { onDone: (user: User) => void }) {
 
   const intro = {
     login: 'Log in to your tracker.',
-    signup: 'Create your account. Your tracker is private to you.',
+    signup: 'For Yale SOM Finance Club members. Sign up with your @yale.edu email; your tracker is private to you.',
     forgot: "Enter your account's email and we'll send you a code to reset your password.",
     reset: `If there is an account for ${email}, a 6-digit code is on its way. Enter it with a new password.`,
   }[mode]
@@ -67,7 +67,14 @@ export default function Login(props: { onDone: (user: User) => void }) {
         {mode !== 'reset' && (
           <label className="field">
             Email
-            <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="email" autoFocus />
+            <input
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              autoComplete="email"
+              autoFocus
+              placeholder={mode === 'signup' ? 'you@yale.edu' : ''}
+            />
           </label>
         )}
         {mode === 'reset' && (

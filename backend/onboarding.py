@@ -1,11 +1,11 @@
-"""First-run setup: school, AI key, resume, target banks and groups, writing templates.
+"""First-run setup: AI key, resume, target banks and groups, writing templates (everyone is Yale SOM for now).
 
 Each step saves on its own, so a person can stop halfway and pick up later, and every step can be redone
-from Settings. Nothing here is required except the school (it decides the app's wording).
+from Settings. Nothing here is required.
 """
 from . import banks as bank_info
 from . import profile as user_profile
-from . import schools, thank_you, user_keys
+from . import schools, templates, user_keys
 from .db import connect, init_db
 
 
@@ -28,13 +28,14 @@ def state(uid: int) -> dict:
         "bank_choices": [{"bank": b, "domain": d} for b, d in sorted(bank_info.DOMAINS.items())],
         "ai": key,
         "options": schools.options(),
-        "standard_email": thank_you.STANDARD_TEMPLATE,
+        "email_templates": templates.email_templates(uid),
+        "email_kinds": templates.email_options(),
+        "cover_template": templates.cover_template_info(uid),
         "done": {
-            "school": bool(prof["school"]),
             "ai": bool(key.get("ready")),
             "resume": bool(prof["resume_text"].strip()),
             "banks": bool(chosen),
-            "templates": bool(prof["example_letter"].strip() or prof["email_template"].strip()),
+            "templates": templates.cover_template_info(uid)["has_template"],
         },
     }
 

@@ -6,7 +6,8 @@
 - Repeated wrong passwords for one email are slowed down (10 tries per 15 minutes).
 - New accounts confirm their email with a 6-digit code, and a forgotten password is reset the same way
   (mailer.py). Codes are stored only as hashes, expire after 15 minutes and allow 5 tries.
-- A brand-new account starts empty; the first-run setup asks for the school, banks and templates.
+- Sign-up is for Yale SOM students (a yale.edu address). A new account starts empty; the first-run setup asks
+  for the AI key, resume, banks and groups, and templates.
 """
 import hashlib
 import hmac
@@ -67,6 +68,8 @@ def sign_up(email: str, name: str, password: str) -> tuple[dict, str]:
         raise AccountError("Enter a valid email address.")
     if not name:
         raise AccountError("Enter your name.")
+    if not (email.endswith("@yale.edu") or email.endswith(".yale.edu")):
+        raise AccountError("Recruiting HQ is for Yale SOM students. Sign up with your @yale.edu email.")
     if len(password) < 8:
         raise AccountError("Use a password of at least 8 characters.")
     init_db()
@@ -87,6 +90,9 @@ def sign_up(email: str, name: str, password: str) -> tuple[dict, str]:
                 user_id = conn.execute(
                     "INSERT INTO users (email, name, password_hash, is_admin, created_at) VALUES (?, ?, ?, ?, ?)",
                     (email, name, _hash_password(password), int(real_users == 0), now)).lastrowid
+            # Everyone is a Yale SOM MBA student for now (schools.py keeps the wording switchable later).
+            conn.execute("INSERT OR IGNORE INTO user_profiles (user_id) VALUES (?)", (user_id,))
+            conn.execute("UPDATE user_profiles SET school = 'Yale SOM', level = 'mba' WHERE user_id = ? AND COALESCE(school, '') = ''", (user_id,))
             token = _new_session(conn, user_id)
             user = conn.execute("SELECT * FROM users WHERE id = ?", (user_id,)).fetchone()
         if email_on():

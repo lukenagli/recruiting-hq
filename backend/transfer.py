@@ -43,6 +43,9 @@ def export_all(uid: int, include_shared: bool) -> dict:
         out = {t: [dict(r) for r in conn.execute(sql, params)] for t, (sql, params) in queries.items()}
     for d in out["deal_documents"]:  # the original files travel as text inside the JSON
         d["data"] = base64.b64encode(d["data"]).decode()
+    for prof in out["user_profiles"]:
+        if isinstance(prof.get("cover_template"), (bytes, bytearray)):
+            prof["cover_template"] = "b64:" + base64.b64encode(prof["cover_template"]).decode()
     return out
 
 
@@ -108,6 +111,8 @@ def import_all(uid: int, data: dict, is_admin: bool, replace: bool = False) -> d
                 _insert(conn, "agent_runs", {**own(r), "snapshot": None}, cols["agent_runs"])  # old snapshots use the old ids
             for r in data.get("user_profiles", [])[:1]:
                 conn.execute("DELETE FROM user_profiles WHERE user_id = ?", (uid,))
+                if str(r.get("cover_template") or "").startswith("b64:"):
+                    r = {**r, "cover_template": base64.b64decode(r["cover_template"][4:])}
                 _insert(conn, "user_profiles", own(r), cols["user_profiles"], drop_id=False)
 
             shared = {}
