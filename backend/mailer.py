@@ -41,6 +41,20 @@ def send(to: str, subject: str, body: str) -> None:
     msg["Subject"] = subject
     msg.set_content(body)
     port = int(s["SMTP_PORT"] or 587)
+    # Some hosts' networks cut one of the two standard secure ports, so if the chosen one drops the connection,
+    # try the other (465 = TLS from the start, 587 = STARTTLS). A wrong password is not retried.
+    other = 465 if port == 587 else 587 if port == 465 else None
+    try:
+        _deliver(s, port, msg)
+    except (smtplib.SMTPServerDisconnected, smtplib.SMTPConnectError, OSError) as exc:
+        if other is None or isinstance(exc, smtplib.SMTPAuthenticationError):
+            raise
+        print(f"[email] port {port} failed ({type(exc).__name__}), trying port {other}", flush=True)
+        _deliver(s, other, msg)
+    log.info("sent %s email", subject)
+
+
+def _deliver(s: dict, port: int, msg: EmailMessage) -> None:
     context = ssl.create_default_context()
     if port == 465:
         with smtplib.SMTP_SSL(s["SMTP_HOST"], port, context=context, timeout=20) as smtp:
@@ -51,4 +65,3 @@ def send(to: str, subject: str, body: str) -> None:
             smtp.starttls(context=context)
             smtp.login(s["SMTP_USER"], s["SMTP_PASSWORD"])
             smtp.send_message(msg)
-    log.info("sent %s email", subject)

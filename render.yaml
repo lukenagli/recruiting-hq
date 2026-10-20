@@ -3,7 +3,7 @@ services:
   - type: web
     name: recruiting-hq
     runtime: docker
-    plan: free
+    plan: starter
     healthCheckPath: /api/health
     envVars:
       # The course key. Only the site's admin account (the first one created) ever uses it;

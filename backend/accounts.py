@@ -177,6 +177,9 @@ def send_code(email: str, purpose: str) -> None:
     except Exception as exc:
         # Show why in the server log (error type and the mail server's reply), never the code or a password.
         print(f"[email] sending the {purpose} code failed: {type(exc).__name__}: {str(exc)[:200]}", flush=True)
+        with connect() as conn:  # a code that never went out should not count toward the resend limits
+            conn.execute("DELETE FROM email_codes WHERE email = ? AND purpose = ? AND created_at = ?",
+                         (email, purpose, now.isoformat(timespec="seconds")))
         raise AccountError("The email could not be sent. Try again in a few minutes.")
 
 
