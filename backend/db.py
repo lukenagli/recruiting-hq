@@ -68,6 +68,19 @@ CREATE TABLE IF NOT EXISTS users (
     created_at     TEXT NOT NULL
 );
 
+-- One-time 6-digit codes emailed to confirm an address or reset a password. Only a hash is stored.
+CREATE TABLE IF NOT EXISTS email_codes (
+    id          INTEGER PRIMARY KEY,
+    email       TEXT NOT NULL COLLATE NOCASE,
+    purpose     TEXT NOT NULL,      -- verify | reset
+    code_hash   TEXT NOT NULL,
+    created_at  TEXT NOT NULL,
+    expires_at  TEXT NOT NULL,
+    attempts    INTEGER NOT NULL DEFAULT 0,
+    used        INTEGER NOT NULL DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS idx_codes_email ON email_codes (email, purpose, created_at);
+
 -- Login sessions. Only a hash of each session token is stored.
 CREATE TABLE IF NOT EXISTS sessions (
     token_hash  TEXT PRIMARY KEY,
@@ -211,7 +224,7 @@ CREATE TABLE IF NOT EXISTS agent_runs (
 
 # Columns added to existing tables after they first shipped: (table, column).
 LATER_COLUMNS = [
-    ("users", "api_provider"), ("users", "api_key_enc"), ("users", "api_key_hint"),
+    ("users", "api_provider"), ("users", "api_key_enc"), ("users", "api_key_hint"), ("users", "email_verified_at"),
     ("interactions", "invite_only"),
     ("my_banks", "recruiter_name"), ("my_banks", "recruiter_title"), ("my_banks", "address"), ("my_banks", "office"),
     # Who the user is, set in the first-run setup (schools.py turns these into wording and features).
@@ -376,6 +389,9 @@ def init_db() -> None:
             for table, column in LATER_COLUMNS:
                 if column not in _columns(conn, table):
                     conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} TEXT DEFAULT ''")
+                    if (table, column) == ("users", "email_verified_at"):
+                        # accounts made before email checks existed count as confirmed
+                        conn.execute("UPDATE users SET email_verified_at = created_at WHERE password_hash != ''")
             # The calendar used to live in a private JSON file; copy it in the first time.
             if config.RECRUITING_CALENDAR.is_file() and not conn.execute("SELECT 1 FROM calendar_items").fetchone():
                 for item in json.loads(config.RECRUITING_CALENDAR.read_text(encoding="utf-8")):

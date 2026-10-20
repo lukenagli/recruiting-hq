@@ -67,6 +67,55 @@ def log_in(req: LoginRequest, request: Request):
     return auth.session_response(request, user, token)
 
 
+class CodeRequest(BaseModel):
+    code: str
+
+
+class ForgotRequest(BaseModel):
+    email: str
+
+
+class ResetRequest(BaseModel):
+    email: str
+    code: str
+    password: str
+
+
+@app.post("/api/verify-email")
+def verify_email(req: CodeRequest, user: dict = Depends(current_user)):
+    try:
+        return {"ok": True, "user": accounts.verify_email(user["id"], req.code)}
+    except accounts.AccountError as err:
+        raise HTTPException(status_code=400, detail=str(err))
+
+
+@app.post("/api/verify-email/resend")
+def resend_verification(user: dict = Depends(current_user)):
+    try:
+        accounts.send_code(user["email"], "verify")
+    except accounts.AccountError as err:
+        raise HTTPException(status_code=400, detail=str(err))
+    return {"ok": True}
+
+
+@app.post("/api/password/forgot")
+def forgot_password(req: ForgotRequest):
+    try:
+        accounts.request_reset(req.email)
+    except accounts.AccountError as err:
+        raise HTTPException(status_code=400, detail=str(err))
+    return {"ok": True}
+
+
+@app.post("/api/password/reset")
+def reset_password(req: ResetRequest, request: Request):
+    try:
+        user, token = accounts.reset_password(req.email, req.code, req.password)
+    except accounts.AccountError as err:
+        raise HTTPException(status_code=400, detail=str(err))
+    return auth.session_response(request, user, token)
+
+
 @app.post("/api/logout")
 def log_out(request: Request):
     accounts.log_out(auth.token_from(request))

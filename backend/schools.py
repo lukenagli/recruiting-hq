@@ -4,9 +4,10 @@ Every account picks a school and a program level in setup. That decides:
 - the wording the app uses ("Summer Associate" for MBA students, "Summer Analyst" for undergrads; "2Y" for a
   second-year MBA classmate, "student" otherwise; "<School> alum");
 - whether the school's own club material is shown. The Yale SOM Finance Club question banks, application
-  tracker and calendar are the club's material, so they are only shown to Yale SOM accounts that signed up
-  with a yale.edu email address (anyone can type "Yale SOM" as their school).
+  tracker and calendar are the club's material, so they are only shown to Yale SOM accounts with a confirmed
+  yale.edu email address (anyone can type "Yale SOM" as their school).
 """
+from . import mailer
 from .db import connect, init_db
 
 KNOWN = {
@@ -54,7 +55,10 @@ def for_user(uid: int, conn=None) -> dict:
         with connect(read_only=True) as c:
             return for_user(uid, c)
     row = conn.execute("SELECT school, level, class_year FROM user_profiles WHERE user_id = ?", (uid,)).fetchone()
-    email = (conn.execute("SELECT email FROM users WHERE id = ?", (uid,)).fetchone() or [""])[0] or ""
+    user = conn.execute("SELECT email, email_verified_at FROM users WHERE id = ?", (uid,)).fetchone()
+    # only a confirmed address counts toward school-only material (when the site can send email at all)
+    confirmed = bool(user and (user["email_verified_at"] or not mailer.available()))
+    email = (user["email"] or "") if confirmed else ""
     return describe(*(row if row else ("", "", "")), email=email)
 
 

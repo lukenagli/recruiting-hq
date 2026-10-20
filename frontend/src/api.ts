@@ -11,7 +11,7 @@ async function check(res: Response) {
   }
 }
 
-export type User = { id: number; email: string; name: string; is_admin: boolean }
+export type User = { id: number; email: string; name: string; is_admin: boolean; email_verified: boolean }
 
 export type AiSettings = { provider: string; provider_label: string; hint: string; ready: boolean; using_site_key: boolean; model: string }
 

@@ -1,6 +1,6 @@
 """Who is making each request.
 
-Every /api route except sign-up, login, logout, session and health needs a signed-in user, found from the
+Every /api route except sign-up, login, logout, session, health and password reset needs a signed-in user, found from the
 session cookie or, for scripts, an "Authorization: Bearer <session token>" header. The user is put on
 request.state.user and handed to endpoints through the `current_user` dependency, and every data function
 takes that user's id, so one account can never read or change another's tracker.
@@ -11,7 +11,8 @@ from fastapi.responses import JSONResponse
 from . import accounts
 
 COOKIE = "rhq_session"
-OPEN_PATHS = {"/api/signup", "/api/login", "/api/logout", "/api/session", "/api/health"}
+OPEN_PATHS = {"/api/signup", "/api/login", "/api/logout", "/api/session", "/api/health", "/api/password/forgot",
+              "/api/password/reset"}
 
 
 def token_from(request: Request) -> str:

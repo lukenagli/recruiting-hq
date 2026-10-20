@@ -4,7 +4,7 @@ import BankView from './BankView'
 import Deals from './Deals'
 import Home from './Home'
 import Letters from './Letters'
-import Login from './Login'
+import Login, { VerifyEmail } from './Login'
 import { get, post } from './api'
 import type { School, Session, User } from './api'
 import MapView from './MapView'
@@ -65,6 +65,7 @@ export default function App() {
     return <p className="notice error">Could not reach the app's server. If the site was asleep, wait a minute and refresh.</p>
   if (user === undefined) return <p className="notice">Loading…</p>
   if (user === null) return <Login onDone={() => loadSession()} />
+  if (!user.email_verified) return <VerifyEmail user={user} onDone={() => loadSession()} onSignOut={signOut} />
   if (needsSetup || section === 'setup')
     return (
       <SchoolContext.Provider value={school ?? fallback}>
