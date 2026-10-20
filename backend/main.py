@@ -11,7 +11,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from pydantic_ai import Agent
 
-from . import accounts, assistant, auth, budget, config, cover_letters, deal_docs, deals, importer, legal, llm, network, onboarding, practice, profile, schools, research, templates, thank_you, transfer, user_keys
+from . import accounts, assistant, auth, budget, config, cover_letters, deal_docs, deals, importer, legal, llm, network, onboarding, practice, profile, schools, reference, research, templates, thank_you, transfer, user_keys
 from .auth import admin_user, current_user
 from .db import connect, init_db
 from .llm import get_model, usage_dict
@@ -204,7 +204,7 @@ def practice_next(req: PracticeRequest, user: dict = Depends(current_user)):
 @app.post("/api/practice/answer")
 async def practice_answer(req: AnswerRequest, user: dict = Depends(current_user)):
     try:  # grading works without a model too (worked solutions, self-marking), so a missing key is not an error here
-        chosen = ai_for(user) if req.answer.strip() else None
+        chosen = ai_for(user)
     except HTTPException:
         chosen = None
     out = await practice.grade(user["id"], chosen, req.key, req.answer[:4000])
@@ -599,13 +599,41 @@ async def upload_question_bank(file: UploadFile, user: dict = Depends(admin_user
     with tempfile.TemporaryDirectory() as tmp:
         path = Path(tmp) / importer.LIVE_FILE
         path.write_bytes(await file.read())
-        return importer.import_live_file(path)
+        out = importer.import_live_file(path)
+    reference.load_question_bank_notes()  # keep the answer library in step with the question bank
+    return out
+
+
+class ReferenceUpload(BaseModel):
+    source: str
+    passages: list[dict]
+    private: bool = True
+
+
+@app.post("/api/admin/reference")
+def upload_reference(req: ReferenceUpload, user: dict = Depends(admin_user)):
+    """Load one source into the answer library: private to this admin, or shared with every account."""
+    if not req.source.strip() or len(req.passages) > 5000:
+        raise HTTPException(status_code=400, detail="Give a source name and at most 5,000 passages.")
+    return reference.load(user["id"] if req.private else None, req.source.strip(), req.passages)
+
+
+@app.post("/api/admin/reference/question-bank")
+def index_question_bank_answers(user: dict = Depends(admin_user)):
+    return reference.load_question_bank_notes()
+
+
+@app.get("/api/practice/library")
+def answer_library_sources(user: dict = Depends(current_user)):
+    return reference.sources(user["id"])
 
 
 @app.post("/api/admin/import-local-files")
 def import_local_question_banks(user: dict = Depends(admin_user)):
     """Re-read the question bank workbooks in this server's data folder."""
-    return importer.run_import()
+    out = importer.run_import()
+    reference.load_question_bank_notes()
+    return out
 
 
 @app.get("/api/admin/model-check")

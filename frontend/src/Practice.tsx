@@ -295,6 +295,19 @@ export default function Practice({ options, start }: { options: PrepOptions; sta
                 <div className="pq-explain">
                   <strong>Explanation</strong>
                   <p>{graded.explanation}</p>
+                  {graded.sources && graded.sources.length > 0 && (
+                    <small className="pq-sources">
+                      From your library:{' '}
+                      {graded.sources.map((s, i) => (
+                        <span key={i}>
+                          {s.source}
+                          {s.location && `, ${s.location}`}
+                          {s.private && <em> (private)</em>}
+                          {i < graded.sources!.length - 1 ? ' · ' : ''}
+                        </span>
+                      ))}
+                    </small>
+                  )}
                 </div>
               )}
               <div className="pq-mark">

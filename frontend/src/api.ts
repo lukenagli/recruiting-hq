@@ -257,6 +257,7 @@ export type Graded = {
   explanation: string
   answer: string
   question: PracticeQuestion
+  sources?: { source: string; location: string; private: boolean }[]
 }
 export type PracticeArea = {
   topic: string

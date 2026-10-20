@@ -22,6 +22,7 @@ from pydantic_ai.usage import UsageLimits
 
 from . import deals as deal_book
 from . import practice_bank as pb
+from . import reference as answer_library
 from . import profile as user_profile
 from .db import connect, init_db
 from .llm import Chosen, usage_dict
@@ -234,6 +235,9 @@ paragraphs or numbered steps, no markdown headings, at most 220 words.
 way to pay for an acquisition, then debt, then stock), not academic edge cases. Mention a nuance only after \
 confirming the standard answer.
 - If a reference solution is given, it is correct: grade against it and build the explanation from it.
+- Reference passages from study guides and the Finance Club's decks may be given. Base the explanation on them \
+when they answer the question, and name the source in brackets after the point it supports, e.g. \
+[DCF guide, p. 12]. If they do not answer it, use standard interview knowledge and do not cite them.
 - Never invent facts about a specific bank, deal or person. If the question needs facts you do not have, say \
 what the student should look up.
 - A blank answer or "I don't know" is incorrect; still teach the answer.
@@ -282,17 +286,25 @@ async def grade(uid: int, chosen: Chosen | None, key: str, answer: str) -> dict 
     verdict, feedback, explanation, usage, outcome = None, "", "", None, "ok"
     reference = (f"Reference answer: {problem.answer}\nReference solution:\n{problem.solution}" if problem
                  else f"Notes from the question bank: {q['notes']}" if q["notes"] else "")
+    # Passages from the answer library (club decks, question bank answers, and this account's private guides).
+    passages = [] if problem else answer_library.search(uid, f"{q['question']} {q['topic']}", limit=4)
+    library = "\n\n".join(f"[{p['source']}, {p['location']}]\n{p['text'][:1500]}" for p in passages)
+    use_ai = chosen is not None and (answer or not problem)  # "show me the answer" on a bank question is explained too
 
-    if chosen is not None and answer:
+    if use_ai:
         prompt = "\n\n".join(x for x in (
             f"Question ({q['category']}{', ' + q['topic'] if q['topic'] else ''}"
             f"{', asked at ' + q['bank'] if q['bank'] else ''}{', ' + q['round'] if q['round'] else ''}):\n{q['question']}",
-            reference, _background(uid, q), f"Student's answer:\n{answer}") if x)
+            reference, f"Reference passages:\n{library}" if library else "", _background(uid, q),
+            f"Student's answer:\n{answer}" if answer else "The student asked to see the answer without answering. "
+            "Set verdict to incorrect, keep feedback to one sentence, and teach the full answer in the explanation.") if x)
         try:
             output = NativeOutput(Grade) if chosen.provider == "anthropic" else None  # Claude rejects forced tool calls
             result = await grader.run(prompt, model=chosen.model, model_settings=chosen.settings, usage_limits=LIMITS, output_type=output)
             usage, g = usage_dict(result.usage), result.output
             verdict, feedback, explanation = g.verdict, g.feedback.strip(), g.explanation.strip()
+            if not answer:
+                feedback = ""  # they asked to see the answer; no need to tell them they did not answer
         except Exception as exc:
             outcome, feedback = "error", f"The AI grader failed ({type(exc).__name__}), so here is the reference instead."
 
@@ -303,8 +315,14 @@ async def grade(uid: int, chosen: Chosen | None, key: str, answer: str) -> dict 
             if not feedback:
                 feedback = (f"The answer is {problem.answer}." if verdict != "correct" else "That matches the answer.")
     elif not explanation:
-        explanation = q["notes"] or ("Add your own Claude or OpenAI key in Settings to get feedback and a model answer here."
-                                     if chosen is None else "")
+        # No AI explanation: show the question bank's own answer and the best passages from the library.
+        parts = [f"From the question bank: {q['notes']}"] if q["notes"] else []
+        parts += [f"From {p['source']} ({p['location']}):\n{_excerpt(p['text'], q['question'])}" for p in passages[:2]]
+        explanation = "\n\n".join(parts) or ("No written answer for this one in the library yet."
+                                              + (" Add your own Claude or OpenAI key in Settings to get a model answer."
+                                                 if chosen is None else ""))
+        if not answer and verdict is None:
+            feedback = "Here is what the study material says. Mark yourself below once you have compared it with what you would have said."
 
     started = datetime.now().isoformat(timespec="seconds")
     with connect() as conn:
@@ -315,7 +333,7 @@ async def grade(uid: int, chosen: Chosen | None, key: str, answer: str) -> dict 
             (uid, started, key, q["category"], q["topic"], q["difficulty"], q["bank"], q["question"], answer, verdict,
              SCORE.get(verdict or ""), feedback, explanation, "ai" if usage else "check" if problem else "self"),
         ).lastrowid
-        if chosen is not None and answer:
+        if use_ai:
             u = usage or {}
             conn.execute(
                 """INSERT INTO agent_runs (user_id, started_at, agent, user_message, reply, steps, outcome, requests,
@@ -325,7 +343,23 @@ async def grade(uid: int, chosen: Chosen | None, key: str, answer: str) -> dict 
                  u.get("input_tokens", 0), u.get("cached_input_tokens", 0), u.get("output_tokens", 0)),
             )
     return {"attempt_id": aid, "verdict": verdict, "feedback": feedback, "explanation": explanation,
-            "answer": problem.answer if problem else "", "question": q}
+            "answer": problem.answer if problem else "", "question": q,
+            "sources": list({(p["source"], p["location"]): {"source": p["source"], "location": p["location"], "private": p["private"]}
+                             for p in passages}.values())}
+
+
+def _excerpt(text: str, question: str, size: int = 700) -> str:
+    """The part of a passage around its best keyword match, trimmed to whole words."""
+    words = [w for w in re.findall(r"[a-z]{4,}", question.lower()) if w not in answer_library.STOP]
+    low = text.lower()
+    hits = [low.find(w) for w in words if low.find(w) >= 0]
+    start = max(0, min(hits) - 150) if hits else 0
+    piece = text[start:start + size]
+    if start > 0:
+        piece = "…" + piece.split(" ", 1)[-1]
+    if start + size < len(text):
+        piece = piece.rsplit(" ", 1)[0] + "…"
+    return piece
 
 
 # ---------------- History and progress ----------------

@@ -655,3 +655,5 @@ main { padding-bottom: 90px; }
 .email-editor textarea { font: 14px/1.5 ui-monospace, 'Cascadia Mono', Consolas, monospace; }
 .templates-card { padding: 22px 24px; }
 .templates-card .template-block:first-child { margin-top: 0; }
+.pq-sources { display: block; margin-top: 8px; font-size: 12px; }
+.pq-sources em { font-style: normal; color: var(--muted); }
