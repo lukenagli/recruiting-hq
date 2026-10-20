@@ -174,7 +174,9 @@ def send_code(email: str, purpose: str) -> None:
         mailer.send(email, f"Your Recruiting HQ code: {code}",
                     f"Your code to {what} is:\n\n    {code}\n\nIt expires in {CODE_MINUTES} minutes.\n\n"
                     "If you did not ask for this, you can ignore this email.\n\nRecruiting HQ")
-    except Exception:
+    except Exception as exc:
+        # Show why in the server log (error type and the mail server's reply), never the code or a password.
+        print(f"[email] sending the {purpose} code failed: {type(exc).__name__}: {str(exc)[:200]}", flush=True)
         raise AccountError("The email could not be sent. Try again in a few minutes.")
 
 
