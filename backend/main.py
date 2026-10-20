@@ -6,12 +6,12 @@ from pathlib import Path
 
 from fastapi import Depends, FastAPI, Form, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse, Response
+from fastapi.responses import HTMLResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from pydantic_ai import Agent
 
-from . import accounts, assistant, auth, budget, config, cover_letters, deal_docs, deals, importer, llm, network, onboarding, practice, profile, schools, research, thank_you, transfer, user_keys
+from . import accounts, assistant, auth, budget, config, cover_letters, deal_docs, deals, importer, legal, llm, network, onboarding, practice, profile, schools, research, thank_you, transfer, user_keys
 from .auth import admin_user, current_user
 from .db import connect, init_db
 from .llm import get_model, usage_dict
@@ -604,6 +604,16 @@ async def model_check(user: dict = Depends(admin_user)):
     except Exception as exc:
         raise HTTPException(status_code=502, detail=f"{type(exc).__name__}: {exc}")
     return {"reply": result.output, "usage": usage_dict(result.usage)}
+
+
+@app.get("/privacy", include_in_schema=False)
+def privacy_page():
+    return HTMLResponse(legal.page("privacy"))
+
+
+@app.get("/terms", include_in_schema=False)
+def terms_page():
+    return HTMLResponse(legal.page("terms"))
 
 
 # The built website, served by this same server on the hosted site. Mounted last so /api routes win.

@@ -112,9 +112,15 @@ export default function Login(props: { onDone: (user: User) => void }) {
           </>
         )}
         {mode === 'signup' && (
-          <button type="button" className="link" onClick={() => switchTo('login')}>
-            I already have an account
-          </button>
+          <>
+            <button type="button" className="link" onClick={() => switchTo('login')}>
+              I already have an account
+            </button>
+            <p className="fine">
+              By creating an account you agree to the <a href="/terms" target="_blank" rel="noreferrer">Terms</a> and{' '}
+              <a href="/privacy" target="_blank" rel="noreferrer">Privacy Policy</a>.
+            </p>
+          </>
         )}
         {mode === 'reset' && (
           <button type="button" className="link" onClick={() => switchTo('forgot')}>
