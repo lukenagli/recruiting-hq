@@ -214,6 +214,13 @@ LATER_COLUMNS = [
     ("users", "api_provider"), ("users", "api_key_enc"), ("users", "api_key_hint"),
     ("interactions", "invite_only"),
     ("my_banks", "recruiter_name"), ("my_banks", "recruiter_title"), ("my_banks", "address"), ("my_banks", "office"),
+    # Who the user is, set in the first-run setup (schools.py turns these into wording and features).
+    ("user_profiles", "school"), ("user_profiles", "level"), ("user_profiles", "class_year"), ("user_profiles", "target_groups"),
+    ("user_profiles", "email_template"), ("user_profiles", "email_rules"), ("user_profiles", "onboarded_at"),
+    # Where each deal number came from: document | official | web | user, plus the document page and exact quote.
+    ("deal_points", "source_kind"), ("deal_points", "doc_id"), ("deal_points", "page"), ("deal_points", "quote"),
+    # A scanned or screenshot PDF has no text layer: "yes" until the AI has transcribed it, then "read".
+    ("deal_documents", "scanned"),
 ]
 
 # What each user tells the app about themselves, used to write their cover letters.
@@ -239,6 +246,41 @@ CREATE TABLE IF NOT EXISTS cover_letters (
     updated_at   TEXT NOT NULL,
     UNIQUE (user_id, bank)
 );
+
+-- Interview practice: one row per answered question, for the progress view. Users can delete rows.
+CREATE TABLE IF NOT EXISTS prep_attempts (
+    id           INTEGER PRIMARY KEY,
+    user_id      INTEGER NOT NULL,
+    at           TEXT NOT NULL,
+    qkey         TEXT NOT NULL,        -- q:<question id> or tpl:<template>:<seed>
+    category     TEXT NOT NULL,        -- Behavioral | Technical | Deal | Markets
+    topic        TEXT DEFAULT '',      -- technical area, e.g. DCF
+    difficulty   TEXT DEFAULT '',
+    bank         TEXT DEFAULT '',
+    question     TEXT NOT NULL,
+    answer       TEXT DEFAULT '',
+    verdict      TEXT,                 -- correct | partial | incorrect | NULL (not graded yet)
+    score        REAL,
+    feedback     TEXT DEFAULT '',
+    explanation  TEXT DEFAULT '',
+    graded_by    TEXT DEFAULT ''       -- ai | check | self
+);
+CREATE INDEX IF NOT EXISTS idx_attempts_user ON prep_attempts (user_id, at);
+
+-- Documents a user uploads for a deal (SEC filings, press releases, investor decks), kept so every number
+-- taken from them can link back to the page it came from.
+CREATE TABLE IF NOT EXISTS deal_documents (
+    id           INTEGER PRIMARY KEY,
+    user_id      INTEGER NOT NULL,
+    deal_id      INTEGER NOT NULL,
+    filename     TEXT NOT NULL,
+    kind         TEXT DEFAULT '',     -- what the user said it is (merger agreement, 10-K, press release, ...)
+    pages        TEXT NOT NULL,       -- JSON list of each page's extracted text
+    data         BLOB NOT NULL,       -- the original file
+    size         INTEGER NOT NULL,
+    uploaded_at  TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_docs_deal ON deal_documents (user_id, deal_id);
 """
 
 # Child tables: they belong to a user through their parent row, so they need no user_id of their own.

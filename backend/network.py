@@ -4,6 +4,7 @@ import re
 from datetime import date
 
 from . import banks as bank_info
+from . import schools
 from .db import connect, init_db
 
 ROUND_ORDER = ["Coffee Chat", "HireVue", "Round 1", "Round 2", "Superday", "Unknown"]
@@ -63,7 +64,8 @@ def _load(conn, uid: int) -> dict:
         "interactions": interactions,
         "links": _all(conn, "SELECT * FROM links WHERE user_id = ?", (uid,)),
         "my_banks": {r["bank"]: r for r in _all(conn, "SELECT * FROM my_banks WHERE user_id = ?", (uid,))},
-        "shared_apps": {r["bank"]: r for r in _all(conn, "SELECT * FROM applications")},
+        # The shared application tracker is the Yale SOM Finance Club's, so only club accounts get its deadlines.
+        "shared_apps": {r["bank"]: r for r in _all(conn, "SELECT * FROM applications")} if schools.for_user(uid, conn)["club"] else {},
         "question_counts": {
             r["bank"]: r["n"] for r in _all(conn, "SELECT bank, COUNT(*) AS n FROM questions GROUP BY bank")
         },
@@ -212,6 +214,10 @@ def timeline(uid: int) -> dict:
             "next": {"title": upcoming[0]["title"], "date": upcoming[0]["date"]} if upcoming else None, "waiting": waiting,
             "chats": sum(1 for m in marks if m["kind"] == "chat" and m["status"] == "done"),
             "events": sum(1 for m in marks if m["kind"] == "event" and m["status"] == "done"),
+            "status": app["status"],
+            "interviews": [{"title": m["title"], "date": m["date"], "status": m["status"]} for m in marks if m["kind"] == "interview"],
+            "invites": [m["title"] for m in marks if m.get("invite_only")],
+            "chat_dates": sorted(m["date"] for m in marks if m["kind"] == "chat" and m["status"] == "done" and m["date"]),
         })
     rows.sort(key=lambda r: (r["out"], not r["marks"], -int((r["next"] or {}).get("date", "0000-00-00").replace("-", "") or 0) * 0, r["last"] == "", ""))
     rows.sort(key=lambda r: (r["out"], not r["marks"], -(int(r["last"].replace("-", "")) if r["last"] else 0)))

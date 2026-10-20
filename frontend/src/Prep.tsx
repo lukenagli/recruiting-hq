@@ -1,9 +1,11 @@
 import { useState } from 'react'
+import Practice from './Practice'
+import Progress from './Progress'
 import type { PrepOptions, Question } from './api'
-import { Loading, Logo, useApi } from './ui'
+import { Loading, Logo, useApi, useSchool } from './ui'
 
 const ROUND_HELP: Record<string, string> = {
-  'Coffee Chat': 'Informal call with a banker or 2Y',
+  'Coffee Chat': 'Informal call with a banker or a student who has been through it',
   'Round 1': 'First-round interview',
   'Round 2': 'Second-round interview',
   Superday: 'Final round, back-to-back interviews',
@@ -21,7 +23,8 @@ function go(bank: string, round: string, who: string) {
   if (round) q.set('round', round)
   if (bank) q.set('bank', bank)
   if (who) q.set('who', who)
-  window.location.hash = `#/prep${q.size ? `?${q}` : ''}`
+  q.set('tab', 'browse')
+  window.location.hash = `#/prep?${q}`
 }
 
 function Results({ bank, round, who }: { bank: string; round: string; who: string }) {
@@ -83,9 +86,50 @@ function Results({ bank, round, who }: { bank: string; round: string; who: strin
   )
 }
 
-export default function Prep({ bank, round, who }: { bank: string; round: string; who: string }) {
+const TABS = [
+  ['practice', 'Practice'],
+  ['progress', 'My progress'],
+  ['browse', 'Browse the question bank'],
+]
+
+export default function Prep({ bank, round, who, tab }: { bank: string; round: string; who: string; tab: string }) {
   const { data, error } = useApi<PrepOptions>('/api/prep/options')
+  const school = useSchool()
+  const [topic, setTopic] = useState('')
   if (!data) return <Loading error={error} />
+  const tabs = TABS.filter(([id]) => id !== 'browse' || school.club) // the question bank is the school club's material
+  const current = tab && tabs.some(([id]) => id === tab) ? tab : round && school.club ? 'browse' : 'practice'
+  const header = (
+    <>
+      <h1>Interview Prep</h1>
+      <div className="tabs">
+        {tabs.map(([id, label]) => (
+          <a key={id} href={`#/prep?tab=${id}`} className={current === id ? 'on' : ''} onClick={() => setTopic('')}>
+            {label}
+          </a>
+        ))}
+      </div>
+    </>
+  )
+  if (current === 'practice')
+    return (
+      <div className="prep">
+        {header}
+        <Practice key={topic} options={data} start={topic ? { categories: ['Technical'], topics: [topic], stage: '', difficulty: 'adaptive' } : undefined} />
+      </div>
+    )
+  if (current === 'progress')
+    return (
+      <div className="prep">
+        {header}
+        <Progress
+          onPractice={(t) => {
+            window.location.hash = '#/prep?tab=practice'
+            setTimeout(() => setTopic(t), 0)
+          }}
+        />
+      </div>
+    )
 
   const count = (b: string, r: string) =>
     data.counts.filter((c) => (b === 'Any' || c.bank === b) && (r === 'Any' || c.round === r)).reduce((n, c) => n + c.n, 0)
@@ -97,7 +141,7 @@ export default function Prep({ bank, round, who }: { bank: string; round: string
 
   return (
     <div className="prep">
-      <h1>Interview Prep</h1>
+      {header}
 
       <section className="step">
         <h2><span className="step-n">1</span> What are we preparing for?</h2>

@@ -1,16 +1,17 @@
 """HTTP API. Every route below the account routes runs for the signed-in user only (see auth.py)."""
+import re
 import tempfile
 from datetime import datetime
 from pathlib import Path
 
-from fastapi import Depends, FastAPI, HTTPException, Request, UploadFile
+from fastapi import Depends, FastAPI, Form, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from pydantic_ai import Agent
 
-from . import accounts, assistant, auth, budget, config, cover_letters, deals, importer, llm, network, profile, research, thank_you, transfer, user_keys
+from . import accounts, assistant, auth, budget, config, cover_letters, deal_docs, deals, importer, llm, network, onboarding, practice, profile, schools, research, thank_you, transfer, user_keys
 from .auth import admin_user, current_user
 from .db import connect, init_db
 from .llm import get_model, usage_dict
@@ -42,7 +43,10 @@ class LoginRequest(BaseModel):
 @app.get("/api/session")
 def session(request: Request):
     user = accounts.user_for_token(auth.token_from(request))
-    return {"user": user}
+    if user is None:
+        return {"user": None}
+    prof = profile.get(user["id"])
+    return {"user": user, "context": schools.for_user(user["id"]), "needs_setup": not prof["onboarded_at"]}
 
 
 @app.post("/api/signup")
@@ -103,12 +107,81 @@ def bank(bank: str, user: dict = Depends(current_user)):
 
 @app.get("/api/prep/options")
 def prep_options(user: dict = Depends(current_user)):
-    return network.prep_options(user["id"])
+    out = network.prep_options(user["id"])
+    if not schools.for_user(user["id"])["club"]:  # the club question bank is Yale SOM's material
+        out = {**out, "counts": [], "rounds": out["rounds"]}
+    return out
 
 
 @app.get("/api/prep/questions")
 def prep_questions(bank: str = "Any", round: str = "Any", user: dict = Depends(current_user)):
+    if not schools.for_user(user["id"])["club"]:
+        return {"total": 0, "questions": []}
     return network.prep_questions(bank, round)
+
+
+class PracticeRequest(BaseModel):
+    categories: list[str] = []
+    topics: list[str] = []
+    stage: str = ""
+    difficulty: str = "adaptive"
+    bank: str = "Any"
+    seen: list[str] = []
+    like: str = ""  # key of a question to find a similar one to
+
+
+class AnswerRequest(BaseModel):
+    key: str
+    answer: str = ""
+
+
+class MarkRequest(BaseModel):
+    verdict: str
+
+
+@app.get("/api/practice/options")
+def practice_options(user: dict = Depends(current_user)):
+    return practice.options()
+
+
+@app.post("/api/practice/next")
+def practice_next(req: PracticeRequest, user: dict = Depends(current_user)):
+    like = practice.rebuild(req.like)[0] if req.like and practice.rebuild(req.like) else None
+    q = practice.next_question(user["id"], req.categories, req.topics, req.stage, req.difficulty, req.bank, req.seen[-300:], like,
+                               club=schools.for_user(user["id"])["club"])
+    return {"question": q}
+
+
+@app.post("/api/practice/answer")
+async def practice_answer(req: AnswerRequest, user: dict = Depends(current_user)):
+    try:  # grading works without a model too (worked solutions, self-marking), so a missing key is not an error here
+        chosen = ai_for(user) if req.answer.strip() else None
+    except HTTPException:
+        chosen = None
+    out = await practice.grade(user["id"], chosen, req.key, req.answer[:4000])
+    if out is None:
+        raise HTTPException(status_code=404, detail="Question not found")
+    return out
+
+
+@app.post("/api/practice/attempts/{attempt_id}/mark")
+def practice_mark(attempt_id: int, req: MarkRequest, user: dict = Depends(current_user)):
+    return practice.mark(user["id"], attempt_id, req.verdict)
+
+
+@app.delete("/api/practice/attempts/{attempt_id}")
+def practice_delete(attempt_id: int, user: dict = Depends(current_user)):
+    return practice.delete(user["id"], attempt_id)
+
+
+@app.get("/api/practice/history")
+def practice_history(user: dict = Depends(current_user)):
+    return practice.history(user["id"])
+
+
+@app.get("/api/practice/progress")
+def practice_progress(user: dict = Depends(current_user)):
+    return practice.progress(user["id"])
 
 
 @app.get("/api/deals")
@@ -128,7 +201,7 @@ def add_deal(req: NewDeal, user: dict = Depends(current_user)):
 
 @app.get("/api/calendar")
 def recruiting_calendar(user: dict = Depends(current_user)):
-    return network.calendar()
+    return network.calendar() if schools.for_user(user["id"])["club"] else []  # the club's own calendar
 
 
 # ---- Each person's own AI key ----
@@ -154,6 +227,133 @@ def save_ai_key(req: KeyRequest, user: dict = Depends(current_user)):
 @app.post("/api/settings/ai/remove")
 def remove_ai_key(user: dict = Depends(current_user)):
     return user_keys.remove(user["id"])
+
+
+# ---- Deal documents ----
+
+@app.post("/api/deals/{deal_id}/documents")
+async def upload_deal_document(deal_id: int, file: UploadFile, kind: str = Form("Other"), user: dict = Depends(current_user)):
+    data = await file.read()
+    out = deal_docs.upload(user["id"], deal_id, file.filename or "document.pdf", data, kind)
+    if not out["ok"]:
+        raise HTTPException(status_code=400, detail=out["reason"])
+    return out
+
+
+@app.get("/api/deals/documents/{doc_id}/file")
+def deal_document_file(doc_id: int, user: dict = Depends(current_user)):
+    found = deal_docs.file(user["id"], doc_id)
+    if found is None:
+        raise HTTPException(status_code=404, detail="Document not found")
+    name, data = found
+    kind = "application/pdf" if name.lower().endswith(".pdf") else "text/html" if name.lower().endswith((".htm", ".html")) else "text/plain"
+    if kind == "text/html":
+        kind = "text/plain"  # show a saved filing's source as text rather than running it as a page on this site
+    safe = re.sub(r"[^\w.\- ]", "_", name)[:120]
+    return Response(content=data, media_type=kind, headers={"Content-Disposition": f'inline; filename="{safe}"', "X-Content-Type-Options": "nosniff"})
+
+
+@app.delete("/api/deals/documents/{doc_id}")
+def delete_deal_document(doc_id: int, user: dict = Depends(current_user)):
+    return deal_docs.delete(user["id"], doc_id)
+
+
+@app.post("/api/deals/{deal_id}/fill-from-documents")
+async def fill_deal_from_documents(deal_id: int, user: dict = Depends(current_user)):
+    return await deal_docs.fill_from_documents(user["id"], ai_for(user), deal_id)
+
+
+@app.post("/api/deals/{deal_id}/find-online")
+async def find_deal_online(deal_id: int, user: dict = Depends(current_user)):
+    return await deal_docs.find_online(user["id"], ai_for(user), deal_id)
+
+
+@app.post("/api/deals/points/{point_id}/clear")
+def clear_deal_point(point_id: int, user: dict = Depends(current_user)):
+    return deal_docs.clear_point(user["id"], point_id)
+
+
+# ---- First-run setup ----
+
+class SchoolRequest(BaseModel):
+    school: str
+    level: str
+    class_year: str = ""
+    school_line: str = ""
+    contact_line: str = ""
+
+
+class BanksRequest(BaseModel):
+    banks: list[str]
+    groups: list[str] = []
+    story: str | None = None
+
+
+class TemplatesRequest(BaseModel):
+    cover_letter: str | None = None
+    email_template: str | None = None
+    email_rules: str | None = None
+
+
+@app.get("/api/setup")
+def setup_state(user: dict = Depends(current_user)):
+    return onboarding.state(user["id"])
+
+
+@app.post("/api/setup/school")
+def setup_school(req: SchoolRequest, user: dict = Depends(current_user)):
+    school = " ".join(req.school.split())
+    if not school:
+        raise HTTPException(status_code=400, detail="Pick or type your school.")
+    level = req.level if req.level in schools.LEVELS else "mba"
+    ctx = schools.describe(school, level, req.class_year.strip())
+    profile.save(user["id"], {"school": school, "level": level, "class_year": req.class_year,
+                              "school_line": req.school_line.strip() or schools.default_school_line(ctx),
+                              "contact_line": req.contact_line})
+    return onboarding.state(user["id"])
+
+
+@app.post("/api/setup/banks")
+def setup_banks(req: BanksRequest, user: dict = Depends(current_user)):
+    out = onboarding.save_banks(user["id"], req.banks, req.groups)
+    if req.story is not None:
+        profile.save(user["id"], {"story": req.story})
+    return out | {"state": onboarding.state(user["id"])}
+
+
+@app.post("/api/setup/templates")
+def setup_templates(req: TemplatesRequest, user: dict = Depends(current_user)):
+    fields = {}
+    if req.cover_letter is not None:
+        fields["example_letter"] = req.cover_letter
+    if req.email_template is not None:
+        problem = thank_you.template_problem(req.email_template)
+        if problem:
+            raise HTTPException(status_code=400, detail=problem)
+        fields["email_template"] = req.email_template
+    if req.email_rules is not None:
+        fields["email_rules"] = req.email_rules
+    profile.save(user["id"], fields)
+    return onboarding.state(user["id"])
+
+
+@app.post("/api/setup/template-upload")
+async def setup_template_upload(file: UploadFile, user: dict = Depends(current_user)):
+    """Read a cover letter template from a Word or PDF file and return its text for review (not saved yet)."""
+    data = await file.read()
+    if len(data) > 5_000_000:
+        raise HTTPException(status_code=400, detail="That file is over 5 MB.")
+    try:
+        text = profile.text_from_upload(file.filename or "", data)
+    except ValueError as err:
+        raise HTTPException(status_code=400, detail=str(err))
+    return {"text": text.strip()[:8000]}
+
+
+@app.post("/api/setup/finish")
+def setup_finish(user: dict = Depends(current_user)):
+    profile.finish_setup(user["id"])
+    return {"ok": True}
 
 
 # ---- The AI features (each checks the account's daily budget, then uses that account's own key) ----

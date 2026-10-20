@@ -1,6 +1,12 @@
-"""Thank-you note drafts in the Yale SOM Finance Club template.
+"""Thank-you note drafts.
 
-The fixed text of the template is assembled here in code. The model only writes the two short details that
+Two kinds of template:
+- the user's own: the email they send, with the parts that change in [square brackets]. Code keeps every word
+  outside the brackets exactly as written, fills the brackets it knows (first name, bank, when), and the model
+  writes only the remaining bracketed parts, checked against the user's own rules;
+- otherwise the standard template (the Yale SOM Finance Club format) below.
+
+In the standard template the fixed text is assembled here in code. The model only writes the two short details that
 fill the middle paragraph, and code checks them against the club's rules (and a few house rules), retrying once with
 the problems spelled out. Drafts are saved for the user to copy and send; nothing is ever sent.
 """
@@ -12,6 +18,7 @@ from pydantic import BaseModel, Field
 from pydantic_ai import Agent
 from pydantic_ai.usage import UsageLimits
 
+from . import profile as user_profile
 from .db import connect, init_db
 from pydantic_ai import NativeOutput
 
@@ -139,6 +146,13 @@ async def draft(uid: int, chosen: Chosen, interaction_id: int, person_id: int | 
     ]))
 
     started = datetime.now().isoformat(timespec="seconds")
+    prof = user_profile.get(uid)
+    if prof["email_template"].strip():
+        with connect(read_only=True) as conn:
+            me = conn.execute("SELECT name FROM users WHERE id = ?", (uid,)).fetchone()["name"]
+        body, issues, total = await draft_custom(uid, chosen, prof["email_template"], prof["email_rules"], dict(chat), person, notes, when, me)
+        return _save(uid, interaction_id, person, bank, first, send_at, send_note, body, issues, total, started)
+
     total = {"input_tokens": 0, "cached_input_tokens": 0, "output_tokens": 0, "requests": 0}
     prompt, issues, details = notes, [], None
     for _ in range(2):
@@ -155,6 +169,10 @@ async def draft(uid: int, chosen: Chosen, interaction_id: int, person_id: int | 
         prompt = f"{notes}\n\nYour last attempt broke these rules, fix them:\n- " + "\n- ".join(issues) + f"\nLast attempt: detail1={d1!r} detail2={d2!r}"
 
     body = TEMPLATE.format(first=first, when=when, bank=bank, detail1=d1, detail2=d2)
+    return _save(uid, interaction_id, person, bank, first, send_at, send_note, body, issues, total, started)
+
+
+def _save(uid, interaction_id, person, bank, first, send_at, send_note, body, issues, total, started) -> dict:
     check = f"Check: {person['name']} (first name {first}), {bank}, {person['grp'] or 'group not recorded'}"
     send =f"Send: {send_at.strftime('%A, %b')} {send_at.day} at {send_at.strftime('%I:%M %p').lstrip('0')}. {send_note}."
     with connect() as conn:
@@ -172,6 +190,122 @@ async def draft(uid: int, chosen: Chosen, interaction_id: int, person_id: int | 
         )
     return {"ok": True, "id": draft_id, "who": person["name"], "bank": bank, "body": body, "check": check,
             "send": send, "warnings": issues, "usage": total}
+
+
+# ---------------- The user's own template ----------------
+
+STANDARD_TEMPLATE = (
+    "[First name],\n\nI just want to thank you again for meeting with me [when].\n\n"
+    "I enjoyed hearing more about what led you to [Bank] and [something specific about their path or work there]. "
+    "I also liked learning about [a second topic from the conversation].\n\n"
+    "Thank you again for your time and insight. I really enjoyed our conversation and hope we can stay in touch throughout the process."
+)
+SLOT = re.compile(r"\[([^\[\]\n]{1,120})\]")
+KNOWN_SLOTS = {
+    "first": ("first name", "their first name", "name", "contact first name", "contact name", "recipient"),
+    "full": ("full name", "their full name", "contact full name"),
+    "bank": ("bank", "firm", "company", "bank name", "firm name"),
+    "group": ("group", "team", "their group", "their team"),
+    "when": ("when", "day", "date", "time", "today/yesterday", "day of the week", "when we met"),
+    "me": ("my name", "your name", "my first name", "sign-off", "signature"),
+    "me_full": ("my full name", "your full name"),
+}
+
+FILL_INSTRUCTIONS = """\
+You fill in the bracketed parts of a student's own thank-you email template after a networking conversation \
+with a banker. Everything outside the brackets is fixed and will be kept exactly as written; you only write the \
+text that replaces each bracket, in order, so that each finished sentence reads naturally.
+
+Rules:
+- Each bracket's text says what belongs there. Write only that, matching the length and tone of the template.
+- Use only details in the notes you are given. Never invent a name, deal, number, group or fact.
+- Follow the student's own rules exactly when given.
+- Each fill is plain text on one line: no brackets, no line breaks, no quotation marks around it.
+- Start a fill in lowercase unless it begins a sentence or starts with a proper noun.
+"""
+
+
+class Fills(BaseModel):
+    fills: list[str] = Field(description="The text for each bracket, in the order they appear.")
+
+
+filler = Agent(output_type=Fills, instructions=FILL_INSTRUCTIONS, name="thank_you_writer")
+
+
+def template_problem(text: str) -> str | None:
+    """Why a pasted template cannot be used, or None. An empty template means 'use the standard one'."""
+    text = text.strip()
+    if not text:
+        return None
+    slots = SLOT.findall(text)
+    if not slots:
+        return ("Put the parts that change in [square brackets], for example [First name], [Bank] or "
+                "[something we talked about], so the rest of your email is kept word for word.")
+    if text.count("[") != text.count("]") or "[[" in text:
+        return "A bracket is not closed. Each changing part should look like [this]."
+    if len(slots) > 12:
+        return "That template has more than 12 bracketed parts. Keep the brackets to the parts that really change."
+    return None
+
+
+def _known(hint: str) -> str | None:
+    h = hint.strip().lower().rstrip(":.")
+    return next((k for k, names in KNOWN_SLOTS.items() if h in names), None)
+
+
+def fill_problems(fills: list[str], expected: int) -> list[str]:
+    found = []
+    if len(fills) != expected:
+        found.append(f"there are {expected} brackets to fill but you gave {len(fills)} fills")
+    for i, f in enumerate(fills, 1):
+        if not f.strip():
+            found.append(f"fill {i} is empty")
+        if re.search(r"[\[\]\n]", f):
+            found.append(f"fill {i} has a bracket or line break")
+        if len(f.split()) > 45:
+            found.append(f"fill {i} is {len(f.split())} words; keep each fill short")
+    return found
+
+
+async def draft_custom(uid: int, chosen: Chosen, template: str, rules: str, chat: dict, person: dict,
+                       notes: str, when: str, me: str) -> tuple[str, list[str], dict]:
+    """Fill the user's template. Returns (body, warnings, usage)."""
+    known = {"first": person["name"].split()[0], "full": person["name"], "bank": chat["bank"],
+             "group": person["grp"] or "", "when": when, "me": me.split()[0] if me else "", "me_full": me}
+    slots = [(m.start(), m.end(), m.group(1)) for m in SLOT.finditer(template)]
+    ai_slots = [h for _, _, h in slots if not (_known(h) and known[_known(h)])]
+    total = {"input_tokens": 0, "cached_input_tokens": 0, "output_tokens": 0, "requests": 0}
+    fills, issues = [], []
+    if ai_slots:
+        ask = "\n".join(f"{i}. [{h}]" for i, h in enumerate(ai_slots, 1))
+        base = (f"Template:\n{template}\n\nBrackets you must fill, in order:\n{ask}\n\n"
+                f"Student's rules:\n{rules or '(none)'}\n\nNotes from the conversation:\n{notes}")
+        prompt = base
+        for _ in range(2):
+            output = NativeOutput(Fills) if chosen.provider == "anthropic" else None
+            result = await filler.run(prompt, model=chosen.model, model_settings=chosen.settings, usage_limits=LIMITS, output_type=output)
+            for k, v in usage_dict(result.usage).items():
+                total[k] += v
+            fills = [f.strip().strip('"').rstrip() for f in result.output.fills]
+            issues = fill_problems(fills, len(ai_slots))
+            if not issues:
+                break
+            prompt = f"{base}\n\nYour last attempt broke these rules, fix them:\n- " + "\n- ".join(issues) + f"\nLast attempt: {fills!r}"
+    out, pos, ai_i = [], 0, 0
+    for start, end, hint in slots:
+        out.append(template[pos:start])
+        key = _known(hint)
+        if key and known[key]:
+            out.append(known[key])
+        elif ai_i < len(fills):
+            out.append(fills[ai_i])
+            ai_i += 1
+        else:
+            out.append(f"[{hint}]")  # left for the user to fill
+            issues.append(f"[{hint}] still needs filling in")
+        pos = end
+    out.append(template[pos:])
+    return "".join(out), issues, total
 
 
 def mark_sent(uid: int, draft_id: int) -> dict:

@@ -79,6 +79,9 @@ def all_deals(uid: int) -> dict:
         deals = [dict(r) for r in conn.execute("SELECT * FROM deals WHERE user_id = ? ORDER BY id", (uid,))]
         points = [dict(r) for r in conn.execute(
             "SELECT * FROM deal_points WHERE deal_id IN (SELECT id FROM deals WHERE user_id = ?) ORDER BY id", (uid,))]
+        docs = conn.execute(
+            """SELECT id, deal_id, filename, kind, size, uploaded_at, scanned, json_array_length(pages) AS pages
+               FROM deal_documents WHERE user_id = ? ORDER BY id""", (uid,)).fetchall()
     for d in deals:
         mine = [p for p in points if p["deal_id"] == d["id"]]
         d["banks"] = [b.strip() for b in d["banks"].split(",") if b.strip()]
@@ -87,4 +90,7 @@ def all_deals(uid: int) -> dict:
         ]
         d["filled"] = sum(bool(p["value"]) for p in mine)
         d["total"] = len(mine)
-    return {"deals": deals, "intro": INTRO, "follow_ups": FOLLOW_UPS}
+        d["documents"] = [dict(r) for r in docs if r["deal_id"] == d["id"]]
+    from .deal_docs import KINDS, WANTED
+
+    return {"deals": deals, "intro": INTRO, "follow_ups": FOLLOW_UPS, "wanted": WANTED, "kinds": KINDS}

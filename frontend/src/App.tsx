@@ -6,10 +6,12 @@ import Home from './Home'
 import Letters from './Letters'
 import Login from './Login'
 import { get, post } from './api'
-import type { User } from './api'
+import type { School, Session, User } from './api'
 import MapView from './MapView'
 import Prep from './Prep'
 import Settings from './Settings'
+import Setup from './Setup'
+import { SchoolContext, useSchool } from './ui'
 
 /** Tiny hash router: #/, #/prep?bank=Citi&round=Superday, #/map, #/bank/Citi */
 function useRoute() {
@@ -32,12 +34,23 @@ export default function App() {
   const [version, setVersion] = useState(0)
   // Who is signed in: undefined while checking, null when nobody is.
   const [user, setUser] = useState<User | null | undefined>(undefined)
+  const [school, setSchool] = useState<School | undefined>(undefined)
+  const [needsSetup, setNeedsSetup] = useState(false)
   const [offline, setOffline] = useState(false)
+  const fallback = useSchool()
+
+  function loadSession() {
+    return get<Session>('/api/session')
+      .then((s) => {
+        setUser(s.user)
+        setSchool(s.context)
+        setNeedsSetup(!!s.needs_setup)
+      })
+      .catch(() => setOffline(true))
+  }
 
   useEffect(() => {
-    get<{ user: User | null }>('/api/session')
-      .then((s) => setUser(s.user))
-      .catch(() => setOffline(true))
+    loadSession()
     const lapsed = () => setUser(null)
     window.addEventListener('auth-required', lapsed)
     return () => window.removeEventListener('auth-required', lapsed)
@@ -51,9 +64,30 @@ export default function App() {
   if (offline)
     return <p className="notice error">Could not reach the app's server. If the site was asleep, wait a minute and refresh.</p>
   if (user === undefined) return <p className="notice">Loading…</p>
-  if (user === null) return <Login onDone={setUser} />
+  if (user === null) return <Login onDone={() => loadSession()} />
+  if (needsSetup || section === 'setup')
+    return (
+      <SchoolContext.Provider value={school ?? fallback}>
+        <header className="topbar">
+          <span className="brand">
+            <span className="brand-mark">R</span> Recruiting HQ
+          </span>
+          <nav>
+            <button className="signout" onClick={signOut}>Sign out</button>
+          </nav>
+        </header>
+        <main>
+          <Setup
+            onDone={() => {
+              window.location.hash = '#/'
+              loadSession()
+            }}
+          />
+        </main>
+      </SchoolContext.Provider>
+    )
   let page = <Home />
-  if (section === 'prep') page = <Prep bank={query.get('bank') ?? ''} round={query.get('round') ?? ''} who={query.get('who') ?? ''} />
+  if (section === 'prep') page = <Prep bank={query.get('bank') ?? ''} round={query.get('round') ?? ''} who={query.get('who') ?? ''} tab={query.get('tab') ?? ''} />
   if (section === 'map') page = <MapView />
   if (section === 'deals') page = <Deals />
   if (section === 'settings') page = <Settings user={user} />
@@ -61,7 +95,7 @@ export default function App() {
   if (section === 'bank' && arg) page = <BankView bank={arg} initial={query.get('sel') ?? ''} />
 
   return (
-    <>
+    <SchoolContext.Provider value={school ?? fallback}>
       <header className="topbar">
         <a className="brand" href="#/">
           <span className="brand-mark">R</span> Recruiting HQ
@@ -90,6 +124,6 @@ export default function App() {
       {/* Re-keying the page after the assistant changes something makes it reload its data. */}
       <main key={version}>{page}</main>
       <Assistant key={user.id} userId={user.id} onChanged={() => setVersion((v) => v + 1)} />
-    </>
+    </SchoolContext.Provider>
   )
 }

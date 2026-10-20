@@ -60,7 +60,18 @@ export type Stage = { key: string; label: string; done: boolean }
 
 export type CalendarItem = { date: string; end: string; title: string; detail: string; source: string }
 
-export type DealPoint = { id: number; section: string; label: string; value: string; source: string }
+export type DealPoint = {
+  id: number
+  section: string
+  label: string
+  value: string
+  source: string
+  source_kind: '' | 'document' | 'official' | 'web' | 'user' | null
+  doc_id: string | null
+  page: string | null
+  quote: string | null
+}
+export type DealDocument = { id: number; deal_id: number; filename: string; kind: string; size: number; uploaded_at: string; pages: number; scanned: string }
 export type Deal = {
   id: number
   title: string
@@ -70,8 +81,15 @@ export type Deal = {
   filled: number
   total: number
   sections: { name: string; timing: string; points: DealPoint[] }[]
+  documents: DealDocument[]
 }
-export type DealsData = { deals: Deal[]; intro: string; follow_ups: string[] }
+export type DealsData = {
+  deals: Deal[]
+  intro: string
+  follow_ups: string[]
+  wanted: { kind: string; why: string; where: string }[]
+  kinds: string[]
+}
 
 export type Application = {
   applied: string
@@ -208,6 +226,106 @@ export type LetterSummary = { bank: string; domain: string; exists: boolean; war
 export async function upload<T>(path: string, file: File): Promise<T> {
   const form = new FormData()
   form.append('file', file)
+  const res = await fetch(`${API_URL}${path}`, { method: 'POST', body: form, credentials: 'include' })
+  await check(res)
+  return res.json()
+}
+export async function del<T>(path: string): Promise<T> {
+  const res = await fetch(`${API_URL}${path}`, { method: 'DELETE', credentials: 'include' })
+  await check(res)
+  return res.json()
+}
+
+export type Verdict = 'correct' | 'partial' | 'incorrect'
+export type PracticeQuestion = {
+  key: string
+  kind: 'bank' | 'template'
+  category: string
+  topic: string
+  difficulty: string
+  question: string
+  bank: string
+  round: string
+  group: string
+  who: string
+  source: string
+}
+export type Graded = {
+  attempt_id: number
+  verdict: Verdict | null
+  feedback: string
+  explanation: string
+  answer: string
+  question: PracticeQuestion
+}
+export type PracticeArea = {
+  topic: string
+  attempts: number
+  graded: number
+  score: number | null
+  correct: number
+  level: string
+  by_difficulty: Record<string, number>
+  last: string
+}
+export type PracticeProgress = { areas: PracticeArea[]; others: Record<string, number>; total: number; technical_score: number | null; days: number }
+export type Attempt = {
+  id: number
+  at: string
+  category: string
+  topic: string
+  difficulty: string
+  bank: string
+  question: string
+  answer: string
+  verdict: Verdict | null
+  graded_by: string
+}
+
+export type School = {
+  school: string
+  school_full: string
+  short: string
+  level: string
+  class_year: string
+  role: string
+  peer: string
+  peers: string
+  alum: string
+  club: boolean
+}
+export type Session = { user: User | null; context?: School; needs_setup?: boolean }
+
+export type SetupState = {
+  profile: {
+    school: string
+    level: string
+    class_year: string
+    school_line: string
+    contact_line: string
+    target_groups: string
+    email_template: string
+    email_rules: string
+    onboarded_at: string
+    has_resume: boolean
+    resume_chars: number
+    has_cover_template: boolean
+    story: string
+  }
+  context: School
+  school_line_suggestion: string
+  banks: string[]
+  bank_choices: { bank: string; domain: string }[]
+  ai: AiSettings
+  options: { schools: string[]; levels: Record<string, string>; industry_groups: string[]; product_groups: string[] }
+  standard_email: string
+  done: Record<'school' | 'ai' | 'resume' | 'banks' | 'templates', boolean>
+}
+
+export async function uploadWith<T>(path: string, file: File, fields: Record<string, string>): Promise<T> {
+  const form = new FormData()
+  form.append('file', file)
+  for (const [k, v] of Object.entries(fields)) form.append(k, v)
   const res = await fetch(`${API_URL}${path}`, { method: 'POST', body: form, credentials: 'include' })
   await check(res)
   return res.json()

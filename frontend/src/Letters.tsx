@@ -12,8 +12,8 @@ export default function Letters({ bank }: { bank: string }) {
     <div>
       <h1>Cover Letters</h1>
       <p className="lede">
-        One letter per bank in the Finance Club format: introduction with the people you have spoken to, two paragraphs of your
-        experience, and a closing. Review every one before you submit it.
+        One letter per bank, following your cover letter template (set it in Settings → Setup): who you have spoken to and why the
+        bank, your experience, and a closing. Nothing is made up; gaps are highlighted for you to fill. Review every one before you submit it.
       </p>
       <div className="chips banks">
         {data.map((l) => (

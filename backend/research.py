@@ -18,6 +18,7 @@ from pydantic_ai.capabilities import WebSearch
 from pydantic_ai.exceptions import UsageLimitExceeded
 from pydantic_ai.usage import UsageLimits
 
+from . import schools
 from .db import connect, init_db
 from pydantic_ai import NativeOutput
 
@@ -78,7 +79,9 @@ async def look_up(uid: int, chosen: Chosen, person_id: int) -> dict | None:
     if row is None:
         return None
     described = ", ".join(x for x in (row["title"], row["grp"]) if x)
-    prompt = f"Person: {row['name']}\nFirm: {row['bank']}\nWhat I know: {described or 'nothing else'}\nThey are connected to Yale School of Management recruiting."
+    school = schools.for_user(uid)["school_full"]
+    prompt = (f"Person: {row['name']}\nFirm: {row['bank']}\nWhat I know: {described or 'nothing else'}"
+              + (f"\nThey are connected to recruiting at {school}." if school else ""))
     started = datetime.now().isoformat(timespec="seconds")
     usage, outcome, saved = None, "ok", False
     try:

@@ -1,11 +1,11 @@
 import type { BankDetail, Interaction, Person } from './api'
-import { STATUS_LABEL, fmtDate } from './ui'
+import { STATUS_LABEL, fmtDate, useSchool } from './ui'
 
 /**
  * How the process at one bank unfolded, step by step in date order. Each column is one date; arrows run from
  * one step to the next. An open event everyone could attend (a corporate presentation, an open Day on Wall Street)
  * gets a dashed connector instead of an arrow, because earlier chats did not lead to it. Referrals show on both
- * cards. Chats with Yale 2Ys and classmates, the unofficial side of the process, sit in their own lane below.
+ * cards. Chats with current students and classmates at your school, the unofficial side of the process, sit in their own lane below.
  */
 
 type Card = {
@@ -118,6 +118,7 @@ function build(detail: BankDetail) {
 }
 
 export default function JourneyMap(props: { detail: BankDetail; selected: string; onSelect: (id: string) => void }) {
+  const school = useSchool()
   const { columns, notes, yale } = build(props.detail)
 
   return (
@@ -180,7 +181,7 @@ export default function JourneyMap(props: { detail: BankDetail; selected: string
 
       {yale.length > 0 && (
         <div className="yale-lane">
-          <span className="yale-label">Yale network (2Ys and classmates)</span>
+          <span className="yale-label">{school.peers}</span>
           <div className="chips">
             {yale.map(({ p, date }) => (
               <button key={p.id} className={`chip ${props.selected === `person:${p.id}` ? 'on' : ''}`} onClick={() => props.onSelect(`person:${p.id}`)}>

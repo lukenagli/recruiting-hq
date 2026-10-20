@@ -4,7 +4,7 @@
 - Anyone with the link can create an account. AI features run on each person's own Claude or OpenAI key
   (see user_keys.py), so new accounts never spend the site owner's course key.
 - Repeated wrong passwords for one email are slowed down (10 tries per 15 minutes).
-- A brand-new account starts with an empty tracker plus the banks from the shared application tracker.
+- A brand-new account starts empty; the first-run setup asks for the school, banks and templates.
 """
 import hashlib
 import hmac
@@ -82,9 +82,6 @@ def sign_up(email: str, name: str, password: str) -> tuple[dict, str]:
                 user_id = conn.execute(
                     "INSERT INTO users (email, name, password_hash, is_admin, created_at) VALUES (?, ?, ?, ?, ?)",
                     (email, name, _hash_password(password), int(real_users == 0), now)).lastrowid
-                for row in conn.execute("SELECT bank FROM applications ORDER BY bank").fetchall():
-                    conn.execute("INSERT OR IGNORE INTO my_banks (user_id, bank, applied, deadline, link, prefs, notes) VALUES (?, ?, '', '', '', '', '')",
-                                 (user_id, row["bank"]))
             token = _new_session(conn, user_id)
             user = conn.execute("SELECT * FROM users WHERE id = ?", (user_id,)).fetchone()
         return public(user), token

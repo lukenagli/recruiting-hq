@@ -49,7 +49,7 @@ export default function ProfileEditor() {
       <p className="muted">Cover letters use only what is here and in your tracker, so the more specific this is, the better they are.</p>
       <label className="field">
         How you describe yourself <small>(finishes "My name is …, and I am …")</small>
-        <input value={form.school_line} onChange={set('school_line')} placeholder="a first-year MBA candidate at the Yale School of Management" />
+        <input value={form.school_line} onChange={set('school_line')} placeholder="e.g. a first-year MBA candidate at your school" />
       </label>
       <label className="field">
         Letter footer <small>(address | phone | email)</small>

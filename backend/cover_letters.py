@@ -1,6 +1,8 @@
-"""Cover letters in the Yale SOM Finance Club format, one per bank, written from the user's own profile and tracker.
+"""Cover letters, one per bank, written from the user's own profile and tracker in the shape of their own template.
 
-Finance Club guidance (Cover Letter Guidance deck): standard SOM format, addressed to the firm's recruiter, and
+The user's template (a letter they have written, or their school's sample) sets the number of paragraphs, the
+length and the voice. Without one, the default is the Yale SOM Finance Club format (Cover Letter Guidance deck):
+addressed to the firm's recruiter, and
   1. Introduction: who you are, the role and bank you are applying to, why, and the people you have spoken with
   2-3. Body: relevant experience with specific achievements, and how you would add value
   4. Closing: how you are prepared to succeed (experience, studies, clubs), then thanks and intent to follow up
@@ -19,6 +21,7 @@ from pydantic_ai.usage import UsageLimits
 
 from . import banks as bank_info
 from . import profile as profiles
+from . import schools
 from .db import connect, init_db
 from .llm import Chosen, usage_dict
 
@@ -34,11 +37,11 @@ OTHER_BANK_ALIASES = {
 }
 
 INSTRUCTIONS = """\
-You write investment banking summer associate cover letters for MBA students, following their school's \
-finance club format exactly, built from what the student actually learned in their own conversations.
+You write investment banking internship cover letters for students, following the shape of the student's \
+own template exactly, built from what the student actually learned in their own conversations.
 
 Paragraph 1, introduction: start "My name is <name>, and I am <school line> writing to express my interest in \
-the Investment Banking Summer Associate role" and name the group, bank and office when given. Then say why this \
+the <role>" (the role is given below) and name the group, bank and office when given. Then say why this \
 bank, drawn from the student's conversations: name the people they have spoken with (only names from the lists \
 provided, spelled exactly as given, bankers first, at most five) and the specific things those conversations \
 showed them about the bank and what it values. Use the talking points and process facts too.
@@ -51,9 +54,10 @@ the group the student is recruiting for: why that group, and why their experienc
 Paragraph 4, closing: in two or three sentences, thank the team members met so far, state excitement about \
 beginning an investment banking career at this bank, and say they look forward to discussing their candidacy.
 
-Exactly four paragraphs, mirroring the example letter's structure when one is given: (1) introduction, the \
-people spoken with and why this bank, (2) the student's main role and its relevant work, (3) client-facing work \
-and earlier experience, ending with how it prepares them for the associate role, (4) the short closing.
+Use exactly the number of paragraphs given under "Shape" below. With four: (1) introduction, the people \
+spoken with and why this bank, (2) the student's main role and its relevant work, (3) other relevant work and \
+earlier experience, ending with how it prepares them for the role, (4) the short closing. With another number, \
+mirror the template's paragraph-by-paragraph structure.
 
 Rules:
 - Never make anything up. Every fact, number, name, takeaway, course and club must come from the material given.
@@ -68,16 +72,26 @@ is about why this bank and why the student fits.
 - Investment banking is the goal. Never suggest it is a step toward private equity, business school or anything else.
 - Follow any rules in the student's own notes (for example words or punctuation to avoid).
 - Plain text paragraphs only: no greeting, no sign-off, no headings.
-- 330 to 420 words in total, so the letter fits on one page.
+- Stay within the word range given under "Shape", so the letter fits on one page.
 - If an example letter is given, match its voice and level of detail, but write fresh text for this bank.
 """
 
 
 class Letter(BaseModel):
-    paragraphs: list[str] = Field(description="Exactly four paragraphs in order: introduction, two body paragraphs, closing.")
+    paragraphs: list[str] = Field(description="The letter's body paragraphs in order, exactly as many as the Shape asks for.")
 
 
 agent = Agent(output_type=Letter, instructions=INSTRUCTIONS, name="cover_letter_writer")
+
+
+def shape(template: str) -> tuple[int, int, int]:
+    """(paragraphs, min words, max words) for the letter, read from the user's template when it has one."""
+    blocks = [b for b in re.split(r"\n\s*\n|\n", template or "") if b.strip()]
+    body = [b for b in blocks if len(b.split()) >= 25]  # skips the date, address, greeting and sign-off lines
+    if 2 <= len(body) <= 6:
+        words = sum(len(b.split()) for b in body)
+        return len(body), max(180, int(words * 0.85)), min(650, int(words * 1.12) + 10)
+    return 4, WORDS[0] + 30, WORDS[1] - 20
 
 
 def _salutation(recruiter: str) -> str:
@@ -113,20 +127,25 @@ def _context(conn, uid: int, bank: str) -> dict:
         "SELECT fact FROM bank_facts WHERE user_id = ? AND bank = ? AND category = 'Program'", (uid, bank))).lower()
     generalist = "generalist" in program and not re.search(r"\b(cut|no longer|not a generalist|not generalist)\b", program)
     return {"mine": mine, "people": people, "spoken": spoken, "facts": facts, "others": others,
-            "name": user["name"] if user else "", "group": group, "office": mine.get("office") or "", "generalist": generalist}
+            "name": user["name"] if user else "", "group": group, "office": mine.get("office") or "", "generalist": generalist,
+            "school": schools.for_user(uid, conn)}
 
 
 def _prompt(ctx: dict, prof: dict, bank: str) -> str:
     def lines(people):
         return "\n".join(f"- {p['name']} ({', '.join(x for x in (p['title'], p['grp']) if x) or 'role not recorded'}): "
                          f"{p['said'] or 'no notes recorded'}" for people_ in [people] for p in people_) or "- (none)"
-    bankers = [p for p in ctx["spoken"] if p["title"] != "2Y"]
-    students = [p for p in ctx["spoken"] if p["title"] == "2Y"]
-    spoken = f"Bankers:\n{lines(bankers)}\nYale 2Ys going to this bank (name them only if there are few bankers):\n{lines(students)}"
+    sc = ctx["school"]
+    is_student = lambda p: p["title"] in ("2Y", "Student", "student") or p.get("alum") == "student"
+    bankers = [p for p in ctx["spoken"] if not is_student(p)]
+    students = [p for p in ctx["spoken"] if is_student(p)]
+    spoken = f"Bankers:\n{lines(bankers)}\n{sc['peers']} going to this bank (name them only if there are few bankers):\n{lines(students)}"
+    n, lo, hi = shape(prof["example_letter"])
     parts = [
         f"Student: {ctx['name']}",
-        f"School line: {prof['school_line'] or 'a first-year MBA candidate at the Yale School of Management'}",
-        f"Applying to: Investment Banking Summer Associate at {bank}"
+        f"School line: {prof['school_line'] or schools.default_school_line(sc) or '[[NEED: your school and year]]'}",
+        f"Shape: exactly {n} paragraphs, {lo} to {hi} words in total.",
+        f"Applying to: Investment Banking {sc['role']} role at {bank}"
         + (f", {ctx['office']} office" if ctx["office"] else ""),
         ("Program: generalist. Tailor the letter to the generalist program; do not name a group in the opening sentence."
          if ctx["generalist"] else
@@ -137,18 +156,21 @@ def _prompt(ctx: dict, prof: dict, bank: str) -> str:
         f"Resume:\n{prof['resume_text'] or '(not provided)'}",
     ]
     if prof["example_letter"]:
-        parts.append(f"Example letter for voice and detail only (it was written for another bank, so do not copy bank-specific content):\n{prof['example_letter']}")
+        parts.append("The student's template, for structure, voice and level of detail (it may have been written for another "
+                     f"bank, so do not copy bank-specific content):\n{prof['example_letter']}")
     return "\n\n".join(parts)
 
 
-def problems(paragraphs: list[str], bank: str, ctx: dict) -> list[str]:
+def problems(paragraphs: list[str], bank: str, ctx: dict, template: str = "") -> list[str]:
     text = "\n".join(paragraphs)
     found = []
     words = len(text.split())
-    if not WORDS[0] <= words <= WORDS[1]:
-        found.append(f"the letter is {words} words; keep it between {WORDS[0]} and {WORDS[1]} so it fits on one page")
-    if len(paragraphs) != 4:
-        found.append(f"it has {len(paragraphs)} paragraphs; use exactly 4")
+    n, lo, hi = shape(template)
+    lo, hi = lo - 30, hi + 20  # a little slack around the asked-for range before it counts as a problem
+    if not lo <= words <= hi:
+        found.append(f"the letter is {words} words; keep it between {lo} and {hi} so it fits on one page")
+    if len(paragraphs) != n:
+        found.append(f"it has {len(paragraphs)} paragraphs; use exactly {n}")
     if paragraphs and bank.split()[0].lower() not in paragraphs[0].lower():
         found.append(f"the first paragraph does not name {bank}")
     for other, aliases in OTHER_BANK_ALIASES.items():
@@ -191,7 +213,7 @@ async def write(uid: int, chosen: Chosen, bank: str) -> dict:
         for k, v in usage_dict(result.usage).items():
             total[k] += v
         paragraphs = [" ".join(p.split()) for p in result.output.paragraphs if p.strip()]
-        issues = problems(paragraphs, bank, ctx)
+        issues = problems(paragraphs, bank, ctx, prof["example_letter"])
         if not issues:
             break
         prompt = f"{base}\n\nYour last draft broke these rules, fix them and return the whole letter again:\n- " + "\n- ".join(issues) \
@@ -283,7 +305,7 @@ def overview(uid: int) -> list[dict]:
 
 
 def docx_bytes(uid: int, bank: str) -> bytes:
-    """The letter as a Word file laid out like the SOM sample letters."""
+    """The letter as a Word file: the school's letterhead for Yale SOM accounts, the student's name otherwise."""
     import docx
     from docx.enum.text import WD_ALIGN_PARAGRAPH
     from docx.oxml import OxmlElement
@@ -305,9 +327,14 @@ def docx_bytes(uid: int, bank: str) -> bytes:
     style.paragraph_format.space_after = Pt(0)
 
     head = doc.add_paragraph()
-    for text, size, caps in (("Yale ", 16, False), ("SCHOOL OF MANAGEMENT", 12, True)):
-        run = head.add_run(text)
-        run.font.size, run.font.color.rgb, run.font.small_caps = Pt(size), RGBColor(0x0F, 0x2A, 0x5F), caps
+    if schools.for_user(uid)["school"] == "Yale SOM":
+        for text, size, caps in (("Yale ", 16, False), ("SCHOOL OF MANAGEMENT", 12, True)):
+            run = head.add_run(text)
+            run.font.size, run.font.color.rgb, run.font.small_caps = Pt(size), RGBColor(0x0F, 0x2A, 0x5F), caps
+    else:
+        head.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        run = head.add_run(letter["signature"])
+        run.bold, run.font.size = True, Pt(14)
     border = OxmlElement("w:pBdr")  # the blue rule under the school name
     bottom = OxmlElement("w:bottom")
     for key, value in (("w:val", "single"), ("w:sz", "12"), ("w:space", "4"), ("w:color", "2E5C9A")):

@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react'
+import { createContext, useContext, useEffect, useState } from 'react'
 import { get } from './api'
-import type { PersonStatus, Stage } from './api'
+import type { PersonStatus, School, Stage } from './api'
 
 export function useApi<T>(path: string, params?: Record<string, string>) {
   const [data, setData] = useState<T | null>(null)
@@ -105,7 +105,23 @@ export function roleOf(title: string) {
   return i === -1 ? { rank: ROLES.length, label: 'Role not recorded' } : { rank: i, label: ROLES[i][1] }
 }
 
-export const YALE_LABEL = { yes: 'Yale alum', no: 'Not a Yale alum', student: 'Yale 2Y', '': '' }
+/** Who the signed-in user is (school and program), for wording across the app. */
+export const SchoolContext = createContext<School>({
+  school: '', school_full: '', short: '', level: 'mba', class_year: '', role: 'Summer Associate',
+  peer: '2Y', peers: 'Students and classmates', alum: 'Alum', club: false,
+})
+export const useSchool = () => useContext(SchoolContext)
+
+/** "Yale alum" / "Not a Yale alum" / "Yale 2Y" for a contact, in the user's own school's words. */
+export function alumLabel(school: School, alum: string | undefined) {
+  const short = school.short ? `${school.short} ` : ''
+  const labels: Record<string, string> = {
+    yes: school.alum,
+    no: `Not a ${school.alum}`,
+    student: school.peer === '2Y' ? `${short}2Y` : `${short}student`,
+  }
+  return labels[alum ?? ''] ?? ''
+}
 
 export const STATUS_LABEL: Record<PersonStatus | 'done' | 'upcoming' | 'todo', string> = {
   spoke: 'Spoke',

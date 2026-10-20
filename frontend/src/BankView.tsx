@@ -3,7 +3,7 @@ import { post } from './api'
 import type { BankDetail, Interaction, Person, ThankYouDraft } from './api'
 import DraftCard from './DraftCard'
 import JourneyMap from './JourneyMap'
-import { Loading, Logo, StatusTag, YALE_LABEL, fmtDate, roleOf, useApi } from './ui'
+import { Loading, Logo, StatusTag, alumLabel, fmtDate, roleOf, useApi, useSchool } from './ui'
 
 function when(i: { date: string; date_note: string }) {
   if (!i.date) return i.date_note || 'date not recorded'
@@ -115,13 +115,14 @@ function Background({ p, onChanged }: { p: Person; onChanged: () => void }) {
 }
 
 function PersonPanel({ p, onChanged }: { p: Person; onChanged: () => void }) {
+  const school = useSchool()
   return (
     <div className="panel">
       <div className="panel-head">
         <h3>{p.name}</h3>
         <StatusTag status={p.status} />
       </div>
-      <p className="role">{[p.title, p.grp, p.subgroup, p.title === '2Y' ? '' : YALE_LABEL[p.alum ?? '']].filter(Boolean).join(' · ')}</p>
+      <p className="role">{[p.title, p.grp, p.subgroup, p.title === '2Y' ? '' : alumLabel(school, p.alum)].filter(Boolean).join(' · ')}</p>
       {p.email && (
         <p>
           <a href={`mailto:${p.email}`}>{p.email}</a>
@@ -185,7 +186,7 @@ function EventPanel({ i, detail, onSelect }: { i: Interaction; detail: BankDetai
 // The bank overview's fixed fields: what matters about the bank itself, not who said what.
 // [topic, label, shown only when something is known]
 const OVERVIEW_FIELDS: [string, string, boolean][] = [
-  ['Spots for SOM', 'Offers to SOM students', true],
+  ['Spots for SOM', 'Offers to students from your school', true],
   ['Program', 'Generalist or group', false],
   ['Homework', 'Homework', false],
   ['Final project', 'Final project', false],
@@ -197,6 +198,7 @@ const OVERVIEW_FIELDS: [string, string, boolean][] = [
 
 export default function BankView({ bank, initial = '' }: { bank: string; initial?: string }) {
   const { data, error, reload } = useApi<BankDetail>(`/api/banks/${encodeURIComponent(bank)}`)
+  const school = useSchool()
   const [selected, setSelected] = useState('')
   // Arriving from a dot on the recruiting map opens that person or event and scrolls to it.
   useEffect(() => {
@@ -280,7 +282,7 @@ export default function BankView({ bank, initial = '' }: { bank: string; initial
               <th>Name</th>
               <th>Role</th>
               <th>Group</th>
-              <th>Yale</th>
+              <th>{school.short || 'School'}</th>
               <th>Status</th>
               <th>Last contact</th>
             </tr>
@@ -301,7 +303,7 @@ export default function BankView({ bank, initial = '' }: { bank: string; initial
                     <td><strong>{p.name}</strong></td>
                     <td>{p.title || '–'}</td>
                     <td>{p.grp || '–'}</td>
-                    <td>{YALE_LABEL[p.alum ?? ''] || '–'}</td>
+                    <td>{alumLabel(school, p.alum) || '–'}</td>
                     <td><StatusTag status={p.status} /></td>
                     <td>{last ? fmtDate(last) : '–'}</td>
                   </tr>

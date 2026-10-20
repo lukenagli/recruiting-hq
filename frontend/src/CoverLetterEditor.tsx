@@ -128,7 +128,7 @@ export default function CoverLetterEditor({ bank }: { bank: string }) {
       ) : (
         <p className="muted">
           No letter yet. Drafts are written from your profile (Settings), the people you have logged at {bank}, and what you have
-          learned about the bank, in the Finance Club's four-paragraph format.
+          learned about the bank, in the shape of your cover letter template (or the standard four-paragraph format).
         </p>
       )}
     </div>

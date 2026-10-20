@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { post } from './api'
 import type { AiSettings, User } from './api'
 import ProfileEditor from './ProfileEditor'
+import { PracticeHistory } from './Progress'
 import { Loading, useApi } from './ui'
 
 const PROVIDERS = [
@@ -87,7 +88,15 @@ export default function Settings({ user }: { user: User }) {
         </form>
       </section>
 
+      <section className="card">
+        <h3>Your setup</h3>
+        <p>School, banks and groups, resume, and the templates your cover letters and thank-you emails follow.</p>
+        <a className="primary as-button" href="#/setup">Open setup</a>
+      </section>
+
       <ProfileEditor />
+
+      <PracticeHistory />
     </div>
   )
 }
