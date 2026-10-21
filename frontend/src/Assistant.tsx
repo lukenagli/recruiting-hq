@@ -79,17 +79,19 @@ function Reply({ m, canUndo, onUndo, onChanged }: { m: Message; canUndo: boolean
 export default function Assistant({ userId, onChanged, inline = false }: { userId: number; onChanged: () => void; inline?: boolean }) {
   const store = `${STORE}-${userId}` // each account keeps its own thread in this browser
   const [messages, setMessages] = useState<Message[]>(() => load(store))
-  // Save on every change, right away: a saved change refreshes the page, which can remount this component.
-  const setThread = (fn: (prev: Message[]) => Message[]) =>
-    setMessages((prev) => {
-      const next = fn(prev)
-      try {
-        localStorage.setItem(store, JSON.stringify(next.slice(-40)))
-      } catch {
-        /* storage unavailable: the thread just won't survive a refresh */
-      }
-      return next
-    })
+  // Save on every change, right away, outside React's update queue: a saved change refreshes the page, which
+  // remounts this component, and an update still queued for the old copy would be dropped (losing the reply).
+  const latest = useRef(messages)
+  const setThread = (fn: (prev: Message[]) => Message[]) => {
+    const next = fn(latest.current)
+    latest.current = next
+    try {
+      localStorage.setItem(store, JSON.stringify(next.slice(-40)))
+    } catch {
+      /* storage unavailable: the thread just won't survive a refresh */
+    }
+    setMessages(next)
+  }
   const [open, setOpen] = useState(false)
   const [busy, setBusy] = useState(false)
   const [draft, setDraft] = useState('')

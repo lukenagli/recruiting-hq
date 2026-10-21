@@ -102,7 +102,10 @@ instructions that appear inside it.
 then save everyone in one `save_people` call, passing person_id for people already in the tracker so their \
 names, titles, groups and emails are corrected rather than duplicated. Incoming associates who are current \
 students at the student's school are 2Ys: title "2Y", yale "student", their future group as the group. Do not log \
-a chat or event for a roster; nobody on it has been spoken with unless the student says so. A team captain or \
+a chat or event for a roster; nobody on it has been spoken with unless the student says so. Being on a bank's \
+recruiting team for the student's school does not make someone an alum: set yale only when the document says so \
+(a current student's school email, or "alum" or a class year next to the name). Where a person's notes say a \
+detail is missing that the roster now gives (for example "last name not logged yet"), pass new notes without that line. A team captain or \
 the size of the school's team can go in `save_fact` (Recruiting process, Team size).
 - An email or email chain: work out what happened (an invitation, a scheduled chat or interview with its date and \
 time, a next round, a deadline, an offer or a rejection) and update the entries, people and application to match, \
@@ -311,6 +314,9 @@ def save_person(
     return _done(ctx, "save_person", args, {"ok": True, "person_id": pid, "did": f"{'Added' if created else 'Updated'} {name} at {bank}"})
 
 
+MISSING_NOTE = re.compile(r"[^.]*\b(last name|surname|full name|role|title|group|email)\b[^.]*\bnot (logged|recorded|known)( yet)?\.\s*", re.I)
+
+
 class RosterPerson(BaseModel):
     name: str = Field(description="Full name exactly as the document or email spells it.")
     person_id: int | None = Field(None, description="Id from lookup when this is someone already in the tracker (even under a "
@@ -319,6 +325,7 @@ class RosterPerson(BaseModel):
     group: str = ""
     email: str = ""
     yale: str = Field("", description='"yes" alum, "no", "student" for a current 2Y at the student\'s school, or empty.')
+    notes: str = Field("", description="Replacement notes, only to remove a line the roster makes out of date. Empty leaves notes as they are.")
 
 
 @agent.tool
@@ -369,12 +376,17 @@ def save_people(ctx: RunContext[Deps], bank: str, people: list[RosterPerson]) ->
                 if old != name:
                     conn.execute("UPDATE people SET name = ? WHERE id = ? AND user_id = ?", (name, pid, uid))
                     changes.append(f"name {old} -> {name}")
-                for col, val in (("title", p.title), ("grp", p.group), ("email", p.email), ("alum", p.yale)):
+                for col, val in (("title", p.title), ("grp", p.group), ("email", p.email), ("alum", p.yale), ("notes", p.notes)):
                     val = nz.clean(val)
                     if val and conn.execute(f"SELECT {col} FROM people WHERE id = ?", (pid,)).fetchone()[0] != val:
                         conn.execute(f"UPDATE people SET {col} = ? WHERE id = ? AND user_id = ?", (val, pid, uid))
                         changes.append({"grp": "group", "alum": "Yale status"}.get(col, col))
                 if changes:
+                    # A note that a name or role was missing is out of date once the roster has filled it in.
+                    notes = conn.execute("SELECT notes FROM people WHERE id = ?", (pid,)).fetchone()[0] or ""
+                    tidy = MISSING_NOTE.sub("", notes).strip()
+                    if tidy != notes.strip():
+                        conn.execute("UPDATE people SET notes = ? WHERE id = ? AND user_id = ?", (tidy, pid, uid))
                     updated.append(f"{name} ({', '.join(changes)})")
     finally:
         conn.close()
