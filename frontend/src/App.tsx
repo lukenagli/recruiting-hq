@@ -89,6 +89,8 @@ export default function App() {
       </SchoolContext.Provider>
     )
   const isHome = !section
+  // Each section gets its own photo along the top, fading into the navy page.
+  const backdrop = ({ prep: 'harkness', map: 'yale-night', bank: 'yale-night', deals: 'nyse', letters: 'sterling', settings: 'yale-night' } as Record<string, string>)[section ?? '']
   let page = <Home name={user.name} assistant={<Assistant key={`inline-${user.id}-${version}`} inline userId={user.id} onChanged={() => setVersion((v) => v + 1)} />} />
   if (section === 'prep') page = <Prep bank={query.get('bank') ?? ''} round={query.get('round') ?? ''} who={query.get('who') ?? ''} tab={query.get('tab') ?? ''} />
   if (section === 'map') page = <MapView />
@@ -125,6 +127,7 @@ export default function App() {
           </button>
         </nav>
       </header>
+      {backdrop && <div className="page-backdrop" style={{ backgroundImage: `url(/bg-${backdrop}.jpg)` }} aria-hidden />}
       {/* Re-keying the page after the assistant changes something makes it reload its data. */}
       <main key={version}>{page}</main>
       {!isHome && section !== 'tour' && <Assistant key={user.id} userId={user.id} onChanged={() => setVersion((v) => v + 1)} />}
