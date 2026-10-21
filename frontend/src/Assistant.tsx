@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { post, uploadWith } from './api'
 import type { AssistantReply, AssistantStep } from './api'
 import DraftCard from './DraftCard'
+import { useDictation } from './dictation'
 import Recorder from './Recorder'
 
 type Message = { role: 'user' | 'assistant'; text: string; undone?: boolean } & Partial<AssistantReply>
@@ -99,6 +100,8 @@ export default function Assistant({ userId, onChanged, inline = false }: { userI
   const [file, setFile] = useState<File | null>(null)
   const [dragging, setDragging] = useState(false)
   const picker = useRef<HTMLInputElement>(null)
+  // Talk instead of typing: what you say is typed into the box, to edit before sending.
+  const dictation = useDictation((phrase) => setDraft((d) => `${d}${d && !/\s$/.test(d) ? ' ' : ''}${phrase}`))
   const thread = useRef<HTMLDivElement>(null)
   const input = useRef<HTMLTextAreaElement>(null)
 
@@ -130,6 +133,7 @@ export default function Assistant({ userId, onChanged, inline = false }: { userI
     // Read the box itself: some dictation tools put text in without telling the page it changed.
     const text = (input.current?.value ?? draft).trim()
     if (busy || (!text && !file)) return
+    dictation.stop()
     const history = messages.map((m) => ({ role: m.role, text: m.text }))
     const attached = file
     setThread((m) => [...m, { role: 'user', text: attached ? `📎 ${attached.name}${text ? ` · ${text}` : ''}` : text }])
@@ -192,7 +196,28 @@ export default function Assistant({ userId, onChanged, inline = false }: { userI
       <button type="button" className="icon-attach" onClick={() => picker.current?.click()} title="Attach a file (team card, email, PDF, screenshot)" aria-label="Attach a file">
         {CLIP}
       </button>
+      {dictation.supported && (
+        <button
+          type="button"
+          className={`icon-attach dictate ${dictation.listening ? 'listening' : ''}`}
+          onClick={() => {
+            dictation.toggle()
+            input.current?.focus()
+          }}
+          title={dictation.listening ? 'Stop dictating' : 'Dictate instead of typing'}
+          aria-label={dictation.listening ? 'Stop dictating' : 'Dictate instead of typing'}
+          aria-pressed={dictation.listening}
+        >
+          <svg viewBox="0 0 24 24" aria-hidden><path d="M12 3a3 3 0 0 0-3 3v5a3 3 0 0 0 6 0V6a3 3 0 0 0-3-3Z" /><path d="M5 11a7 7 0 0 0 14 0M12 18v3" /></svg>
+        </button>
+      )}
     </>
+  )
+  // While dictating: what is being heard right now, before it is final.
+  const heard = (dictation.listening || dictation.error) && (
+    <p className={`dictation-status ${dictation.error ? 'error' : ''}`}>
+      {dictation.error || (dictation.interim ? `Hearing: ${dictation.interim}` : 'Listening… tap the mic again when you are done.')}
+    </p>
   )
   const chip = file && (
     <div className="attached-file">
@@ -258,6 +283,7 @@ export default function Assistant({ userId, onChanged, inline = false }: { userI
             </button>
           </div>
         </form>
+        {heard}
         <div className="home-actions">
           <button type="button" className="record-btn" onClick={() => setRecording('conversation')}>
             <span aria-hidden>●</span> Going into a coffee chat? Record it
@@ -385,6 +411,7 @@ export default function Assistant({ userId, onChanged, inline = false }: { userI
               Send
             </button>
           </form>
+          {heard}
         </aside>
       )}
       {recorder}

@@ -1014,3 +1014,10 @@ main h1 { text-shadow: 0 2px 16px rgba(4, 10, 26, 0.5); }
   .compose-buttons { justify-content: space-between; }
   .compose-buttons .primary { flex: 1; }
 }
+
+/* Dictation in the assistant */
+.icon-attach.dictate.listening { background: var(--red); border-color: var(--red); color: #fff; animation: mic-pulse 1.4s ease-in-out infinite; }
+@keyframes mic-pulse { 0%, 100% { box-shadow: 0 0 0 0 rgba(192, 39, 29, 0.45); } 50% { box-shadow: 0 0 0 7px rgba(192, 39, 29, 0); } }
+.dictation-status { margin: 8px 0 0; font-size: 13.5px; color: var(--muted); font-style: italic; }
+.dictation-status.error { color: var(--red); font-style: normal; }
+.assistant-panel .dictation-status { margin: 0; padding: 0 12px 8px; background: var(--card); }

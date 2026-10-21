@@ -2,23 +2,11 @@ import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { post } from './api'
 import type { AssistantReply } from './api'
+import { speechRecognition } from './dictation'
+import type { Recognition } from './dictation'
 
 type Mode = 'recap' | 'conversation'
 type Phase = 'setup' | 'recording' | 'review' | 'filing'
-
-// The browser's built-in speech recognition (Chrome and Edge). It is not in TypeScript's DOM types.
-type Recognition = {
-  continuous: boolean
-  interimResults: boolean
-  lang: string
-  start: () => void
-  stop: () => void
-  onresult: ((e: { resultIndex: number; results: { isFinal: boolean; 0: { transcript: string } }[] & { length: number } }) => void) | null
-  onend: (() => void) | null
-  onerror: ((e: { error: string }) => void) | null
-}
-const SpeechRecognition = (window as unknown as Record<string, new () => Recognition>).SpeechRecognition ??
-  (window as unknown as Record<string, new () => Recognition>).webkitSpeechRecognition
 
 export default function Recorder(props: {
   onClose: () => void
@@ -65,7 +53,7 @@ export default function Recorder(props: {
 
   function start() {
     setError('')
-    const rec = new SpeechRecognition()
+    const rec = new (speechRecognition()!)()
     rec.continuous = true
     rec.interimResults = true
     rec.lang = 'en-US'
@@ -142,10 +130,10 @@ export default function Recorder(props: {
           </button>
         </div>
 
-        {phase === 'setup' && !SpeechRecognition && (
+        {phase === 'setup' && !speechRecognition() && (
           <p className="notice error">This browser has no built-in speech recognition. Open the app in Chrome or Edge to record.</p>
         )}
-        {phase === 'setup' && SpeechRecognition && (
+        {phase === 'setup' && speechRecognition() && (
           <>
             <div className="chat-who">
               <label className="field">
