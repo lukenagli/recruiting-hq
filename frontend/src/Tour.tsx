@@ -34,7 +34,7 @@ function After({ ms, children }: { ms: number; children: ReactNode }) {
 }
 
 const UPDATE =
-  'Had a coffee chat with Sarah Chen, VP in TMT at Evercore, this morning. She said the group just closed two software deals and really values people who know SaaS metrics. Told me to reach out to Marcus Patel, a 2Y who summered there.'
+  'Had a coffee chat with Sarah Chen, VP in TMT at Evercore, this morning. She said the group just closed two software deals and really values people who know SaaS metrics. Told me to reach out to Marcus Patel, a 2Y who summered there. I met him briefly at the Finance Club TMT panel.'
 
 function MockWindow({ title, children }: { title: string; children: ReactNode }) {
   return (
@@ -47,6 +47,70 @@ function MockWindow({ title, children }: { title: string; children: ReactNode })
       </div>
       <div className="tour-window-body">{children}</div>
     </div>
+  )
+}
+
+// Filled-in examples of the Finance Club templates, word for word (backend/templates.py, EMAIL_KINDS).
+const SIGNATURE = "Best,\nAlex Morgan\nMBA Candidate | Yale School of Management '27\n(203) 555-0147 | alex.morgan@yale.edu"
+const EMAILS: { tab: string; window: string; body: string; actions: string[] }[] = [
+  {
+    tab: 'Thank-you',
+    window: 'Evercore · Sarah Chen · Thank-you draft',
+    body:
+      'Sarah,\n\nI just want to thank you again for meeting with me this morning.\n\n' +
+      'I enjoyed hearing more about what led you to Evercore and how your team just closed two software deals. ' +
+      'I also liked learning about why the group values comfort with SaaS metrics.\n\n' +
+      'Thank you again for your time and insight. I really enjoyed our conversation and hope we can stay in touch throughout the process.',
+    actions: ['Copy', 'I sent it'],
+  },
+  {
+    tab: 'Outreach',
+    window: 'Assistant · Coffee chat outreach',
+    body:
+      'Subject Line: Alex Morgan / Marcus Patel - Coffee Chat\n\nHi Marcus,\n\n' +
+      "Hope you're doing well! It was nice meeting you at the Finance Club TMT panel. I'd like to learn more about your path to " +
+      'Investment Banking and your recruiting experience. Do you have a moment to chat sometime this week? Here is my availability for the ' +
+      'next few days:\n\n• Tuesday, Oct 28: 12:00 - 2:00 PM ET\n• Wednesday, Oct 29: 3:00 - 5:00 PM ET\n• Thursday, Oct 30: 9:00 - 11:00 AM ET\n\n' +
+      'Please let me know what time is convenient for you and I will send over a calendar invite. Happy to chat over Zoom/phone or in-person.\n\n' +
+      SIGNATURE,
+    actions: ['Copy'],
+  },
+  {
+    tab: 'Calendar invite',
+    window: 'Assistant · Calendar invite',
+    body:
+      'Subject Line: Alex Morgan / Marcus Patel - Coffee Chat\n\nMarcus,\n\n' +
+      'Thank you again for your time. Please find attached a copy of my resume and Zoom link.\n\n' +
+      'I look forward to speaking with you!\n\nZoom: yale.zoom.us/j/0000000000\n\n' +
+      SIGNATURE,
+    actions: ['Copy'],
+  },
+]
+
+function EmailDemo() {
+  const [i, setI] = useState(0)
+  const e = EMAILS[i]
+  return (
+    <MockWindow title={e.window}>
+      <div className="tour-email-tabs">
+        {EMAILS.map((x, n) => (
+          <button key={x.tab} className={n === i ? 'on' : ''} onClick={() => setI(n)}>
+            {x.tab}
+          </button>
+        ))}
+      </div>
+      <div className="tour-email" key={i}>
+        {e.body}
+      </div>
+      <div className="tour-actions">
+        {e.actions.map((a) => (
+          <span key={a} className="tour-btn">
+            {a}
+          </span>
+        ))}
+        <span className="tour-tag ok">Finance Club template</span>
+      </div>
+    </MockWindow>
   )
 }
 
@@ -141,31 +205,16 @@ const STEPS: { kicker: string; title: string; text: ReactNode; demo: ReactNode }
     ),
   },
   {
-    kicker: 'Step 3 · Thank-you notes',
-    title: 'Thank-you notes, drafted in the club format',
+    kicker: 'Step 3 · Emails',
+    title: 'Every email, in the Finance Club templates',
     text: (
       <>
-        Every chat gets a thank-you draft in the Finance Club template, using the specific things that person told you. Edit it, send it, and
-        the map marks it done. Your homepage reminds you of any you still owe.
+        After each chat you get a thank-you draft in the Finance Club template, filled in with what that person actually told you. Ask the
+        assistant for an outreach email or a calendar invite and it uses the club templates too. Edit anything, copy it, send it, and the map
+        marks it done. Your homepage reminds you of any thank-you notes you still owe.
       </>
     ),
-    demo: (
-      <MockWindow title="Evercore · Sarah Chen">
-        <div className="tour-email">
-          <small>To: Sarah Chen · Subject: Thank you</small>
-          <p>Hi Sarah,</p>
-          <p>
-            Thank you for taking the time to speak with me this morning. I especially enjoyed hearing about the two software deals your team just
-            closed and how much the group values comfort with SaaS metrics…
-          </p>
-          <p className="muted">Best, Alex</p>
-        </div>
-        <div className="tour-actions">
-          <span className="tour-btn">Copy</span>
-          <span className="tour-btn">I sent it</span>
-        </div>
-      </MockWindow>
-    ),
+    demo: <EmailDemo />,
   },
   {
     kicker: 'Step 4 · Cover letters',
