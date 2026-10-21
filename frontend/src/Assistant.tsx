@@ -254,8 +254,8 @@ export default function Assistant({ userId, onChanged, inline = false }: { userI
                   Clear
                 </button>
               )}
-              <button className="link" onClick={() => setOpen(false)} aria-label="Close the assistant">
-                Close
+              <button className="icon-close" onClick={() => setOpen(false)} aria-label="Close the assistant" title="Close">
+                <svg viewBox="0 0 24 24" aria-hidden><path d="M6 6l12 12M18 6L6 18" /></svg>
               </button>
             </span>
           </header>

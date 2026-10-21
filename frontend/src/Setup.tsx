@@ -14,6 +14,14 @@ const STEPS = ['AI key', 'Resume', 'Banks', 'Templates', 'Done']
 
 const PROVIDERS = [
   {
+    id: 'portkey',
+    label: 'Yale class key',
+    company: 'Portkey',
+    url: '',
+    billing: '',
+    hint: 'the long key from your AI class setup',
+  },
+  {
     id: 'anthropic',
     label: 'Claude',
     company: 'Anthropic',
@@ -47,7 +55,7 @@ function Nav({ step, onBack, children }: { step: number; onBack?: () => void; ch
 }
 
 function KeyStep({ s, next, back }: { s: SetupState; next: () => void; back: () => void }) {
-  const [provider, setProvider] = useState(s.ai.provider || 'anthropic')
+  const [provider, setProvider] = useState(s.ai.provider || 'portkey')
   const [key, setKey] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
@@ -70,8 +78,8 @@ function KeyStep({ s, next, back }: { s: SetupState; next: () => void; back: () 
     <>
       <h2>Connect your AI</h2>
       <p className="setup-why">
-        Grading your practice answers, writing cover letters and thank-you emails, and reading deal documents all run on your own AI account.
-        It stays private to you, and you only pay for what you use (for most people a few dollars a month).
+        Grading your practice answers, writing cover letters and thank-you emails, and reading deal documents all run on your own AI key.
+        Most people use the Portkey key from their Yale AI class; a Claude or OpenAI key works too. It stays private to you.
       </p>
       {s.ai.ready && (
         <p className="notice ok">
@@ -82,10 +90,19 @@ function KeyStep({ s, next, back }: { s: SetupState; next: () => void; back: () 
       <div className="choice-row">
         {PROVIDERS.map((x) => (
           <button key={x.id} type="button" className={`choice-pill ${provider === x.id ? 'on' : ''}`} onClick={() => setProvider(x.id)}>
-            {x.label} <small>by {x.company}</small>
+            {x.label} <small>{x.id === 'portkey' ? '(Portkey)' : `by ${x.company}`}</small>
           </button>
         ))}
       </div>
+      {provider === 'portkey' ? (
+        <ol className="setup-steps">
+          <li>
+            Find the Portkey API key from your AI class (MGT 409): the long string you pasted when you set up your coding agent. It is often saved
+            as <code>PORTKEY_API_KEY</code> in that project's <code>.env</code> file.
+          </li>
+          <li>Paste it below. We check that it works before saving, store it encrypted, and never show it again.</li>
+        </ol>
+      ) : (
       <ol className="setup-steps">
         <li>
           Open{' '}
@@ -104,14 +121,17 @@ function KeyStep({ s, next, back }: { s: SetupState; next: () => void; back: () 
         <li>Click "Create key", give it any name, and copy it.</li>
         <li>Paste it below. We check that it works before saving, store it encrypted, and never show it again.</li>
       </ol>
+      )}
       <label className="field">
-        Your {p.company} API key <small>({p.hint})</small>
+        {provider === 'portkey' ? 'Your Yale class (Portkey) key' : `Your ${p.company} API key`} <small>({p.hint})</small>
         <input type="password" value={key} onChange={(e) => setKey(e.target.value)} autoComplete="off" spellCheck={false} />
       </label>
+      {provider !== 'portkey' && (
       <p className="fine">
         Why not just sign in with your {p.label} account? {p.company} does not let other websites use a {p.label} subscription; an API key is the only
         way they allow.
       </p>
+      )}
       {error && <p className="notice error">{error}</p>}
       <Nav step={0} onBack={back}>
         <button className="ghost" onClick={next}>

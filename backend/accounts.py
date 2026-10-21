@@ -1,7 +1,7 @@
 """Accounts and login sessions.
 
 - Passwords are stored as salted scrypt hashes; session tokens are random and only their SHA-256 is stored.
-- Anyone with the link can create an account. AI features run on each person's own Claude or OpenAI key
+- Anyone with the link can create an account. AI features run on each person's own key (Yale class Portkey key, Claude or OpenAI)
   (see user_keys.py), so new accounts never spend the site owner's course key.
 - Repeated wrong passwords for one email are slowed down (10 tries per 15 minutes).
 - New accounts confirm their email with a 6-digit code, and a forgotten password is reset the same way

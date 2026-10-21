@@ -43,7 +43,7 @@ export default function Home({ name, assistant }: { name: string; assistant: Rea
       <div className="home-body">
         {ai.data && !ai.data.ready && (
           <a className="notice key-callout" href="#/settings">
-            <strong>Turn on the AI assistant:</strong> add your own Claude or OpenAI API key in Settings. Your tracker, map and the question bank work without one.
+            <strong>Turn on the AI assistant:</strong> add your Yale class (Portkey) key, or a Claude or OpenAI key, in Settings. Your tracker, map and the question bank work without one.
           </a>
         )}
         {assistant}

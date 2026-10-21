@@ -128,8 +128,8 @@ export default function Recorder(props: {
       <div className="modal">
         <div className="panel-head">
           <h3>{phase === 'setup' ? (mode === 'conversation' ? 'Record a coffee chat' : 'Dictate a recap') : phase === 'recording' ? `Recording · ${clock}` : 'Review the transcript'}</h3>
-          <button className="link" onClick={props.onClose} disabled={phase === 'filing'}>
-            Close
+          <button className="icon-close" onClick={props.onClose} disabled={phase === 'filing'} aria-label="Close" title="Close">
+            <svg viewBox="0 0 24 24" aria-hidden><path d="M6 6l12 12M18 6L6 18" /></svg>
           </button>
         </div>
 

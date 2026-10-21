@@ -375,7 +375,7 @@ async def grade(uid: int, chosen: Chosen | None, key: str, answer: str) -> dict 
         parts = [label + q["notes"]] if q["notes"] else []
         parts += [f"From {p['source']} ({p['location']}):\n{_excerpt(p['text'], q['question'])}" for p in passages[:2]]
         explanation = "\n\n".join(parts) or ("No written answer for this one in the library yet."
-                                              + (" Add your own Claude or OpenAI key in Settings to get a model answer."
+                                              + (" Add your Yale class (Portkey) key, or a Claude or OpenAI key, in Settings to get a model answer."
                                                  if chosen is None else ""))
         if not answer and verdict is None:
             feedback = "Here is what the study material says. Mark yourself below once you have compared it with what you would have said."

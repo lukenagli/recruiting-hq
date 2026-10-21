@@ -8,13 +8,14 @@ import { PracticeHistory } from './Progress'
 import { Loading, useApi } from './ui'
 
 const PROVIDERS = [
+  { id: 'portkey', label: 'Yale class key (Portkey)', where: '', hint: 'the long key from your AI class setup' },
   { id: 'anthropic', label: 'Claude (Anthropic)', where: 'https://console.anthropic.com/settings/keys', hint: 'Starts with sk-ant-' },
   { id: 'openai', label: 'OpenAI', where: 'https://platform.openai.com/api-keys', hint: 'Starts with sk-' },
 ]
 
 export default function Settings({ user }: { user: User }) {
   const { data, error, reload } = useApi<AiSettings>('/api/settings/ai')
-  const [provider, setProvider] = useState('anthropic')
+  const [provider, setProvider] = useState('portkey')
   const [key, setKey] = useState('')
   const [busy, setBusy] = useState(false)
   const [message, setMessage] = useState('')
@@ -51,8 +52,8 @@ export default function Settings({ user }: { user: User }) {
       <section className="card">
         <h3>Your AI key</h3>
         <p>
-          The assistant, chat recording, thank-you drafts and background lookups run on <strong>your own</strong> Claude or OpenAI
-          account, so the cost goes on your key, not anyone else's. The tracker, map and question bank work without a key.
+          The assistant, chat recording, thank-you drafts and background lookups run on <strong>your own</strong> key (your Yale class
+          Portkey key, or a Claude or OpenAI key), so the cost goes on your key, not anyone else's. The tracker, map and question bank work without a key.
         </p>
         {data.provider ? (
           <p className="notice">
@@ -77,14 +78,22 @@ export default function Settings({ user }: { user: User }) {
             {data.provider ? 'Replace with a new key' : 'API key'} <small>({chosen.hint})</small>
             <input type="password" value={key} onChange={(e) => setKey(e.target.value)} autoComplete="off" spellCheck={false} />
           </label>
-          <p className="fine">
-            Create one at{' '}
-            <a href={chosen.where} target="_blank" rel="noreferrer">
-              {chosen.where.replace('https://', '')}
-            </a>
-            . A Claude.ai or ChatGPT subscription does not include API access; the API is billed separately by usage. The key is checked
-            before saving, stored encrypted, and never shown again.
-          </p>
+          {chosen.id === 'portkey' ? (
+            <p className="fine">
+              Use the Portkey API key from your AI class (MGT 409): the long string you pasted when you set up your coding agent, often saved as{' '}
+              <code>PORTKEY_API_KEY</code> in that project's <code>.env</code> file. The key is checked before saving, stored encrypted, and never
+              shown again.
+            </p>
+          ) : (
+            <p className="fine">
+              Create one at{' '}
+              <a href={chosen.where} target="_blank" rel="noreferrer">
+                {chosen.where.replace('https://', '')}
+              </a>
+              . A Claude.ai or ChatGPT subscription does not include API access; the API is billed separately by usage. The key is checked
+              before saving, stored encrypted, and never shown again.
+            </p>
+          )}
           {message && <p className="notice error">{message}</p>}
           <button className="primary" disabled={busy || key.trim().length < 20}>
             {busy ? 'Checking the key…' : 'Save key'}

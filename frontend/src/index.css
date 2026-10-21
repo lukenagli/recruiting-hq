@@ -978,3 +978,12 @@ main { padding-bottom: 90px; }
   background: linear-gradient(90deg, rgba(8, 18, 42, 0.85) 0%, rgba(8, 18, 42, 0.45) 45%, rgba(8, 18, 42, 0.2) 100%);
 }
 main h1 { text-shadow: 0 2px 16px rgba(4, 10, 26, 0.5); }
+
+/* Close buttons: a plain X */
+.icon-close {
+  width: 34px; height: 34px; display: grid; place-items: center; flex: none; padding: 0; border: 0; border-radius: 50%;
+  background: transparent; color: var(--muted);
+}
+.icon-close svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; }
+.icon-close:hover { background: var(--gray-soft); color: var(--ink); }
+.icon-close:disabled { opacity: 0.4; cursor: default; }

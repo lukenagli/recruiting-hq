@@ -1,4 +1,5 @@
-"""Each person's own AI provider key (Claude or OpenAI), so their usage is billed to them, not the site owner.
+"""Each person's own AI provider key (Claude, OpenAI, or the Yale class key through Portkey), so their usage is billed
+to them, not the site owner.
 
 - Keys are checked with a free call (listing models) before they are saved.
 - Keys are encrypted at rest (Fernet, with APP_SECRET) and are never sent back to the browser, logged, or
@@ -15,7 +16,7 @@ from cryptography.fernet import Fernet, InvalidToken
 from . import config
 from .db import connect, init_db
 
-PROVIDERS = {"anthropic": "Claude (Anthropic)", "openai": "OpenAI"}
+PROVIDERS = {"portkey": "Yale class key (Portkey)", "anthropic": "Claude (Anthropic)", "openai": "OpenAI"}
 
 
 class KeyError_(Exception):
@@ -33,6 +34,11 @@ def _fernet() -> Fernet:
     return Fernet(base64.urlsafe_b64encode(hashlib.sha256(secret.encode()).digest()))
 
 
+def portkey_client(key: str, **kw) -> openai.OpenAI:
+    """A Portkey key (the kind every student in the course gets) used through the course's Portkey gateway."""
+    return openai.OpenAI(api_key=key, base_url=config.PORTKEY_BASE_URL, default_headers={"x-portkey-provider": "openai"}, **kw)
+
+
 def validate(provider: str, key: str) -> None:
     """Raise KeyError_ unless the key works. Listing models costs nothing."""
     try:
@@ -42,8 +48,15 @@ def validate(provider: str, key: str) -> None:
             available = {m.id for m in openai.OpenAI(api_key=key, max_retries=1, timeout=20).models.list()}
             if config.USER_OPENAI_MODEL not in available:
                 raise KeyError_(f"That key works, but it cannot use the model this app runs on ({config.USER_OPENAI_MODEL}). Try a Claude key instead.")
+        elif provider == "portkey":
+            # Portkey keys can't list models, so this sends the smallest possible request to the course model.
+            try:
+                portkey_client(key, max_retries=1, timeout=30).responses.create(model=config.MODEL_NAME, input="Reply OK.", max_output_tokens=16)
+            except openai.BadRequestError as err:
+                if "token" not in str(err).lower():  # too few output tokens still proves the key works
+                    raise KeyError_("Portkey accepted the key but would not run the course model with it. Check it is the class key.")
         else:
-            raise KeyError_("Choose Claude or OpenAI.")
+            raise KeyError_("Choose the Yale class key, Claude or OpenAI.")
     except (anthropic.AuthenticationError, openai.AuthenticationError):
         raise KeyError_("That key was rejected. Check you copied the whole key.")
     except (anthropic.PermissionDeniedError, openai.PermissionDeniedError):
@@ -55,7 +68,7 @@ def validate(provider: str, key: str) -> None:
 def save(uid: int, provider: str, key: str) -> dict:
     key = key.strip()
     if provider not in PROVIDERS:
-        raise KeyError_("Choose Claude or OpenAI.")
+        raise KeyError_("Choose the Yale class key, Claude or OpenAI.")
     if len(key) < 20 or any(c.isspace() for c in key):
         raise KeyError_("That does not look like an API key.")
     validate(provider, key)
@@ -99,6 +112,6 @@ def status(uid: int) -> dict:
         "hint": row["api_key_hint"] if own else "",
         "ready": own or course,
         "using_site_key": course and not own,
-        "model": (config.CLAUDE_MODEL if row["api_provider"] == "anthropic" else config.USER_OPENAI_MODEL) if own
+        "model": {"anthropic": config.CLAUDE_MODEL, "portkey": config.MODEL_NAME}.get(row["api_provider"], config.USER_OPENAI_MODEL) if own
                  else (config.MODEL_NAME if course else ""),
     }
