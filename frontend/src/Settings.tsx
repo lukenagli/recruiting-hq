@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { post } from './api'
 import type { AiSettings, SetupState, User } from './api'
-import ProfileEditor from './ProfileEditor'
+import AboutYou from './AboutYou'
 import StudyGuides from './StudyGuides'
 import { CoverTemplate, EmailTemplates } from './Templates'
 import { PracticeHistory } from './Progress'
@@ -90,13 +90,7 @@ export default function Settings({ user }: { user: User }) {
         </form>
       </section>
 
-      <section className="card">
-        <h3>Banks and groups</h3>
-        <p>The banks you are recruiting with and the groups you want, in order.</p>
-        <a className="primary as-button" href="#/setup?step=banks">Edit banks and groups</a>
-      </section>
-
-      <ProfileEditor />
+      <AboutYou />
 
       <StudyGuides />
 

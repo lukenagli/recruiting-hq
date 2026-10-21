@@ -201,7 +201,17 @@ export type Question = {
   answer_notes: string
 }
 
-export type Profile = { resume_text: string; story: string; example_letter: string; contact_line: string; school_line: string; updated_at: string }
+export type Profile = {
+  resume_text: string
+  story: string
+  example_letter: string
+  contact_line: string
+  school_line: string
+  updated_at: string
+  why_group?: string
+  highlights?: string
+  projects?: string
+}
 
 export type CoverLetter = {
   bank: string

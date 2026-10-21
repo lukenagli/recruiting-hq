@@ -73,13 +73,24 @@ function Reply({ m, canUndo, onUndo, onChanged }: { m: Message; canUndo: boolean
   )
 }
 
-export default function Assistant({ userId, onChanged }: { userId: number; onChanged: () => void }) {
+export default function Assistant({ userId, onChanged, inline = false }: { userId: number; onChanged: () => void; inline?: boolean }) {
   const store = `${STORE}-${userId}` // each account keeps its own thread in this browser
   const [messages, setMessages] = useState<Message[]>(() => load(store))
+  // Save on every change, right away: a saved change refreshes the page, which can remount this component.
+  const setThread = (fn: (prev: Message[]) => Message[]) =>
+    setMessages((prev) => {
+      const next = fn(prev)
+      try {
+        localStorage.setItem(store, JSON.stringify(next.slice(-40)))
+      } catch {
+        /* storage unavailable: the thread just won't survive a refresh */
+      }
+      return next
+    })
   const [open, setOpen] = useState(false)
   const [busy, setBusy] = useState(false)
   const [draft, setDraft] = useState('')
-  const [recording, setRecording] = useState(false)
+  const [recording, setRecording] = useState<false | 'recap' | 'conversation'>(false)
   const thread = useRef<HTMLDivElement>(null)
   const input = useRef<HTMLTextAreaElement>(null)
 
@@ -112,15 +123,15 @@ export default function Assistant({ userId, onChanged }: { userId: number; onCha
     const text = (input.current?.value ?? draft).trim()
     if (busy || !text) return
     const history = messages.map((m) => ({ role: m.role, text: m.text }))
-    setMessages((m) => [...m, { role: 'user', text }])
+    setThread((m) => [...m, { role: 'user', text }])
     setDraft('')
     setBusy(true)
     try {
       const out = await post<AssistantReply>('/api/assistant', { message: text, history })
-      setMessages((m) => [...m, { role: 'assistant', text: out.reply, ...out }])
+      setThread((m) => [...m, { role: 'assistant', text: out.reply, ...out }])
       if (out.changed) onChanged()
     } catch (e) {
-      setMessages((m) => [...m, { role: 'assistant', text: `Nothing was saved. ${(e as Error).message}` }])
+      setThread((m) => [...m, { role: 'assistant', text: `Nothing was saved. ${(e as Error).message}` }])
     } finally {
       setBusy(false)
     }
@@ -129,14 +140,98 @@ export default function Assistant({ userId, onChanged }: { userId: number; onCha
   async function undo(runId: number) {
     const out = await post<{ ok: boolean; reason?: string }>('/api/assistant/undo', { run_id: runId })
     if (out.ok) {
-      setMessages((m) => m.map((x) => (x.run_id === runId ? { ...x, undone: true } : x)))
+      setThread((m) => m.map((x) => (x.run_id === runId ? { ...x, undone: true } : x)))
       onChanged()
     } else {
-      setMessages((m) => [...m, { role: 'assistant', text: out.reason ?? 'Could not undo that.' }])
+      setThread((m) => [...m, { role: 'assistant', text: out.reason ?? 'Could not undo that.' }])
     }
   }
 
   const lastChange = [...messages].reverse().find((m) => m.changed && !m.undone)?.run_id
+
+  const recorder = recording && (
+    <Recorder
+      initialMode={recording}
+      onClose={() => setRecording(false)}
+      onFiled={(label, out) => {
+        setRecording(false)
+        if (!inline) setOpen(true)
+        setThread((m) => [...m, { role: 'user', text: `Recorded chat: ${label}` }, { role: 'assistant', text: out.reply, ...out }])
+        if (out.changed) onChanged()
+      }}
+    />
+  )
+
+  if (inline) {
+    const recent = messages.slice(-6)
+    return (
+      <section className="home-assistant">
+        <h2>Anything happen?</h2>
+        <p>A coffee chat, an email, an invite, an application? Tell me in plain words and I'll update your map, thank-you notes and next steps.</p>
+        <form
+          className="home-compose"
+          onSubmit={(e) => {
+            e.preventDefault()
+            send()
+          }}
+        >
+          <textarea
+            ref={input}
+            rows={3}
+            value={draft}
+            placeholder="e.g. Had a coffee chat with Jordan Lee at Citi this morning. We talked about…"
+            onChange={(e) => setDraft(e.target.value)}
+            onInput={(e) => setDraft(e.currentTarget.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault()
+                send()
+              }
+            }}
+          />
+          <button type="submit" className="primary" disabled={busy}>
+            {busy ? 'Working…' : 'Update'}
+          </button>
+        </form>
+        <div className="home-actions">
+          <button type="button" className="record-btn" onClick={() => setRecording('conversation')}>
+            <span aria-hidden>●</span> Going into a coffee chat? Record it
+          </button>
+          <button type="button" className="link" onClick={() => setRecording('recap')}>
+            Or dictate a recap after
+          </button>
+          {messages.length > 0 && (
+            <button type="button" className="link muted-link" onClick={() => setThread(() => [])}>
+              Clear conversation
+            </button>
+          )}
+        </div>
+        {(recent.length > 0 || busy) && (
+          <div className="assistant-thread home-thread" ref={thread}>
+            {recent.map((m, i) =>
+              m.role === 'user' ? (
+                <div key={i} className="msg user">
+                  <p>{m.text}</p>
+                </div>
+              ) : (
+                <Reply key={i} m={m} canUndo={!!m.changed && !m.undone && m.run_id === lastChange} onUndo={() => undo(m.run_id!)} onChanged={onChanged} />
+              ),
+            )}
+            {busy && (
+              <div className="msg assistant pending">
+                <span className="dots" aria-label="Working">
+                  <i />
+                  <i />
+                  <i />
+                </span>
+              </div>
+            )}
+          </div>
+        )}
+        {recorder}
+      </section>
+    )
+  }
 
   return (
     <>
@@ -151,11 +246,11 @@ export default function Assistant({ userId, onChanged }: { userId: number; onCha
           <header className="assistant-head">
             <strong>Assistant</strong>
             <span>
-              <button className="btn" onClick={() => setRecording(true)} title="Record a chat or dictate a recap">
+              <button className="btn" onClick={() => setRecording('conversation')} title="Record a chat or dictate a recap">
                 Record
               </button>
               {messages.length > 0 && (
-                <button className="link" onClick={() => setMessages([])}>
+                <button className="link" onClick={() => setThread(() => [])}>
                   Clear
                 </button>
               )}
@@ -223,17 +318,7 @@ export default function Assistant({ userId, onChanged }: { userId: number; onCha
           </form>
         </aside>
       )}
-      {recording && (
-        <Recorder
-          onClose={() => setRecording(false)}
-          onFiled={(label, out) => {
-            setRecording(false)
-            setOpen(true)
-            setMessages((m) => [...m, { role: 'user', text: `Recorded chat: ${label}` }, { role: 'assistant', text: out.reply, ...out }])
-            if (out.changed) onChanged()
-          }}
-        />
-      )}
+      {recorder}
     </>
   )
 }

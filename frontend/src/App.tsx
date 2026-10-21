@@ -87,7 +87,8 @@ export default function App() {
         </main>
       </SchoolContext.Provider>
     )
-  let page = <Home />
+  const isHome = !section
+  let page = <Home name={user.name} assistant={<Assistant key={`inline-${user.id}-${version}`} inline userId={user.id} onChanged={() => setVersion((v) => v + 1)} />} />
   if (section === 'prep') page = <Prep bank={query.get('bank') ?? ''} round={query.get('round') ?? ''} who={query.get('who') ?? ''} tab={query.get('tab') ?? ''} />
   if (section === 'map') page = <MapView />
   if (section === 'deals') page = <Deals />
@@ -124,7 +125,7 @@ export default function App() {
       </header>
       {/* Re-keying the page after the assistant changes something makes it reload its data. */}
       <main key={version}>{page}</main>
-      <Assistant key={user.id} userId={user.id} onChanged={() => setVersion((v) => v + 1)} />
+      {!isHome && <Assistant key={user.id} userId={user.id} onChanged={() => setVersion((v) => v + 1)} />}
     </SchoolContext.Provider>
   )
 }

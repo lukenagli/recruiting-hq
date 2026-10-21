@@ -179,11 +179,12 @@ def extract_questions(pages: list[str]) -> list[dict]:
     return out
 
 
-def add_guide(uid: int, filename: str, data: bytes) -> dict:
-    """Load one of the user's own guides: private passages plus its numbered questions."""
+def add_guide(uid: int, filename: str, data: bytes, name: str = "") -> dict:
+    """Load one of the user's own guides: private passages plus its numbered questions. `name` labels it (for the
+    per-guide upload boxes); otherwise the file name is used."""
     import io
 
-    name = filename.rsplit(".", 1)[0].strip()[:100] or "My guide"
+    name = (name.strip() or filename.rsplit(".", 1)[0].strip())[:100] or "My guide"
     low = filename.lower()
     try:
         if low.endswith(".pdf"):

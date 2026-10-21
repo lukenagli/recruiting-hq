@@ -11,7 +11,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from pydantic_ai import Agent
 
-from . import accounts, assistant, auth, budget, config, cover_letters, deal_docs, deals, importer, legal, llm, network, onboarding, practice, profile, schools, reference, research, templates, thank_you, transfer, user_keys
+from . import accounts, assistant, auth, budget, config, cover_letters, deal_docs, deals, importer, legal, llm, network, onboarding, practice, profile, schools, reference, research, stars, templates, thank_you, transfer, user_keys
 from .auth import admin_user, current_user
 from .db import connect, init_db
 from .llm import get_model, usage_dict
@@ -654,18 +654,31 @@ def index_question_bank_answers(user: dict = Depends(admin_user)):
     return reference.load_question_bank_notes()
 
 
+@app.get("/api/stars")
+def star_stories(user: dict = Depends(current_user)):
+    return stars.all_stories(user["id"])
+
+
+@app.post("/api/stars/{key}")
+def save_star_story(key: str, fields: dict, user: dict = Depends(current_user)):
+    out = stars.save(user["id"], key, fields)
+    if out is None:
+        raise HTTPException(status_code=404, detail="Unknown question")
+    return out
+
+
 @app.get("/api/practice/library")
 def answer_library_sources(user: dict = Depends(current_user)):
     return reference.library(user["id"])
 
 
 @app.post("/api/library/guides")
-async def upload_guide(file: UploadFile, user: dict = Depends(current_user)):
+async def upload_guide(file: UploadFile, name: str = Form(""), user: dict = Depends(current_user)):
     """Add a study guide the user owns (e.g. their Breaking Into Wall Street PDFs). Private to their account."""
     data = await file.read()
     if len(data) > 40_000_000:
         raise HTTPException(status_code=400, detail="That file is over 40 MB.")
-    out = reference.add_guide(user["id"], file.filename or "My guide.pdf", data)
+    out = reference.add_guide(user["id"], file.filename or "My guide.pdf", data, name)
     if not out["ok"]:
         raise HTTPException(status_code=400, detail=out["reason"])
     return {**out, "library": reference.library(user["id"])}

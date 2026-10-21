@@ -5,9 +5,10 @@ from datetime import datetime
 from .db import connect, init_db
 
 FIELDS = ("resume_text", "story", "example_letter", "contact_line", "school_line", "school", "level", "class_year",
-          "target_groups", "email_template", "email_rules")
+          "target_groups", "email_template", "email_rules", "why_group", "highlights", "projects")
 MAX_CHARS = {"resume_text": 15_000, "story": 6_000, "example_letter": 8_000, "contact_line": 300, "school_line": 200,
-             "school": 120, "level": 20, "class_year": 20, "target_groups": 400, "email_template": 4_000, "email_rules": 2_000}
+             "school": 120, "level": 20, "class_year": 20, "target_groups": 400, "email_template": 4_000, "email_rules": 2_000,
+             "why_group": 3_000, "highlights": 3_000, "projects": 8_000}
 
 
 def get(uid: int) -> dict:
@@ -27,6 +28,18 @@ def save(uid: int, fields: dict) -> dict:
             conn.execute(f"UPDATE user_profiles SET {field} = ? WHERE user_id = ?", (value, uid))
         conn.execute("UPDATE user_profiles SET updated_at = ? WHERE user_id = ?", (datetime.now().isoformat(timespec="seconds"), uid))
     return get(uid)
+
+
+def background(prof: dict) -> str:
+    """Everything the user wrote about themselves, labelled, for the cover letter writer and the interview coach."""
+    parts = [
+        ("Target groups, in order of preference", prof.get("target_groups", "")),
+        ("Why those groups", prof.get("why_group", "")),
+        ("What they want to highlight", prof.get("highlights", "")),
+        ("Notable projects and experiences to draw on", prof.get("projects", "")),
+        ("Other notes", prof.get("story", "")),
+    ]
+    return (chr(10) * 2).join(f"{label}:{chr(10)}{text.strip()}" for label, text in parts if (text or "").strip())
 
 
 def finish_setup(uid: int) -> None:

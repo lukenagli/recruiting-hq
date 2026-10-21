@@ -168,7 +168,7 @@ function BanksStep({ s, next, back }: { s: SetupState; next: () => void; back: (
   const [banks, setBanks] = useState<string[]>(s.banks)
   const [extra, setExtra] = useState('')
   const [groups, setGroups] = useState<string[]>(s.profile.target_groups ? s.profile.target_groups.split(',').map((g) => g.trim()).filter(Boolean) : [])
-  const [story, setStory] = useState(s.profile.story)
+  const [why, setWhy] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const toggle = (list: string[], x: string) => (list.includes(x) ? list.filter((y) => y !== x) : [...list, x])
@@ -178,7 +178,8 @@ function BanksStep({ s, next, back }: { s: SetupState; next: () => void; back: (
     setBusy(true)
     setError('')
     try {
-      await post('/api/setup/banks', { banks, groups, story })
+      await post('/api/setup/banks', { banks, groups })
+      if (why.trim()) await post('/api/profile', { why_group: why })
       next()
     } catch (e) {
       setError((e as Error).message)
@@ -249,13 +250,8 @@ function BanksStep({ s, next, back }: { s: SetupState; next: () => void; back: (
         </div>
       ))}
       <label className="field">
-        Anything you want your letters to get right? <small>(optional)</small>
-        <textarea
-          rows={3}
-          value={story}
-          onChange={(e) => setStory(e.target.value)}
-          placeholder="Why banking, why these groups, a story you always tell, or words you never use…"
-        />
+        Why are you interested in {groups[0] ?? 'that group'}? <small>(optional, you can add more in Settings)</small>
+        <textarea rows={3} value={why} onChange={(e) => setWhy(e.target.value)} placeholder="A sentence or two your cover letters can build on…" />
       </label>
       {error && <p className="notice error">{error}</p>}
       <Nav step={2} onBack={back}>

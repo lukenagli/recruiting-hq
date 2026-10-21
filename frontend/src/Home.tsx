@@ -1,18 +1,48 @@
+import type { ReactNode } from 'react'
 import type { AiSettings, HomeData } from './api'
+import Skyline from './Skyline'
 import { Loading, daysUntil, fmtDate, useApi } from './ui'
 
-export default function Home() {
+function greeting() {
+  const h = new Date().getHours()
+  return h < 12 ? 'Good morning' : h < 18 ? 'Good afternoon' : 'Good evening'
+}
+
+export default function Home({ name, assistant }: { name: string; assistant: ReactNode }) {
   const { data, error } = useApi<HomeData>('/api/home')
   const ai = useApi<AiSettings>('/api/settings/ai')
+  const first = name.split(' ')[0]
 
   return (
     <div className="home">
-      <h1 className="hero-title">What do we want to work on today?</h1>
-      {ai.data && !ai.data.ready && (
-        <a className="notice key-callout" href="#/settings">
-          <strong>Turn on the AI assistant:</strong> add your own Claude or OpenAI API key in Settings. Your tracker, map and the question bank work without one.
-        </a>
-      )}
+      <header className="home-hero">
+        <Skyline />
+        <div className="home-hero-text">
+          <h1>
+            {greeting()}
+            {first ? `, ${first}` : ''}.
+          </h1>
+          {data && (
+            <p>
+              {data.thank_yous_due.length > 0
+                ? `${data.thank_yous_due.length} thank-you ${data.thank_yous_due.length === 1 ? 'note' : 'notes'} to send`
+                : 'Thank-you notes all caught up'}
+              {' · '}
+              {data.upcoming.length > 0 ? `${data.upcoming.length} coming up` : 'nothing scheduled'}
+              {data.deadlines.length > 0 && ` · ${data.deadlines.length} open ${data.deadlines.length === 1 ? 'deadline' : 'deadlines'}`}
+            </p>
+          )}
+        </div>
+      </header>
+
+      <div className="home-body">
+        {ai.data && !ai.data.ready && (
+          <a className="notice key-callout" href="#/settings">
+            <strong>Turn on the AI assistant:</strong> add your own Claude or OpenAI API key in Settings. Your tracker, map and the question bank work without one.
+          </a>
+        )}
+        {assistant}
+
       <div className="choices">
         <a className="choice" href="#/prep">
           <span className="choice-icon" aria-hidden>
@@ -96,6 +126,7 @@ export default function Home() {
           </div>
         </section>
       )}
+      </div>
     </div>
   )
 }

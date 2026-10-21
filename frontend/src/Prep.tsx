@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import Practice from './Practice'
 import Progress from './Progress'
+import Stories from './Stories'
 import type { PrepOptions, Question } from './api'
 import { Loading, Logo, useApi, useSchool } from './ui'
 
@@ -88,6 +89,7 @@ function Results({ bank, round, who }: { bank: string; round: string; who: strin
 
 const TABS = [
   ['practice', 'Practice'],
+  ['stories', 'My STAR stories'],
   ['progress', 'My progress'],
   ['browse', 'Browse the question bank'],
 ]
@@ -116,6 +118,13 @@ export default function Prep({ bank, round, who, tab }: { bank: string; round: s
       <div className="prep">
         {header}
         <Practice key={topic} options={data} start={topic ? { categories: ['Technical'], topics: [topic], stage: '', difficulty: 'adaptive' } : undefined} />
+      </div>
+    )
+  if (current === 'stories')
+    return (
+      <div className="prep">
+        {header}
+        <Stories />
       </div>
     )
   if (current === 'progress')

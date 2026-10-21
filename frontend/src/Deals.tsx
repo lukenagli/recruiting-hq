@@ -49,16 +49,14 @@ function Documents({ deal, data, onChanged }: { deal: Deal; data: DealsData; onC
   const [busy, setBusy] = useState('')
   const [message, setMessage] = useState('')
   const [error, setError] = useState('')
-  const [showWanted, setShowWanted] = useState(deal.documents.length === 0)
-  const have = new Set(deal.documents.map((d) => d.kind))
 
-  async function send(file: File | undefined) {
+  async function send(file: File | undefined, docKind = kind) {
     if (!file) return
     setBusy('upload')
     setError('')
     setMessage('')
     try {
-      const out = await uploadWith<{ scanned: boolean }>(`/api/deals/${deal.id}/documents`, file, { kind })
+      const out = await uploadWith<{ scanned: boolean }>(`/api/deals/${deal.id}/documents`, file, { kind: docKind })
       setMessage(
         out.scanned
           ? `Added ${file.name}. It is a scanned or screenshot PDF, so the AI will read it page by page when you click "Fill from my documents".`
@@ -98,61 +96,84 @@ function Documents({ deal, data, onChanged }: { deal: Deal; data: DealsData; onC
     <section className="card deal-docs">
       <div className="deal-docs-head">
         <h3>Source documents</h3>
-        <button className="link" onClick={() => setShowWanted(!showWanted)}>
-          {showWanted ? 'Hide what to upload' : 'What should I upload?'}
-        </button>
+        <a className="link" href={edgar} target="_blank" rel="noreferrer">
+          Find filings on SEC EDGAR
+        </a>
       </div>
-      {showWanted && (
-        <div className="wanted">
-          <p className="fine">
-            These answer most of the checklist. Every number pulled from them links to the page it came from. Find filings on{' '}
-            <a href={edgar} target="_blank" rel="noreferrer">
-              SEC EDGAR
-            </a>{' '}
-            (download as PDF, or save the filing page as .htm).
-          </p>
-          <ul>
-            {data.wanted.map((w) => (
-              <li key={w.kind} className={have.has(w.kind) ? 'have' : ''}>
-                <b aria-hidden>{have.has(w.kind) ? '✓' : '○'}</b>
-                <span>
-                  <strong>{w.kind}</strong> {w.why}
-                  <small>{w.where}</small>
-                </span>
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
-      {deal.documents.length > 0 && (
-        <ul className="doc-list">
-          {deal.documents.map((d) => (
-            <li key={d.id}>
-              <a href={fileUrl(d.id)} target="_blank" rel="noreferrer">
-                {d.filename}
-              </a>
-              <small>
-                {d.kind} · {d.pages} {d.pages === 1 ? 'page' : 'pages'}
-                {d.scanned === 'yes' ? ' · scanned, will be read by AI' : d.scanned === 'read' ? ' · scanned, read by AI' : ''}
-              </small>
-              <button className="link danger-link" onClick={() => remove(d.id)}>
-                Remove
-              </button>
+      <p className="fine">
+        Upload these and the checklist fills itself, with every number linked to its page. Download filings from EDGAR as PDF, or save the
+        filing page as .htm.
+      </p>
+      <ul className="doc-checklist">
+        {data.wanted.map((w) => {
+          const docs = deal.documents.filter((d) => d.kind === w.kind)
+          return (
+            <li key={w.kind} className={docs.length ? 'have' : ''}>
+              <b aria-hidden>{docs.length ? '✓' : ''}</b>
+              <span className="doc-check-text">
+                <strong>{w.kind}</strong>
+                <small>{docs.length ? 'Uploaded' : 'Not uploaded yet'} · {w.why}</small>
+                {!docs.length && <small className="doc-where">{w.where}</small>}
+                {docs.map((d) => (
+                  <span key={d.id} className="doc-file">
+                    <a href={fileUrl(d.id)} target="_blank" rel="noreferrer">
+                      {d.filename}
+                    </a>
+                    <small>
+                      {d.pages} {d.pages === 1 ? 'page' : 'pages'}
+                      {d.scanned === 'yes' ? ' · scanned, will be read by AI' : d.scanned === 'read' ? ' · scanned, read by AI' : ''}
+                    </small>
+                    <button className="link danger-link" onClick={() => remove(d.id)}>
+                      Remove
+                    </button>
+                  </span>
+                ))}
+              </span>
+              <label className={`ghost file-button small-btn ${busy === 'upload' && kind === w.kind ? 'busy' : ''}`}>
+                <input
+                  type="file"
+                  accept=".pdf,.htm,.html,.txt"
+                  onChange={(e) => {
+                    setKind(w.kind)
+                    send(e.target.files?.[0], w.kind)
+                  }}
+                  disabled={busy !== ''}
+                />
+                {busy === 'upload' && kind === w.kind ? 'Reading…' : docs.length ? 'Add another' : 'Upload'}
+              </label>
             </li>
-          ))}
-        </ul>
-      )}
-      <div className="doc-upload">
-        <select value={kind} onChange={(e) => setKind(e.target.value)} aria-label="What this document is">
-          {data.kinds.map((k) => (
-            <option key={k}>{k}</option>
-          ))}
-        </select>
-        <label className={`ghost file-button ${busy === 'upload' ? 'busy' : ''}`}>
-          <input type="file" accept=".pdf,.htm,.html,.txt" onChange={(e) => send(e.target.files?.[0])} disabled={busy !== ''} />
-          {busy === 'upload' ? 'Reading…' : 'Upload a document'}
-        </label>
-      </div>
+          )
+        })}
+        {(() => {
+          const others = deal.documents.filter((d) => !data.wanted.some((w) => w.kind === d.kind))
+          return (
+            <li className={others.length ? 'have' : ''}>
+              <b aria-hidden>{others.length ? '✓' : ''}</b>
+              <span className="doc-check-text">
+                <strong>Anything else</strong>
+                <small>Earnings releases, analyst notes, Capital IQ exports…</small>
+                {others.map((d) => (
+                  <span key={d.id} className="doc-file">
+                    <a href={fileUrl(d.id)} target="_blank" rel="noreferrer">
+                      {d.filename}
+                    </a>
+                    <small>
+                      {d.kind} · {d.pages} {d.pages === 1 ? 'page' : 'pages'}
+                    </small>
+                    <button className="link danger-link" onClick={() => remove(d.id)}>
+                      Remove
+                    </button>
+                  </span>
+                ))}
+              </span>
+              <label className="ghost file-button small-btn">
+                <input type="file" accept=".pdf,.htm,.html,.txt" onChange={(e) => send(e.target.files?.[0], 'Other')} disabled={busy !== ''} />
+                Upload
+              </label>
+            </li>
+          )
+        })()}
+      </ul>
       <div className="doc-actions">
         <button className="primary" disabled={busy !== '' || deal.documents.length === 0} onClick={() => run(`/api/deals/${deal.id}/fill-from-documents`, 'fill')}>
           {busy === 'fill' ? 'Reading your documents…' : 'Fill from my documents'}

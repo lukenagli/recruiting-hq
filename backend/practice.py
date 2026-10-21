@@ -21,7 +21,7 @@ from pydantic_ai import Agent, NativeOutput
 from pydantic_ai.usage import UsageLimits
 
 from . import deals as deal_book
-from . import core_technicals
+from . import core_technicals, stars
 from . import practice_bank as pb
 from . import reference as answer_library
 from . import profile as user_profile
@@ -316,7 +316,11 @@ def _numeric_check(answer: str, problem: pb.Problem) -> str | None:
 def _background(uid: int, q: dict) -> str:
     if q["category"] == "Behavioral":
         p = user_profile.get(uid)
-        return f"Student background (resume and notes, for tailoring the model answer):\n{(p.get('resume_text') or '')[:2500]}\n{(p.get('story') or '')[:1500]}"
+        stories = stars.as_text(uid)
+        return ("Student background (resume, notes and their STAR stories, for tailoring the model answer; when a "
+                "STAR story fits the question, build the model answer from it):\n"
+                f"{(p.get('resume_text') or '')[:2500]}\n{user_profile.background(p)[:2500]}"
+                + (f"\n\nTheir STAR stories:\n{stories}" if stories else ""))
     if q["category"] == "Deal":
         names = [d["title"] for d in deal_book.all_deals(uid).get("deals", [])]
         return f"Deals the student has prepared: {', '.join(names) or 'none yet'}." if names else ""

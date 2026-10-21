@@ -9,15 +9,17 @@ The shared tables (question banks, application tracker, calendar) are only expor
 import base64
 import json
 
+from . import stars
 from .db import connect, init_db
 
 SHARED = ("questions", "applications", "calendar_items")
 OWN_TABLES = ("people", "interactions", "links", "my_banks", "bank_facts", "deals", "transcripts", "thank_you_drafts",
-              "agent_runs", "cover_letters", "prep_attempts", "deal_documents")
+              "agent_runs", "cover_letters", "prep_attempts", "deal_documents", "star_stories")
 
 
 def export_all(uid: int, include_shared: bool) -> dict:
     init_db()
+    stars.ensure()
     mine = "SELECT id FROM interactions WHERE user_id = ?"
     queries = {
         "people": ("SELECT * FROM people WHERE user_id = ?", (uid,)),
@@ -36,6 +38,7 @@ def export_all(uid: int, include_shared: bool) -> dict:
         "cover_letters": ("SELECT * FROM cover_letters WHERE user_id = ?", (uid,)),
         "prep_attempts": ("SELECT * FROM prep_attempts WHERE user_id = ?", (uid,)),
         "deal_documents": ("SELECT * FROM deal_documents WHERE user_id = ?", (uid,)),
+        "star_stories": ("SELECT * FROM star_stories WHERE user_id = ?", (uid,)),
     }
     if include_shared:
         queries.update({t: (f"SELECT * FROM {t}", ()) for t in SHARED})
@@ -57,6 +60,7 @@ def _insert(conn, table: str, row: dict, columns: set[str], drop_id: bool = True
 def import_all(uid: int, data: dict, is_admin: bool, replace: bool = False) -> dict:
     """Load an export into this user's account. Refuses if the account already has a tracker, unless replace."""
     init_db()
+    stars.ensure()
     conn = connect()
     try:
         with conn:
@@ -104,7 +108,7 @@ def import_all(uid: int, data: dict, is_admin: bool, replace: bool = False) -> d
                 if r["interaction_id"] in chats and r["person_id"] in people:
                     _insert(conn, "thank_you_drafts", {**own(r), "interaction_id": chats[r["interaction_id"]], "person_id": people[r["person_id"]]},
                             cols["thank_you_drafts"])
-            for table in ("my_banks", "bank_facts", "transcripts", "cover_letters", "prep_attempts"):
+            for table in ("my_banks", "bank_facts", "transcripts", "cover_letters", "prep_attempts", "star_stories"):
                 for r in data.get(table, []):
                     _insert(conn, table, own(r), cols[table], drop_id=table != "my_banks")
             for r in data.get("agent_runs", []):

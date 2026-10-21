@@ -152,7 +152,7 @@ def _prompt(ctx: dict, prof: dict, bank: str) -> str:
          f"Program: group-specific or not known. Tailor the letter to the {ctx['group'] or '[[NEED: group]]'} group and name it in the opening sentence."),
         f"People the student has spoken with at {bank} (the only names you may use):\n{spoken}",
         "What the student has learned about the bank (topic: fact):\n" + ("\n".join(f"- {f}" for f in ctx["facts"]) or "- (nothing recorded)"),
-        f"Student's notes (why banking, why this industry, stories, rules):\n{prof['story'] or '(none)'}",
+        f"About the student (target groups, why, what to highlight, projects, rules):\n{profiles.background(prof) or '(none)'}",
         f"Resume:\n{prof['resume_text'] or '(not provided)'}",
     ]
     if prof["example_letter"]:

@@ -19,10 +19,24 @@ type Recognition = {
 const SpeechRecognition = (window as unknown as Record<string, new () => Recognition>).SpeechRecognition ??
   (window as unknown as Record<string, new () => Recognition>).webkitSpeechRecognition
 
-export default function Recorder(props: { onClose: () => void; onFiled: (label: string, reply: AssistantReply) => void }) {
+export default function Recorder(props: {
+  onClose: () => void
+  onFiled: (label: string, reply: AssistantReply) => void
+  initialMode?: Mode
+}) {
   const [phase, setPhase] = useState<Phase>('setup')
-  const [mode, setMode] = useState<Mode>('recap')
-  const [label, setLabel] = useState('')
+  const [mode, setMode] = useState<Mode>(props.initialMode ?? 'recap')
+  const [who, setWho] = useState('')
+  const [position, setPosition] = useState('')
+  const [alum, setAlum] = useState('')
+  const [bank, setBank] = useState('')
+  const label = [
+    who.trim(),
+    [position.trim(), bank.trim()].filter(Boolean).join(' at '),
+    alum === 'yes' ? 'SOM alum' : alum === 'no' ? 'not a SOM alum' : alum === '2y' ? 'current SOM 2Y' : '',
+  ]
+    .filter(Boolean)
+    .join(', ')
   const [consent, setConsent] = useState(false)
   const [text, setText] = useState('')
   const [interim, setInterim] = useState('')
@@ -107,13 +121,13 @@ export default function Recorder(props: { onClose: () => void; onFiled: (label: 
   }
 
   const clock = `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`
-  const ready = label.trim().length > 1 && (mode === 'recap' || consent)
+  const ready = who.trim().length > 1 && (mode === 'recap' || consent)
 
   return (
     <div className="modal-back" role="dialog" aria-modal="true">
       <div className="modal">
         <div className="panel-head">
-          <h3>{phase === 'setup' ? 'Record a chat' : phase === 'recording' ? `Recording · ${clock}` : 'Review the transcript'}</h3>
+          <h3>{phase === 'setup' ? (mode === 'conversation' ? 'Record a coffee chat' : 'Dictate a recap') : phase === 'recording' ? `Recording · ${clock}` : 'Review the transcript'}</h3>
           <button className="link" onClick={props.onClose} disabled={phase === 'filing'}>
             Close
           </button>
@@ -124,10 +138,29 @@ export default function Recorder(props: { onClose: () => void; onFiled: (label: 
         )}
         {phase === 'setup' && SpeechRecognition && (
           <>
-            <label className="field">
-              Who is it with?
-              <input value={label} onChange={(e) => setLabel(e.target.value)} placeholder="e.g. Jordan Lee, Citi C&R" autoFocus />
-            </label>
+            <div className="chat-who">
+              <label className="field">
+                Who is it with?
+                <input value={who} onChange={(e) => setWho(e.target.value)} placeholder="e.g. Jordan Lee" autoFocus />
+              </label>
+              <label className="field">
+                Their position
+                <input value={position} onChange={(e) => setPosition(e.target.value)} placeholder="e.g. Associate, C&R" />
+              </label>
+              <label className="field">
+                Bank
+                <input value={bank} onChange={(e) => setBank(e.target.value)} placeholder="e.g. Citi" />
+              </label>
+              <label className="field">
+                SOM connection
+                <select value={alum} onChange={(e) => setAlum(e.target.value)}>
+                  <option value="">Not sure</option>
+                  <option value="yes">SOM alum</option>
+                  <option value="2y">Current SOM 2Y</option>
+                  <option value="no">Not a SOM alum</option>
+                </select>
+              </label>
+            </div>
             <div className="mode-cards">
               <button className={`round-card ${mode === 'recap' ? 'on' : ''}`} onClick={() => setMode('recap')}>
                 <strong>Dictate a recap</strong>
