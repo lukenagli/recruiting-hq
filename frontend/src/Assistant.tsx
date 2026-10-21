@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { post } from './api'
+import { post, uploadWith } from './api'
 import type { AssistantReply, AssistantStep } from './api'
 import DraftCard from './DraftCard'
 import Recorder from './Recorder'
@@ -7,6 +7,9 @@ import Recorder from './Recorder'
 type Message = { role: 'user' | 'assistant'; text: string; undone?: boolean } & Partial<AssistantReply>
 
 const STORE = 'assistant-thread'
+// Files the assistant can read: team cards and rosters, saved emails, screenshots.
+const ACCEPT = '.pdf,.docx,.txt,.eml,.png,.jpg,.jpeg,.webp'
+const CLIP = <svg viewBox="0 0 24 24" aria-hidden><path d="M20.5 11.5l-8.3 8.3a5 5 0 0 1-7.1-7.1l8.6-8.6a3.4 3.4 0 0 1 4.8 4.8l-8.6 8.6a1.7 1.7 0 0 1-2.4-2.4l7.9-7.9" /></svg>
 const EXAMPLES = [
   'I had a coffee chat with Jordan Lee from Citi this morning on Zoom. We talked about…',
   'I got invited to the next round at Guggenheim',
@@ -91,6 +94,9 @@ export default function Assistant({ userId, onChanged, inline = false }: { userI
   const [busy, setBusy] = useState(false)
   const [draft, setDraft] = useState('')
   const [recording, setRecording] = useState<false | 'recap' | 'conversation'>(false)
+  const [file, setFile] = useState<File | null>(null)
+  const [dragging, setDragging] = useState(false)
+  const picker = useRef<HTMLInputElement>(null)
   const thread = useRef<HTMLDivElement>(null)
   const input = useRef<HTMLTextAreaElement>(null)
 
@@ -121,13 +127,17 @@ export default function Assistant({ userId, onChanged, inline = false }: { userI
   async function send() {
     // Read the box itself: some dictation tools put text in without telling the page it changed.
     const text = (input.current?.value ?? draft).trim()
-    if (busy || !text) return
+    if (busy || (!text && !file)) return
     const history = messages.map((m) => ({ role: m.role, text: m.text }))
-    setThread((m) => [...m, { role: 'user', text }])
+    const attached = file
+    setThread((m) => [...m, { role: 'user', text: attached ? `📎 ${attached.name}${text ? ` · ${text}` : ''}` : text }])
     setDraft('')
+    setFile(null)
     setBusy(true)
     try {
-      const out = await post<AssistantReply>('/api/assistant', { message: text, history })
+      const out = attached
+        ? await uploadWith<AssistantReply>('/api/assistant/file', attached, { message: text, history: JSON.stringify(history) })
+        : await post<AssistantReply>('/api/assistant', { message: text, history })
       setThread((m) => [...m, { role: 'assistant', text: out.reply, ...out }])
       if (out.changed) onChanged()
     } catch (e) {
@@ -147,6 +157,50 @@ export default function Assistant({ userId, onChanged, inline = false }: { userI
     }
   }
 
+  const drop = {
+    onDragOver: (e: React.DragEvent) => {
+      if (!e.dataTransfer.types.includes('Files')) return
+      e.preventDefault()
+      setDragging(true)
+    },
+    onDragLeave: (e: React.DragEvent) => {
+      if (!e.currentTarget.contains(e.relatedTarget as Node)) setDragging(false)
+    },
+    onDrop: (e: React.DragEvent) => {
+      if (!e.dataTransfer.files.length) return
+      e.preventDefault()
+      setDragging(false)
+      setFile(e.dataTransfer.files[0])
+      input.current?.focus()
+    },
+  }
+  // A screenshot pasted into the box is attached like a dropped file.
+  const onPaste = (e: React.ClipboardEvent) => {
+    if (e.clipboardData.files.length) {
+      e.preventDefault()
+      setFile(e.clipboardData.files[0])
+    }
+  }
+  const attach = (
+    <>
+      <input ref={picker} type="file" accept={ACCEPT} hidden onChange={(e) => {
+        setFile(e.target.files?.[0] ?? null)
+        e.target.value = ''
+      }} />
+      <button type="button" className="icon-attach" onClick={() => picker.current?.click()} title="Attach a file (team card, email, PDF, screenshot)" aria-label="Attach a file">
+        {CLIP}
+      </button>
+    </>
+  )
+  const chip = file && (
+    <div className="attached-file">
+      <span>📎 {file.name}</span>
+      <button type="button" className="icon-close" onClick={() => setFile(null)} aria-label="Remove the file" title="Remove">
+        <svg viewBox="0 0 24 24" aria-hidden><path d="M6 6l12 12M18 6L6 18" /></svg>
+      </button>
+    </div>
+  )
+
   const lastChange = [...messages].reverse().find((m) => m.changed && !m.undone)?.run_id
 
   const recorder = recording && (
@@ -165,9 +219,14 @@ export default function Assistant({ userId, onChanged, inline = false }: { userI
   if (inline) {
     const recent = messages.slice(-6)
     return (
-      <section className="home-assistant">
+      <section className={`home-assistant ${dragging ? 'dragging' : ''}`} {...drop}>
         <h2>Anything happen?</h2>
-        <p>A coffee chat, an email, an invite, an application? Tell me in plain words and I'll update your map, thank-you notes and next steps.</p>
+        <p>
+          A coffee chat, an email, an invite, an application? Tell me in plain words, paste an email, or drop in a file (like a bank's team card)
+          and I'll update your map, thank-you notes and next steps.
+        </p>
+        {dragging && <div className="drop-hint">Drop the file to attach it</div>}
+        {chip}
         <form
           className="home-compose"
           onSubmit={(e) => {
@@ -179,7 +238,8 @@ export default function Assistant({ userId, onChanged, inline = false }: { userI
             ref={input}
             rows={3}
             value={draft}
-            placeholder="e.g. Had a coffee chat with Jordan Lee at Citi this morning. We talked about…"
+            placeholder={file ? 'Add a note about this file (optional)' : 'e.g. Had a coffee chat with Jordan Lee at Citi this morning. We talked about…'}
+            onPaste={onPaste}
             onChange={(e) => setDraft(e.target.value)}
             onInput={(e) => setDraft(e.currentTarget.value)}
             onKeyDown={(e) => {
@@ -189,9 +249,12 @@ export default function Assistant({ userId, onChanged, inline = false }: { userI
               }
             }}
           />
-          <button type="submit" className="primary" disabled={busy}>
-            {busy ? 'Working…' : 'Update'}
-          </button>
+          <div className="compose-buttons">
+            {attach}
+            <button type="submit" className="primary" disabled={busy}>
+              {busy ? (file ? 'Reading…' : 'Working…') : 'Update'}
+            </button>
+          </div>
         </form>
         <div className="home-actions">
           <button type="button" className="record-btn" onClick={() => setRecording('conversation')}>
@@ -242,7 +305,7 @@ export default function Assistant({ userId, onChanged, inline = false }: { userI
         </button>
       )}
       {open && (
-        <aside className="assistant-panel" aria-label="Tracker assistant">
+        <aside className={`assistant-panel ${dragging ? 'dragging' : ''}`} aria-label="Tracker assistant" {...drop}>
           <header className="assistant-head">
             <strong>Assistant</strong>
             <span>
@@ -291,6 +354,8 @@ export default function Assistant({ userId, onChanged, inline = false }: { userI
             )}
           </div>
 
+          {dragging && <div className="drop-hint">Drop the file to attach it</div>}
+          {chip}
           <form
             className="assistant-compose"
             onSubmit={(e) => {
@@ -298,11 +363,13 @@ export default function Assistant({ userId, onChanged, inline = false }: { userI
               send()
             }}
           >
+            {attach}
             <textarea
               ref={input}
               rows={1}
               value={draft}
-              placeholder="What happened? (Enter to send, Shift+Enter for a new line)"
+              placeholder={file ? 'Add a note about this file (optional)' : 'What happened? Paste an email or drop a file'}
+              onPaste={onPaste}
               onChange={(e) => setDraft(e.target.value)}
               onInput={(e) => setDraft(e.currentTarget.value)}
               onKeyDown={(e) => {

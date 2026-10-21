@@ -1,4 +1,5 @@
 """HTTP API. Every route below the account routes runs for the signed-in user only (see auth.py)."""
+import json
 import re
 import tempfile
 from datetime import datetime
@@ -11,7 +12,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from pydantic_ai import Agent
 
-from . import accounts, assistant, auth, budget, config, cover_letters, deal_docs, deals, importer, legal, llm, network, onboarding, practice, profile, schools, reference, research, stars, templates, thank_you, transfer, user_keys
+from . import accounts, assistant, attachments, auth, budget, config, cover_letters, deal_docs, deals, importer, legal, llm, network, onboarding, practice, profile, schools, reference, research, stars, templates, thank_you, transfer, user_keys
 from .auth import admin_user, current_user
 from .db import connect, init_db
 from .llm import get_model, usage_dict
@@ -483,6 +484,25 @@ async def with_thank_you_drafts(user: dict, chosen: llm.Chosen, out: dict) -> di
 async def assistant_message(req: AssistantRequest, user: dict = Depends(current_user)):
     chosen = ai_for(user)
     return await with_thank_you_drafts(user, chosen, await assistant.run(user, chosen, req.message, req.history))
+
+
+@app.post("/api/assistant/file")
+async def assistant_file(file: UploadFile, message: str = Form(""), history: str = Form("[]"), user: dict = Depends(current_user)):
+    """A file dropped into the assistant (a team card, a saved email, a screenshot), filed like a pasted message."""
+    chosen = ai_for(user)
+    name = (file.filename or "file").strip()
+    try:
+        text, binary = attachments.read(name, await file.read())
+    except attachments.AttachmentError as err:
+        raise HTTPException(status_code=400, detail=str(err))
+    try:
+        past = json.loads(history)
+    except ValueError:
+        past = []
+    note = message.strip() or "File what this tells you about my recruiting."
+    body = f'{note}\n\nAttached file "{name}":\n{text}' if text else f'{note}\n\n(Attached file "{name}" is shown to you below.)'
+    out = await assistant.run(user, chosen, body, past if isinstance(past, list) else [], transcript=True, attachment=binary)
+    return await with_thank_you_drafts(user, chosen, out)
 
 
 @app.post("/api/assistant/undo")
