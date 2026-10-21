@@ -185,6 +185,7 @@ def add_guide(uid: int, filename: str, data: bytes, name: str = "") -> dict:
     import io
 
     name = (name.strip() or filename.rsplit(".", 1)[0].strip())[:100] or "My guide"
+    name = _slot(name) or name
     low = filename.lower()
     try:
         if low.endswith(".pdf"):
@@ -226,9 +227,39 @@ def remove_source(uid: int, source: str) -> dict:
     return {"ok": bool(n)}
 
 
+# The Breaking Into Wall Street guides each have their own upload box in Settings, stored under these names.
+GUIDE_SLOTS = ["400 Questions", "Accounting", "Enterprise & Equity Value", "DCF", "Merger Models", "LBO", "Modeling",
+               "IB Associate Complete Guide"]
+
+
+def _slot(source: str) -> str | None:
+    """The guide box a source belongs to, also for older names like "BIWS 400 Questions guide"."""
+    bare = lambda s: re.sub(r"[^a-z0-9&]+", " ", re.sub(r"breaking into wall street|\bbiws\b|\bguide\b", " ", s.lower())).split()
+    return next((s for s in GUIDE_SLOTS if bare(s) == bare(source) or s.lower() == source.lower()), None)
+
+
+def _tidy_guides(uid: int) -> None:
+    """File guides uploaded under older names into their box; drop them if the box already has its own upload."""
+    owner = str(uid)
+    with connect() as conn:
+        mine = [r["source"] for r in conn.execute("SELECT DISTINCT source FROM reference WHERE owner = ?", (owner,))]
+        for source in mine:
+            slot = _slot(source)
+            if not slot or slot == source:
+                continue
+            if slot in mine:
+                conn.execute("DELETE FROM reference WHERE owner = ? AND source = ?", (owner, source))
+                conn.execute("DELETE FROM guide_questions WHERE user_id = ? AND source = ?", (uid, source))
+            else:
+                conn.execute("UPDATE reference SET source = ? WHERE owner = ? AND source = ?", (slot, owner, source))
+                conn.execute("UPDATE guide_questions SET source = ? WHERE user_id = ? AND source = ?", (slot, uid, source))
+                mine.append(slot)
+
+
 def library(uid: int) -> list[dict]:
     """Every source this account can use, with passage and question counts."""
     ensure_guides()
+    _tidy_guides(uid)
     with connect(read_only=True) as conn:
         counts = {r["source"]: r["n"] for r in conn.execute(
             "SELECT source, COUNT(*) AS n FROM guide_questions WHERE user_id = ? GROUP BY source", (uid,))}

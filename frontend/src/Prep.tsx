@@ -89,7 +89,7 @@ function Results({ bank, round, who }: { bank: string; round: string; who: strin
 
 const TABS = [
   ['practice', 'Practice'],
-  ['stories', 'My STAR stories'],
+  ['stories', 'Key information'],
   ['progress', 'My progress'],
   ['browse', 'Browse the question bank'],
 ]

@@ -12,7 +12,7 @@ export default function AboutYou() {
   const [banks, setBanks] = useState<string[]>([])
   const [groups, setGroups] = useState<string[]>([])
   const [extra, setExtra] = useState('')
-  const [fields, setFields] = useState({ why_group: '', highlights: '', projects: '', resume_text: '' })
+  const [fields, setFields] = useState({ resume_text: '' })
   const [dirty, setDirty] = useState(false)
   const [busy, setBusy] = useState('')
   const [message, setMessage] = useState('')
@@ -22,12 +22,7 @@ export default function AboutYou() {
     if (!setup.data || !prof.data) return
     setBanks(setup.data.banks)
     setGroups(setup.data.profile.target_groups ? setup.data.profile.target_groups.split(',').map((g) => g.trim()).filter(Boolean) : [])
-    setFields({
-      why_group: prof.data.why_group ?? '',
-      highlights: prof.data.highlights ?? '',
-      projects: prof.data.projects ?? '',
-      resume_text: prof.data.resume_text ?? '',
-    })
+    setFields({ resume_text: prof.data.resume_text ?? '' })
     setDirty(false)
   }, [setup.data, prof.data])
 
@@ -80,7 +75,7 @@ export default function AboutYou() {
   return (
     <section className="card about-you">
       <h3>About you</h3>
-      <p className="muted">Your cover letters and interview practice use only what's here and in your tracker. Nothing is made up.</p>
+      <p className="muted">Your cover letters and interview practice use only what's here, in Interview Prep → Key information and in your tracker. Nothing is made up.</p>
 
       <div className="about-block">
         <h4>Resume</h4>
@@ -156,21 +151,10 @@ export default function AboutYou() {
         ))}
       </div>
 
-      <div className="about-block">
-        <label className="field">
-          Why are you interested in {groups[0] ? `${groups[0]}` : 'that group'}?
-          <textarea rows={3} value={fields.why_group} onChange={setField('why_group')} placeholder="e.g. I spent four years investing in consumer-facing airlines and saw how…" />
-        </label>
-        <label className="field">
-          What do you want to highlight?
-          <textarea rows={3} value={fields.highlights} onChange={setField('highlights')} placeholder="e.g. Deal experience at Indigo Partners, client-facing work with airline management teams…" />
-        </label>
-        <label className="field">
-          Notable projects and experiences
-          <small>For work-experience and "tell me about a time" questions. Bullet points are fine.</small>
-          <textarea rows={6} value={fields.projects} onChange={setField('projects')} placeholder={'e.g.\n• APiJET sale: built the buyer list, ran diligence calls, compared bids\n• Led a 5-person team on…'} />
-        </label>
-      </div>
+      <p className="fine">
+        Why your target group, what to highlight and your notable projects are in <a href="#/prep?tab=stories">Interview Prep → Key information</a>,
+        next to your STAR stories.
+      </p>
 
       {error && <p className="notice error">{error}</p>}
       <div className="about-save">

@@ -44,7 +44,9 @@ export default function Settings({ user }: { user: User }) {
   return (
     <div className="settings">
       <h1>Settings</h1>
-      <p className="lede">Signed in as {user.name} ({user.email}).</p>
+      <p className="lede">
+        Signed in as {user.name} ({user.email}). New here? <a href="#/tour">Take the 2-minute tour</a>.
+      </p>
 
       <section className="card">
         <h3>Your AI key</h3>

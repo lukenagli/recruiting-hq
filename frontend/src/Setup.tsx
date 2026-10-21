@@ -250,7 +250,7 @@ function BanksStep({ s, next, back }: { s: SetupState; next: () => void; back: (
         </div>
       ))}
       <label className="field">
-        Why are you interested in {groups[0] ?? 'that group'}? <small>(optional, you can add more in Settings)</small>
+        Why are you interested in {groups[0] ?? 'that group'}? <small>(optional, you can add more in Interview Prep → Key information)</small>
         <textarea rows={3} value={why} onChange={(e) => setWhy(e.target.value)} placeholder="A sentence or two your cover letters can build on…" />
       </label>
       {error && <p className="notice error">{error}</p>}
@@ -301,12 +301,12 @@ function DoneStep({ s, back, finish }: { s: SetupState; back: () => void; finish
         ))}
       </ul>
       <p className="setup-why">
-        From here, tell the Assistant (bottom right) about every coffee chat or event, in plain words or by voice. It keeps your map, thank-you emails
-        and cover letters up to date.
+        From here, tell the "Anything happen?" box on your homepage about every coffee chat or event, in plain words or by voice. It keeps your map,
+        thank-you emails and cover letters up to date. Next, a two-minute tour shows you everything else.
       </p>
       <Nav step={4} onBack={back}>
         <button className="primary big" onClick={finish}>
-          Go to my dashboard
+          Show me around
         </button>
       </Nav>
     </>

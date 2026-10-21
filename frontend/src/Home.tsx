@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react'
 import type { AiSettings, HomeData } from './api'
-import Skyline from './Skyline'
+import GettingStarted from './GettingStarted'
 import { Loading, daysUntil, fmtDate, useApi } from './ui'
 
 function greeting() {
@@ -16,7 +16,6 @@ export default function Home({ name, assistant }: { name: string; assistant: Rea
   return (
     <div className="home">
       <header className="home-hero">
-        <Skyline />
         <div className="home-hero-text">
           <h1>
             {greeting()}
@@ -32,7 +31,13 @@ export default function Home({ name, assistant }: { name: string; assistant: Rea
               {data.deadlines.length > 0 && ` · ${data.deadlines.length} open ${data.deadlines.length === 1 ? 'deadline' : 'deadlines'}`}
             </p>
           )}
+          <a className="tour-link" href="#/tour">
+            ▶ Take the 2-minute tour
+          </a>
         </div>
+        <a className="photo-credit" href="https://commons.wikimedia.org/wiki/File:Manhattan_Skyline_2016.jpg" target="_blank" rel="noreferrer">
+          Photo: Mike Sinko, CC BY 2.0
+        </a>
       </header>
 
       <div className="home-body">
@@ -42,6 +47,7 @@ export default function Home({ name, assistant }: { name: string; assistant: Rea
           </a>
         )}
         {assistant}
+        {data && <GettingStarted people={data.totals.people} />}
 
       <div className="choices">
         <a className="choice" href="#/prep">

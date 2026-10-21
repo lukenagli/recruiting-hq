@@ -11,6 +11,7 @@ import MapView from './MapView'
 import Prep from './Prep'
 import Settings from './Settings'
 import Setup from './Setup'
+import Tour from './Tour'
 import { SchoolContext, useSchool } from './ui'
 
 /** Tiny hash router: #/, #/prep?bank=Citi&round=Superday, #/map, #/bank/Citi */
@@ -80,7 +81,7 @@ export default function App() {
         <main>
           <Setup
             onDone={() => {
-              window.location.hash = '#/'
+              window.location.hash = '#/tour'
               loadSession()
             }}
           />
@@ -92,6 +93,7 @@ export default function App() {
   if (section === 'prep') page = <Prep bank={query.get('bank') ?? ''} round={query.get('round') ?? ''} who={query.get('who') ?? ''} tab={query.get('tab') ?? ''} />
   if (section === 'map') page = <MapView />
   if (section === 'deals') page = <Deals />
+  if (section === 'tour') page = <Tour />
   if (section === 'settings') page = <Settings user={user} />
   if (section === 'letters') page = <Letters bank={arg ?? ''} />
   if (section === 'bank' && arg) page = <BankView bank={arg} initial={query.get('sel') ?? ''} />
@@ -125,7 +127,7 @@ export default function App() {
       </header>
       {/* Re-keying the page after the assistant changes something makes it reload its data. */}
       <main key={version}>{page}</main>
-      {!isHome && <Assistant key={user.id} userId={user.id} onChanged={() => setVersion((v) => v + 1)} />}
+      {!isHome && section !== 'tour' && <Assistant key={user.id} userId={user.id} onChanged={() => setVersion((v) => v + 1)} />}
     </SchoolContext.Provider>
   )
 }

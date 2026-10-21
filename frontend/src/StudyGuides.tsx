@@ -55,7 +55,13 @@ function GuideSlot({ label, name, have, onDone }: { label: string; name: string;
       <span className="guide-slot-text">
         <strong>{label}</strong>
         <small>
-          {busy ? 'Reading… about 10 seconds' : have ? `${have.questions ? `${have.questions} practice questions · ` : ''}${have.passages} passages` : 'Not uploaded yet'}
+          {busy
+            ? 'Reading… about 10 seconds'
+            : !have
+              ? 'Not uploaded yet'
+              : have.questions
+                ? `${have.questions} practice questions · ${have.passages} passages`
+                : `${have.passages} passages · Replace to add its practice questions`}
         </small>
         {error && <small className="err">{error}</small>}
       </span>
