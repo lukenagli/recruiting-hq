@@ -195,7 +195,8 @@ def practice_options(user: dict = Depends(current_user)):
 
 @app.post("/api/practice/next")
 def practice_next(req: PracticeRequest, user: dict = Depends(current_user)):
-    like = practice.rebuild(req.like)[0] if req.like and practice.rebuild(req.like) else None
+    built = practice.rebuild(req.like, user["id"]) if req.like else None
+    like = built[0] if built else None
     q = practice.next_question(user["id"], req.categories, req.topics, req.stage, req.difficulty, req.bank, req.seen[-300:], like,
                                club=schools.for_user(user["id"])["club"])
     return {"question": q}
@@ -655,7 +656,25 @@ def index_question_bank_answers(user: dict = Depends(admin_user)):
 
 @app.get("/api/practice/library")
 def answer_library_sources(user: dict = Depends(current_user)):
-    return reference.sources(user["id"])
+    return reference.library(user["id"])
+
+
+@app.post("/api/library/guides")
+async def upload_guide(file: UploadFile, user: dict = Depends(current_user)):
+    """Add a study guide the user owns (e.g. their Breaking Into Wall Street PDFs). Private to their account."""
+    data = await file.read()
+    if len(data) > 40_000_000:
+        raise HTTPException(status_code=400, detail="That file is over 40 MB.")
+    out = reference.add_guide(user["id"], file.filename or "My guide.pdf", data)
+    if not out["ok"]:
+        raise HTTPException(status_code=400, detail=out["reason"])
+    return {**out, "library": reference.library(user["id"])}
+
+
+@app.delete("/api/library/guides")
+def remove_guide(source: str, user: dict = Depends(current_user)):
+    reference.remove_source(user["id"], source)
+    return reference.library(user["id"])
 
 
 @app.post("/api/admin/import-local-files")

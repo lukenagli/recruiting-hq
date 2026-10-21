@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { post } from './api'
 import type { AiSettings, SetupState, User } from './api'
 import ProfileEditor from './ProfileEditor'
+import StudyGuides from './StudyGuides'
 import { CoverTemplate, EmailTemplates } from './Templates'
 import { PracticeHistory } from './Progress'
 import { Loading, useApi } from './ui'
@@ -96,6 +97,8 @@ export default function Settings({ user }: { user: User }) {
       </section>
 
       <ProfileEditor />
+
+      <StudyGuides />
 
       <TemplatesCard />
 

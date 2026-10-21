@@ -671,3 +671,12 @@ main { padding-bottom: 90px; }
 .fu-form .primary { margin: 0; }
 .club-standard { margin-top: 18px; padding-top: 14px; border-top: 1px dashed var(--line); }
 .club-standard .ghost { margin-top: 6px; }
+
+/* Study guides */
+.study-guides { margin-top: 18px; }
+.study-guides h4 { margin-top: 16px; }
+.guide-list { list-style: none; padding: 0; margin: 4px 0; }
+.guide-list li { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 8px 2px; border-top: 1px solid var(--line); }
+.guide-list li span { display: flex; flex-direction: column; }
+.guide-list.shared strong { font-weight: 500; }
+.dropzone.busy { border-color: var(--blue); background: var(--blue-soft); }

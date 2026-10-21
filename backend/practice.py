@@ -109,12 +109,24 @@ def _tech_question(i: int) -> dict:
             "bank": "", "round": "", "group": "", "who": "", "source": "Standard technical question", "notes": model}
 
 
-def rebuild(key: str) -> tuple[dict, pb.Problem | None] | None:
+def _guide_question(row: dict) -> dict:
+    technical = row["category"] == "Technical"
+    return {"key": f"gq:{row['id']}", "kind": "guide", "category": row["category"],
+            "topic": topic_of(row["question"]) if technical else "", "difficulty": difficulty_of(row["question"]) if technical else "",
+            "question": row["question"], "bank": "", "round": "", "group": "", "who": "",
+            "source": f"{row['source']}, {row['location']} (your copy)", "notes": row["answer"], "guide": row["source"],
+            "location": row["location"]}
+
+
+def rebuild(key: str, uid: int | None = None) -> tuple[dict, pb.Problem | None] | None:
     if key.startswith("tpl:"):
         _, name, seed = key.split(":")
         if name not in pb.BY_NAME:
             return None
         return _template_question(name, int(seed))
+    if key.startswith("gq:"):
+        row = answer_library.guide_question(uid, int(key[3:])) if uid is not None else None
+        return (_guide_question(row), None) if row else None
     if key.startswith("ct:"):
         i = int(key[3:])
         return (_tech_question(i), None) if 0 <= i < len(core_technicals.QUESTIONS) else None
@@ -172,6 +184,9 @@ def next_question(uid: int, categories: list[str], topics: list[str], stage: str
         pool += [q for q in map(_core_question, range(len(pb.CORE))) if q["key"] not in seen_set and q["category"] in categories]
         if "Technical" in categories:
             pool += [q for q in map(_tech_question, range(len(core_technicals.QUESTIONS))) if q["key"] not in seen_set]
+        # questions from guides this user uploaded themselves (their own copy)
+        pool += [q for q in map(_guide_question, answer_library.guide_questions(uid))
+                 if q["key"] not in seen_set and q["category"] in categories]
     pool = [q for q in pool if q["category"] != "Technical" or q["topic"] in topics]
 
     def allowed(topic: str) -> set[str]:
@@ -197,7 +212,7 @@ def next_question(uid: int, categories: list[str], topics: list[str], stage: str
         return None
     cat = rng.choice(choices)
     if cat != "Technical":
-        return rng.choice(by_cat[cat])
+        return _pick(rng, by_cat[cat], bank)
 
     # Technical: pick the area first. Adaptive mode leans toward weaker areas.
     def weight(topic: str) -> float:
@@ -217,8 +232,11 @@ def next_question(uid: int, categories: list[str], topics: list[str], stage: str
     else:
         tpls = tpls or [tp for tp in pb.TEMPLATES if tp.topic == topic]
     banked = [q for q in bank_tech if q["topic"] == topic]
-    # Numbers practice from templates; real asked questions from the bank. With a bank filter, favour the bank.
-    use_template = tpls and (not banked or rng.random() < (0.3 if bank and bank != "Any" else 0.5) or (like and like.get("kind") == "template"))
+    # Numbers practice from templates; real asked questions from the bank and guides. With a bank filter, or when the
+    # user has their own guides, favour real questions.
+    has_guides = any(q["kind"] == "guide" for q in banked)
+    template_share = 0.3 if (bank and bank != "Any") else 0.25 if has_guides else 0.5
+    use_template = tpls and (not banked or rng.random() < template_share or (like and like.get("kind") == "template"))
     if use_template:
         name = rng.choice(tpls).name
         for _ in range(12):  # a similar problem should not repeat the same numbers
@@ -226,7 +244,24 @@ def next_question(uid: int, categories: list[str], topics: list[str], stage: str
             if not like or q["question"] != like["question"]:
                 break
         return q
-    return rng.choice(banked) if banked else None
+    return _pick(rng, banked, bank) if banked else None
+
+
+# How often each source is chosen when several have questions: a user's own guides (e.g. their BIWS copy) first,
+# then questions asked at the club's interviews, then the standard set. Without a bank filter.
+SOURCE_WEIGHTS = {"guide": 5, "bank": 3, "core": 1}
+
+
+def _pick(rng: random.Random, candidates: list[dict], bank: str) -> dict:
+    """Choose a source by weight, then a question within it, so a large source does not crowd out a small one."""
+    if bank and bank != "Any":
+        return rng.choice(candidates)
+    by_kind: dict[str, list[dict]] = {}
+    for q in candidates:
+        by_kind.setdefault(q["kind"], []).append(q)
+    kinds = list(by_kind)
+    kind = rng.choices(kinds, weights=[SOURCE_WEIGHTS.get(k, 1) for k in kinds])[0]
+    return rng.choice(by_kind[kind])
 
 
 # ---------------- Grading ----------------
@@ -290,7 +325,7 @@ def _background(uid: int, q: dict) -> str:
 
 async def grade(uid: int, chosen: Chosen | None, key: str, answer: str) -> dict | None:
     init_db()
-    built = rebuild(key)
+    built = rebuild(key, uid)
     if built is None:
         return None
     q, problem = built
@@ -298,6 +333,8 @@ async def grade(uid: int, chosen: Chosen | None, key: str, answer: str) -> dict 
     verdict, feedback, explanation, usage, outcome = None, "", "", None, "ok"
     reference = (f"Reference answer: {problem.answer}\nReference solution:\n{problem.solution}" if problem
                  else f"Model answer (correct; grade against it): {q['notes']}" if q["notes"] and key.startswith("ct:")
+                 else (f"Answer from the student's own copy of {q['guide']} ({q['location']}). It is correct: grade against it and "
+                       f"base the explanation on it.\n{q['notes']}") if key.startswith("gq:")
                  else f"Notes from the question bank: {q['notes']}" if q["notes"] else "")
     # Passages from the answer library (club decks, question bank answers, and this account's private guides).
     passages = [] if problem else answer_library.search(uid, f"{q['question']} {q['topic']}", limit=4)
@@ -329,7 +366,9 @@ async def grade(uid: int, chosen: Chosen | None, key: str, answer: str) -> dict 
                 feedback = (f"The answer is {problem.answer}." if verdict != "correct" else "That matches the answer.")
     elif not explanation:
         # No AI explanation: show the question bank's own answer and the best passages from the library.
-        parts = [("Model answer: " if key.startswith("ct:") else "From the question bank: ") + q["notes"]] if q["notes"] else []
+        label = (f"From {q['guide']} ({q['location']}): " if key.startswith("gq:") else
+                 "Model answer: " if key.startswith("ct:") else "From the question bank: ")
+        parts = [label + q["notes"]] if q["notes"] else []
         parts += [f"From {p['source']} ({p['location']}):\n{_excerpt(p['text'], q['question'])}" for p in passages[:2]]
         explanation = "\n\n".join(parts) or ("No written answer for this one in the library yet."
                                               + (" Add your own Claude or OpenAI key in Settings to get a model answer."
@@ -457,8 +496,10 @@ async def ask(uid: int, chosen: Chosen, attempt_id: int, question: str, history:
     if row is None:
         return None
     question = question.strip()[:1000]
-    built = rebuild(row["qkey"])
+    built = rebuild(row["qkey"], uid)
     q, problem = built if built else ({"notes": "", "topic": row["topic"]}, None)
+    if row["qkey"].startswith("gq:") and q.get("notes"):
+        q = {**q, "notes": f"(from the student's own copy of {q['guide']}, {q['location']}) {q['notes']}"}
     passages = answer_library.search(uid, f"{row['question']} {question}", limit=3)
     library = "\n\n".join(f"[{p['source']}, {p['location']}]\n{p['text'][:1200]}" for p in passages)
     earlier = "\n".join(f"{'Student' if h.get('role') == 'user' else 'Coach'}: {str(h.get('text', ''))[:800]}" for h in history[-6:])

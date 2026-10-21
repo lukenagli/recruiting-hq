@@ -114,3 +114,134 @@ def chunk_pages(pages: list[str], size: int = 1800) -> list[dict]:
             if len(piece) >= 80:
                 out.append({"text": piece, "location": f"p. {n}"})
     return out
+
+
+# ---------------- Guides a user uploads themselves ----------------
+# Each person uploads their own copy of a guide (e.g. the Breaking Into Wall Street PDFs they bought). Its text
+# becomes passages only they can search, and its numbered questions become practice questions only they see,
+# graded against their own guide's answer. The file itself is not kept.
+
+GUIDE_SCHEMA = """
+CREATE TABLE IF NOT EXISTS guide_questions (
+    id        INTEGER PRIMARY KEY,
+    user_id   INTEGER NOT NULL,
+    source    TEXT NOT NULL,
+    location  TEXT DEFAULT '',
+    category  TEXT NOT NULL,      -- Technical | Behavioral
+    question  TEXT NOT NULL,
+    answer    TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_guide_q_user ON guide_questions (user_id, source);
+"""
+MAX_GUIDE_PAGES = 800
+QUESTION_START = re.compile(r"(?:^|\n)\s*(\d{1,3})\.\s+(?=[A-Z“\"(])")
+ASKING = re.compile(r"^(walk|how|what|why|when|where|which|who|would|could|should|can|do|does|is|are|if|explain|tell|"
+                    r"describe|let'?s|say|suppose|assume|give|pitch|imagine|in|a |an |the )", re.I)
+IMPERATIVE = re.compile(r"^(walk|explain|tell|describe|pitch|give|let'?s|say|suppose|assume|imagine|if|a |an )", re.I)
+BEHAVIORAL = re.compile(r"tell me about (yourself|a time)|walk me through your (resume|story|background)|why (investment )?banking|"
+                        r"why (our|this) (bank|firm|group)|strength|weakness|leadership|teamwork|hire you|failure|"
+                        r"where do you see yourself|why should we", re.I)
+
+
+def ensure_guides() -> None:
+    ensure()
+    with connect() as conn:
+        conn.executescript(GUIDE_SCHEMA)
+
+
+def extract_questions(pages: list[str]) -> list[dict]:
+    """Numbered question-and-answer pairs ("12. Walk me through ...? answer ...") from a guide's pages."""
+    text, starts = "", []
+    for n, page in enumerate(pages, 1):
+        starts.append((len(text), n))
+        text += "\n" + BOILERPLATE.sub(" ", page or "")
+    page_at = lambda pos: max((n for s, n in starts if s <= pos), default=1)
+    marks = list(QUESTION_START.finditer(text))
+    out = []
+    for i, m in enumerate(marks):
+        block = text[m.end():marks[i + 1].start() if i + 1 < len(marks) else len(text)]
+        block = re.sub(r"[ \t]+", " ", block).strip()
+        q_end = block.find("?")
+        if 10 < q_end < 450:  # the question runs to its question mark
+            question, answer = block[:q_end + 1], block[q_end + 1:]
+        else:  # some are instructions ("Walk me through ..."): the first sentence
+            cut = re.search(r"[.:]\s", block[:450])
+            if not cut:
+                continue
+            question, answer = block[:cut.end()], block[cut.end():]
+        question, answer = " ".join(question.split()), " ".join(answer.split())
+        if not ASKING.match(question) or len(answer) < 80 or len(question) < 15:
+            continue
+        if not question.endswith("?") and not IMPERATIVE.match(question):
+            continue  # a heading or intro sentence, not a question
+        out.append({"question": question, "answer": answer[:3500], "location": f"p. {page_at(m.start())}",
+                    "category": "Behavioral" if BEHAVIORAL.search(question) else "Technical"})
+    return out
+
+
+def add_guide(uid: int, filename: str, data: bytes) -> dict:
+    """Load one of the user's own guides: private passages plus its numbered questions."""
+    import io
+
+    name = filename.rsplit(".", 1)[0].strip()[:100] or "My guide"
+    low = filename.lower()
+    try:
+        if low.endswith(".pdf"):
+            from pypdf import PdfReader
+
+            reader = PdfReader(io.BytesIO(data))
+            if len(reader.pages) > MAX_GUIDE_PAGES:
+                return {"ok": False, "reason": f"That file has {len(reader.pages)} pages; the limit is {MAX_GUIDE_PAGES}."}
+            pages = [(p.extract_text() or "") for p in reader.pages]
+        elif low.endswith(".docx"):
+            import docx
+
+            body = "\n".join(p.text for p in docx.Document(io.BytesIO(data)).paragraphs)
+            pages = [body[i:i + 3000] for i in range(0, len(body), 3000)] or [""]
+        else:
+            return {"ok": False, "reason": "Upload a PDF or Word (.docx) file."}
+    except Exception:
+        return {"ok": False, "reason": "Couldn't read that file. If it is a scanned PDF, it has no text to read."}
+    if sum(len(p.strip()) for p in pages) < 500:
+        return {"ok": False, "reason": "Couldn't find text in that file (it may be scanned images)."}
+    passages = chunk_pages(pages)
+    load(uid, name, passages)
+    questions = extract_questions(pages)
+    ensure_guides()
+    with connect() as conn:
+        conn.execute("DELETE FROM guide_questions WHERE user_id = ? AND source = ?", (uid, name))
+        conn.executemany(
+            "INSERT INTO guide_questions (user_id, source, location, category, question, answer) VALUES (?, ?, ?, ?, ?, ?)",
+            [(uid, name, q["location"], q["category"], q["question"], q["answer"]) for q in questions])
+    return {"ok": True, "source": name, "passages": len(passages), "questions": len(questions)}
+
+
+def remove_source(uid: int, source: str) -> dict:
+    """Remove one of this user's own private sources (shared club material cannot be removed here)."""
+    ensure_guides()
+    with connect() as conn:
+        n = conn.execute("DELETE FROM reference WHERE owner = ? AND source = ?", (str(uid), source)).rowcount
+        conn.execute("DELETE FROM guide_questions WHERE user_id = ? AND source = ?", (uid, source))
+    return {"ok": bool(n)}
+
+
+def library(uid: int) -> list[dict]:
+    """Every source this account can use, with passage and question counts."""
+    ensure_guides()
+    with connect(read_only=True) as conn:
+        counts = {r["source"]: r["n"] for r in conn.execute(
+            "SELECT source, COUNT(*) AS n FROM guide_questions WHERE user_id = ? GROUP BY source", (uid,))}
+    return [{**s, "private": bool(s["private"]), "questions": counts.get(s["source"], 0)} for s in sources(uid)]
+
+
+def guide_question(uid: int, qid: int) -> dict | None:
+    ensure_guides()
+    with connect(read_only=True) as conn:
+        row = conn.execute("SELECT * FROM guide_questions WHERE id = ? AND user_id = ?", (qid, uid)).fetchone()
+    return dict(row) if row else None
+
+
+def guide_questions(uid: int) -> list[dict]:
+    ensure_guides()
+    with connect(read_only=True) as conn:
+        return [dict(r) for r in conn.execute("SELECT * FROM guide_questions WHERE user_id = ?", (uid,))]
