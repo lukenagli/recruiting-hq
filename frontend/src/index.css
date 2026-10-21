@@ -281,7 +281,9 @@ table.progress { border-collapse: collapse; width: 100%; font-size: 14px; }
 .mic:hover { border-color: var(--blue) !important; }
 .mic svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; }
 .modal-back { position: fixed; inset: 0; background: rgba(16, 26, 46, 0.45); z-index: 60; display: grid; place-items: center; padding: 16px; }
-.modal { background: var(--card); border-radius: 16px; padding: 20px; width: min(640px, 100%); max-height: 92vh; overflow: auto; box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3); }
+.modal { background: var(--card); border-radius: 16px; padding: 20px; width: min(640px, 100%); max-height: 92vh; max-height: calc(100dvh - 32px); overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3); }
+.modal-back { overscroll-behavior: contain; }
+html.modal-open, html.modal-open body { overflow: hidden; }
 .modal .panel-head { margin-bottom: 12px; }
 .field { display: block; font-weight: 600; margin-bottom: 12px; }
 .field input { display: block; width: 100%; margin-top: 5px; padding: 9px 11px; border: 1.5px solid var(--line); border-radius: 10px; font: inherit; }

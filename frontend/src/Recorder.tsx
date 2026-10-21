@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { post } from './api'
 import type { AssistantReply } from './api'
 
@@ -53,6 +54,13 @@ export default function Recorder(props: {
   useEffect(() => () => {
     wanted.current = false
     recognition.current?.stop()
+  }, [])
+  // While the window is open the page behind it stays still, so scrolling moves only the form.
+  useEffect(() => {
+    document.documentElement.classList.add('modal-open')
+    return () => {
+      document.documentElement.classList.remove('modal-open')
+    }
   }, [])
 
   function start() {
@@ -123,7 +131,8 @@ export default function Recorder(props: {
   const clock = `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`
   const ready = who.trim().length > 1 && (mode === 'recap' || consent)
 
-  return (
+  // Drawn on <body>, above the top bar, rather than inside the page area.
+  return createPortal(
     <div className="modal-back" role="dialog" aria-modal="true">
       <div className="modal">
         <div className="panel-head">
@@ -224,6 +233,7 @@ export default function Recorder(props: {
           </>
         )}
       </div>
-    </div>
+    </div>,
+    document.body,
   )
 }
