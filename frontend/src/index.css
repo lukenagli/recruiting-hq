@@ -64,7 +64,9 @@ main :is(.card, .choice, .btn, .bubble, .table-wrap, .facts > div, .journey, .pa
 .brand-mark { background: #fff; color: var(--navy); width: 26px; height: 26px; border-radius: 7px; display: grid; place-items: center; font-weight: 800; }
 .topbar nav { display: flex; gap: 6px; }
 .topbar nav a { padding: 7px 12px; border-radius: 8px; opacity: 0.8; }
-.topbar nav a.active, .topbar nav a:hover { background: rgba(255, 255, 255, 0.14); opacity: 1; }
+.topbar nav a.active { background: rgba(255, 255, 255, 0.14); opacity: 1; }
+/* Only real mouse pointers get the hover pill: phones keep :hover on the last tapped link, which left it lit on the next page */
+@media (hover: hover) { .topbar nav a:hover { background: rgba(255, 255, 255, 0.14); opacity: 1; } }
 
 .notice { background: var(--blue-soft); border-radius: 10px; padding: 10px 14px; margin: 8px 0 14px; }
 .notice.error { background: #fde8e6; color: var(--red); }
