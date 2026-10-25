@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react'
 import type { AiSettings, HomeData } from './api'
 import GettingStarted from './GettingStarted'
-import { Loading, daysUntil, fmtDate, useApi } from './ui'
+import { Loading, daysUntil, fmtDate, useApi, useSchool } from './ui'
 
 function greeting() {
   const h = new Date().getHours()
@@ -12,6 +12,7 @@ export default function Home({ name, assistant }: { name: string; assistant: Rea
   const { data, error } = useApi<HomeData>('/api/home')
   const ai = useApi<AiSettings>('/api/settings/ai')
   const first = name.split(' ')[0]
+  const school = useSchool()
 
   return (
     <div className="home">
@@ -55,8 +56,8 @@ export default function Home({ name, assistant }: { name: string; assistant: Rea
             <svg viewBox="0 0 24 24"><path d="M12 3a3 3 0 0 0-3 3v5a3 3 0 0 0 6 0V6a3 3 0 0 0-3-3Z" /><path d="M5 11a7 7 0 0 0 14 0M12 18v3" /></svg>
           </span>
           <strong>Interview Prep</strong>
-          <span>Practice the questions real interviewers asked, by bank and by round.</span>
-          {data && <em>{data.totals.questions.toLocaleString()} questions on file</em>}
+          <span>{school.club ? 'Practice the questions real interviewers asked, by bank and by round.' : 'Practice common interview questions and technical problems, graded with worked answers.'}</span>
+          {data && data.totals.questions > 0 && <em>{data.totals.questions.toLocaleString()} questions on file</em>}
         </a>
         <a className="choice" href="#/map">
           <span className="choice-icon" aria-hidden>

@@ -48,11 +48,11 @@
     header.cover { padding: 26px 22px 22px; } header.cover h1 { font-size: 22pt; } header.cover p.pitch { font-size: 12pt; }
     h2 { font-size: 16pt; margin-top: 24px; } h3 { font-size: 12pt; margin-top: 14px; }
     table { font-size: 9pt; } th, td { padding: 4px 6px; } pre { font-size: 8.5pt; } figcaption { font-size: 8.5pt; }
-    figure img { max-height: 4.6in; object-fit: contain; object-position: top; }
-    figure.half img { max-height: 3.9in; }
+    figure img { max-height: 3.9in; object-fit: contain; object-position: top; }
+    figure.half img { max-height: 3.4in; }
     .kpi b { font-size: 16pt; }
     header.cover { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-    h2 { break-after: avoid; } figure, table, .callout, pre, svg { break-inside: avoid; }
+    h2 { break-after: avoid; } figure, table, .callout, pre, svg, .kpis { break-inside: avoid; }
     pre { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
     a { color: inherit; }
   }
@@ -258,22 +258,40 @@ assistant, plus <b>409 input and 614 output tokens</b> for the thank-you note. I
 
 <h2>5. Tokenomics</h2>
 <p>Every AI run writes its input, cached input and output tokens to the <code>agent_runs</code> table, and the
-assistant shows the count under each reply (Figure 3). The numbers below come from that table: 93 real runs, from
+assistant shows the count under each reply (Figure 3). The numbers below come from that table: 112 real runs, from
 my own recruiting use (October 13 to 20) and the demo-account runs for this report (October 25). Prices are
 gpt-6-luna's list prices used in the course: <b>$0.10 per million input tokens, $0.01 per million cached input
 tokens, $0.50 per million output tokens</b>.</p>
 <table>
   <tr><th>Agent</th><th class="n">Runs</th><th class="n">Requests / run</th><th class="n">Input</th><th class="n">Cached input</th><th class="n">Output</th><th class="n">Cost / run</th></tr>
-  <tr><td>Tracker assistant</td><td class="n">27</td><td class="n">3.3</td><td class="n">11,717</td><td class="n">8,885 (76%)</td><td class="n">625</td><td class="n">$0.00068</td></tr>
-  <tr><td>Thank-you writer</td><td class="n">7</td><td class="n">1.0</td><td class="n">468</td><td class="n">0</td><td class="n">549</td><td class="n">$0.00032</td></tr>
-  <tr><td>Cover letter writer</td><td class="n">51</td><td class="n">1.3</td><td class="n">3,352</td><td class="n">0</td><td class="n">1,689</td><td class="n">$0.00118</td></tr>
-  <tr><td>Interview grader</td><td class="n">3</td><td class="n">1.0</td><td class="n">757</td><td class="n">0</td><td class="n">335</td><td class="n">$0.00024</td></tr>
-  <tr><td>Background researcher</td><td class="n">1</td><td class="n">1.0</td><td class="n">15,886</td><td class="n">0</td><td class="n">536</td><td class="n">$0.00186*</td></tr>
-  <tr><th>All 93 logged runs</th><th class="n"></th><th class="n"></th><th class="n">508,768</th><th class="n">239,905</th><th class="n">108,383</th><th class="n">$0.084 total</th></tr>
+  <tr><td>Tracker assistant</td><td class="n">32</td><td class="n">3.3</td><td class="n">11,729</td><td class="n">9,154 (78%)</td><td class="n">561</td><td class="n">$0.00063</td></tr>
+  <tr><td>Thank-you writer</td><td class="n">8</td><td class="n">1.0</td><td class="n">463</td><td class="n">0</td><td class="n">550</td><td class="n">$0.00032</td></tr>
+  <tr><td>Cover letter writer</td><td class="n">52</td><td class="n">1.3</td><td class="n">3,313</td><td class="n">0</td><td class="n">1,676</td><td class="n">$0.00117</td></tr>
+  <tr><td>Interview grader</td><td class="n">11</td><td class="n">1.0</td><td class="n">815</td><td class="n">0</td><td class="n">319</td><td class="n">$0.00024</td></tr>
+  <tr><td>Background researcher</td><td class="n">5</td><td class="n">1.0</td><td class="n">22,554</td><td class="n">2,659 (12%)</td><td class="n">841</td><td class="n">$0.00244*</td></tr>
+  <tr><th>All 112 logged runs</th><th class="n"></th><th class="n"></th><th class="n">673,026</th><th class="n">306,216</th><th class="n">117,201</th><th class="n">$0.098 total</th></tr>
 </table>
 <p style="font-size:13.5px;color:var(--muted)">Averages are over successful runs. *Web search calls may carry a
 per-search fee on top of tokens, which the token log does not capture. Cost per run = (input − cached) × $0.10/M +
-cached × $0.01/M + output × $0.50/M.</p>
+cached × $0.01/M + output × $0.50/M. The grader and researcher samples were enlarged on October 25 with 8 more
+graded answers and 4 lookups of public bank executives.</p>
+
+<h3>Cache writes</h3>
+<p>The table leaves out one charge: writing a prompt into the cache. The course gateway bills cache writes at
+<b>$0.125 per million tokens</b>, 1.25 times the input price, and the app's log records cache reads but not writes. To
+size them, I re-ran 15 calls on the demo account and read the write counts PydanticAI reports
+(<code>cache_write_tokens</code>):</p>
+<table>
+  <tr><th>Agent</th><th class="n">Calls</th><th class="n">Input / call</th><th class="n">Cache reads</th><th class="n">Cache writes</th><th class="n">Effect on cost / call</th></tr>
+  <tr><td>Tracker assistant</td><td class="n">3</td><td class="n">10,720</td><td class="n">10,298</td><td class="n">413 (3.9%)</td><td class="n">+$0.00001 (+5%)</td></tr>
+  <tr><td>Interview grader</td><td class="n">8</td><td class="n">836</td><td class="n">0</td><td class="n">0</td><td class="n">none</td></tr>
+  <tr><td>Background researcher</td><td class="n">4</td><td class="n">24,221</td><td class="n">3,324</td><td class="n">1,142 (4.7%)</td><td class="n">+$0.00003 (+1%)</td></tr>
+</table>
+<p>Writes happen only on prompts long enough to cache (at least 1,024 tokens), and only the first time a new prefix is
+seen. Short prompts like the grader's are never written. Because a write costs just $0.025 per million more than
+ordinary input, including writes changes the totals by under 5%. Every per-run, per-user and at-scale figure in this
+section rounds to the same value. The one figure that moves is the caching saving, which drops from 57% to about 55%.
+Logging cache writes in <code>agent_runs</code> is on the next-steps list.</p>
 
 <div class="kpis">
   <div class="kpi"><b>$0.0012</b><span>one typical run: file a coffee chat and draft its thank-you note (run 73)</span></div>
@@ -285,7 +303,7 @@ cached × $0.01/M + output × $0.50/M.</p>
 <h3>Per user per month</h3>
 <p>An active first-year in peak season might, in one week, file 15 updates with the assistant, get 6 thank-you
 drafts, answer 40 practice questions, write 3 cover letters and run 2 background lookups. At the measured costs
-per run, that is 15 × $0.00068 + 6 × $0.00032 + 40 × $0.00024 + 3 × $0.00118 + 2 × $0.00186 ≈ <b>$0.029 a week,
+per run, that is 15 × $0.00063 + 6 × $0.00032 + 40 × $0.00024 + 3 × $0.00117 + 2 × $0.00244 ≈ <b>$0.029 a week,
 or about $0.13 a month</b>. A very heavy user doing three times that is about $0.40 a month. These usage counts
 are my estimate of a busy week, not a measurement across many students.</p>
 <h3>At scale</h3>
@@ -302,8 +320,8 @@ design at that size.</p>
   <li><b>Small model, strict code.</b> gpt-6-luna is the cheapest model available. Typed outputs, tool validation and
   rule checkers make up for its mistakes.</li>
   <li><b>Prompt caching.</b> The assistant's long instructions and tool definitions sit first in every request, so
-  the gateway caches them: 76% of its input tokens were cached. Without caching the same average run would cost
-  $0.00148 instead of $0.00068, so <b>caching cuts the assistant's cost by 54%</b>.</li>
+  the gateway caches them: 78% of its input tokens were cached. Without caching the same average run would cost
+  $0.00145 instead of $0.00063, so <b>caching cuts the assistant's cost by about 55%</b> once cache writes are counted.</li>
   <li><b>The model writes the least it can.</b> The thank-you note is about 85 words, but the model writes only two
   short details (468 input tokens per run on average); code supplies the rest. Technical problems are generated and solved by
   code, so the grader only explains.</li>
@@ -317,11 +335,12 @@ design at that size.</p>
 <ul>
   <li><b>The cheap model makes more tool-call mistakes.</b> In the walk-through run, luna first sent an invalid fact
   category, and the tool refused it (Figure 3, "1 not saved"). The model recovered, but that cost an extra round
-  trip. Across my 27 assistant runs the average was 3.3 model requests per run. For simple updates, the floor is 2:
+  trip. Across 32 assistant runs the average was 3.3 model requests per run. For simple updates, the floor is 2:
   one request to call the tools, one to reply.</li>
   <li><b>Capped retries leave some fixes to the student.</b> The cover letter writer gets one retry (1.3 requests on
-  average). In all 51 letter runs so far, the rule checker still flagged at least one thing for the student to fix
-  or fill in, most often a missing recruiter name or a detail the tracker does not have. That is deliberate (a
+  average). In all 52 letter runs so far, at least one flag came back for the student to fix or fill in. In 37 of
+  them the letter itself held a [[NEED: ...]] marker for a detail the tracker does not have; the others were flags
+  such as a missing recruiter name. That is deliberate (a
   flag is better than an invented recruiter), but a bigger model or more retries would hand back fewer flagged
   letters.</li>
   <li><b>Trimming history loses old context.</b> In a long conversation the assistant can forget something said more
@@ -411,6 +430,7 @@ glance instead of a memory test.</p>
   <li><b>No shared alumni directory.</b> Each student builds their own network. A shared directory would help, but bad
   data from one student would spread to everyone, so I left it out on purpose.</li>
   <li><b>The cheap model needs retries</b> (see Tokenomics). A bigger model only for cover letters may be worth it.</li>
+  <li><b>Cache writes are not logged.</b> I measured them separately (Tokenomics); the audit log should record them too.</li>
   <li><b>Hosting.</b> One server with SQLite and continuous backups is right for one club, not for thousands of users.</li>
 </ul>
 <p>With another month I would run the pilot, connect calendars, and add voice mock interviews that use the

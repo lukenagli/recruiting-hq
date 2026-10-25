@@ -37,6 +37,7 @@ MINE = "SELECT id FROM interactions WHERE user_id = ?"
 
 def _load(conn, uid: int) -> dict:
     """Everything in one user's tracker. Every query is filtered to that user."""
+    club = schools.for_user(uid, conn)["club"]
     people = _all(conn, "SELECT * FROM people WHERE user_id = ? ORDER BY name", (uid,))
     interactions = _all(conn, "SELECT * FROM interactions WHERE user_id = ? ORDER BY date = '', date, id", (uid,))
     joins = _all(conn, f"SELECT * FROM interaction_people WHERE interaction_id IN ({MINE})", (uid,))
@@ -64,11 +65,11 @@ def _load(conn, uid: int) -> dict:
         "interactions": interactions,
         "links": _all(conn, "SELECT * FROM links WHERE user_id = ?", (uid,)),
         "my_banks": {r["bank"]: r for r in _all(conn, "SELECT * FROM my_banks WHERE user_id = ?", (uid,))},
-        # The shared application tracker is the Yale SOM Finance Club's, so only club accounts get its deadlines.
-        "shared_apps": {r["bank"]: r for r in _all(conn, "SELECT * FROM applications")} if schools.for_user(uid, conn)["club"] else {},
+        # The shared application tracker and question bank are the Yale SOM Finance Club's, so only club accounts get them.
+        "shared_apps": {r["bank"]: r for r in _all(conn, "SELECT * FROM applications")} if club else {},
         "question_counts": {
             r["bank"]: r["n"] for r in _all(conn, "SELECT bank, COUNT(*) AS n FROM questions GROUP BY bank")
-        },
+        } if club else {},
     }
 
 
@@ -259,7 +260,8 @@ def home(uid: int) -> dict:
     today = date.today().isoformat()
     with connect(read_only=True) as conn:
         data = _load(conn, uid)
-        total_q = conn.execute("SELECT COUNT(*) FROM questions").fetchone()[0]
+        # the club's question bank is only counted for accounts that can see it
+        total_q = conn.execute("SELECT COUNT(*) FROM questions").fetchone()[0] if schools.for_user(uid, conn)["club"] else 0
         last_import = conn.execute("SELECT MAX(ran_at) FROM imports WHERE source = 'live_1y'").fetchone()[0]
     names = {p["id"]: p["name"] for p in data["people"]}
     chats = [i for i in data["interactions"] if i["kind"] == "coffee_chat"]
