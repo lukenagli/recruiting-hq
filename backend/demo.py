@@ -14,9 +14,9 @@ from datetime import date, datetime, timedelta
 from . import accounts, config, deals, profile, stars
 from .db import connect, init_db
 
-NAME = "Jordan Rivera"
+NAME = "Jane Doe"
 
-RESUME = """JORDAN RIVERA
+RESUME = """JANE DOE
 Yale School of Management, MBA Candidate, Class of 2028
 
 EXPERIENCE
@@ -174,8 +174,12 @@ def ensure(reset: bool = False) -> dict:
     conn = connect()
     try:
         with conn:
-            existed = bool(conn.execute("SELECT 1 FROM users WHERE email = ?", (config.DEMO_EMAIL,)).fetchone())
+            row = conn.execute("SELECT name FROM users WHERE email = ?", (config.DEMO_EMAIL,)).fetchone()
+            existed = bool(row)
             uid = _account(conn)
+            if row and row["name"] != NAME:  # the sample student was renamed: refill so every page uses the new name
+                conn.execute("UPDATE users SET name = ? WHERE id = ?", (NAME, uid))
+                reset = True
             if reset or not existed:
                 _fill(conn, uid)
     finally:
