@@ -2,7 +2,7 @@
 
 Who pays for a request:
 - a user who saved their own key (Claude, OpenAI, or their Yale class Portkey key): their key, always;
-- otherwise the site's admin account: the course key through Portkey (MODEL_NAME only);
+- otherwise the site's admin account and the demo account: the course key through Portkey (MODEL_NAME only);
 - anyone else: no model. They are asked to add their own key in Settings.
 """
 from dataclasses import dataclass
@@ -51,7 +51,7 @@ def model_for(user: dict) -> Chosen:
         if provider == "portkey":
             return Chosen(OpenAIResponsesModel(config.MODEL_NAME, provider=OpenAIProvider(openai_client=_portkey(key))), "portkey")
         return Chosen(OpenAIResponsesModel(config.USER_OPENAI_MODEL, provider=OpenAIProvider(api_key=key)), "openai")
-    if user.get("is_admin") and config.PORTKEY_API_KEY_SET:
+    if config.on_course_key(user.get("is_admin"), user.get("email", "")):
         return Chosen(get_model(), "course")
     raise NoModelError("To use the AI features, add your Yale class key (Portkey), or your own Claude or OpenAI key, in Settings. Your usage is billed to your key.")
 

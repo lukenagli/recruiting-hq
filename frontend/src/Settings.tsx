@@ -61,7 +61,7 @@ export default function Settings({ user }: { user: User }) {
             <button className="link" onClick={remove}>Remove key</button>
           </p>
         ) : data.using_site_key ? (
-          <p className="notice">As the site's admin you are using the site's own key (model {data.model}). Add your own below to use that instead.</p>
+          <p className="notice">This account uses the site's own key (model {data.model}). Add your own below to use that instead.</p>
         ) : (
           <p className="notice error">No key yet, so the AI features are off for your account.</p>
         )}

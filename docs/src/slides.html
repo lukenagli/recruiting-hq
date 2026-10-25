@@ -1,0 +1,189 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Recruiting HQ: Slides</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/reveal.js/5.1.0/reset.min.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/reveal.js/5.1.0/reveal.min.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/reveal.js/5.1.0/theme/black.min.css">
+<style>
+  :root { --r-background-color: #0b1530; --r-main-font: "Segoe UI", system-ui, sans-serif; --r-heading-font: "Segoe UI", system-ui, sans-serif;
+          --r-main-color: #e8edf8; --r-heading-color: #fff; --r-link-color: #8fb3ff; --r-main-font-size: 34px; --r-heading-text-transform: none; }
+  .reveal h1 { font-size: 2.3em; font-weight: 800; } .reveal h2 { font-size: 1.45em; font-weight: 750; margin-bottom: .5em; }
+  .reveal .kicker { color: #8fb3ff; font-size: .55em; letter-spacing: .12em; text-transform: uppercase; font-weight: 700; margin-bottom: .3em; }
+  .reveal .muted { color: #aab6d3; } .reveal small, .reveal .small { font-size: .6em; color: #aab6d3; }
+  .reveal ul { display: block; margin-left: 1em; } .reveal li { margin: .32em 0; font-size: .82em; }
+  .reveal img.shot { border-radius: 12px; box-shadow: 0 12px 40px rgba(0,0,0,.45); margin: 0; }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 30px; align-items: center; text-align: left; }
+  .cards { display: grid; grid-template-columns: repeat(4, 1fr); gap: 18px; margin-top: .6em; }
+  .card { background: #fff; color: #1b2233; border-radius: 16px; padding: 22px 18px; text-align: left; }
+  .card b { display: block; font-size: 1.35em; color: #0b1530; line-height: 1.1; } .card span { font-size: .52em; color: #5b6475; display: block; margin-top: 8px; line-height: 1.35; }
+  .tbl { font-size: .64em; margin: 0 auto; } .tbl td, .tbl th { padding: 8px 14px !important; border-bottom: 1px solid #2a3a63 !important; }
+  .tbl th { color: #8fb3ff; } .tbl td.n { text-align: right; font-variant-numeric: tabular-nums; }
+  .quote { background: #13224a; border-left: 5px solid #22c55e; border-radius: 10px; padding: 14px 20px; font-size: .6em; text-align: left; }
+  .pill { display: inline-block; background: #13224a; border: 1px solid #2a3a63; border-radius: 999px; padding: 6px 16px; margin: 6px 4px; font-size: .5em; }
+  .brandmark { display: inline-grid; place-items: center; width: 64px; height: 64px; background: #fff; color: #0b1530; border-radius: 16px; font-weight: 900; font-size: 40px; }
+  .thumb img.shot { width: 100%; height: 235px; object-fit: cover; object-position: top; }
+  svg text { font-family: "Segoe UI", system-ui, sans-serif; }
+</style>
+</head>
+<body>
+<div class="reveal"><div class="slides">
+
+<section>
+  <span class="brandmark">R</span>
+  <h1>Recruiting HQ</h1>
+  <p style="font-size:.9em">An AI agent that runs an MBA student's investment banking recruiting:<br>
+  tell it what happened, and it files it, maps it, and drafts what comes next.</p>
+  <p class="small">Luke Nagli · MGT 409 Final Project · October 2026<br>
+  <a href="https://recruiting-hq.onrender.com">recruiting-hq.onrender.com</a> · demo: demo@recruiting-hq.demo / TryRecruitingHQ-2026</p>
+</section>
+
+<section>
+  <div class="kicker">The problem</div>
+  <h2>Banking recruiting is a networking sprint, and the admin buries you</h2>
+  <div class="grid2">
+    <ul>
+      <li>A first-year talks to <b>25 to 40</b> bankers and 2Ys across 10+ banks in one fall</li>
+      <li>Each chat: log it, send a <b>club-format thank-you within a day</b>, remember who referred you</li>
+      <li>Then technical prep, a deal pitch, and a <b>cover letter per bank</b></li>
+      <li>Today: an Excel sheet, notes from memory, a 3,116-row question bank</li>
+    </ul>
+    <div>
+      <div class="cards" style="grid-template-columns:1fr 1fr">
+        <div class="card"><b>15–20 min</b><span>of admin per coffee chat (my estimate)</span></div>
+        <div class="card"><b>1–2 hrs</b><span>per cover letter, rewritten for every bank</span></div>
+      </div>
+      <p class="small" style="margin-top:1em">Roughly 15 to 30 hours a student per season, during the busiest months of the MBA.</p>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="kicker">What is new</div>
+  <h2>One agent keeps the tracker, and everything else reads from it</h2>
+  <table class="tbl">
+    <tr><th>Today's tools</th><th>What they miss</th></tr>
+    <tr><td>Excel networking sheet</td><td>All typed by hand; no referral chains</td></tr>
+    <tr><td>Huntr, Teal</td><td>Built around job postings, not a banker network</td></tr>
+    <tr><td>ChatGPT</td><td>No memory of your network; invents details</td></tr>
+    <tr><td>BIWS, Wall Street Prep</td><td>Static guides; nobody grades your answer</td></tr>
+    <tr><td>Yoodli, Otter.ai</td><td>Generic practice; notes that file nothing</td></tr>
+  </table>
+  <p style="font-size:.6em;margin-top:.8em"><span class="pill">Plain words → structured tracker</span><span class="pill">Referral map per bank</span><span class="pill">Club rules checked in code</span><span class="pill">Letters and practice use only what you logged</span></p>
+</section>
+
+<section>
+  <div class="kicker">How the agents work</div>
+  <h2>Code orchestrates; each agent gets only what it needs</h2>
+  <svg viewBox="0 0 1000 430" style="width:92%;height:auto">
+    <defs><marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#8fb3ff"/></marker></defs>
+    <rect x="10" y="165" width="140" height="90" rx="14" fill="#fff"/><text x="80" y="205" text-anchor="middle" font-size="20" font-weight="700" fill="#0b1530">Student</text><text x="80" y="230" text-anchor="middle" font-size="14" fill="#5b6475">types · pastes · drops</text>
+    <rect x="200" y="135" width="190" height="150" rx="14" fill="#13224a" stroke="#8fb3ff"/><text x="295" y="168" text-anchor="middle" font-size="19" font-weight="700" fill="#fff">Server</text>
+    <text x="295" y="196" text-anchor="middle" font-size="14" fill="#c7d2ea">sign-in · daily budget</text><text x="295" y="220" text-anchor="middle" font-size="14" fill="#c7d2ea">model + key choice</text><text x="295" y="244" text-anchor="middle" font-size="14" fill="#c7d2ea">token + step log</text><text x="295" y="268" text-anchor="middle" font-size="14" fill="#c7d2ea">undo snapshot</text>
+    <line x1="150" y1="210" x2="198" y2="210" stroke="#8fb3ff" stroke-width="2" marker-end="url(#a)"/>
+    <g font-size="15">
+      <rect x="450" y="10" width="345" height="70" rx="12" fill="#fff" stroke="#22c55e" stroke-width="4"/><text x="466" y="40" font-weight="700" fill="#0b1530" font-size="18">Tracker assistant</text><text x="466" y="64" fill="#5b6475">11 tools · the only writer · no delete/send</text>
+      <rect x="450" y="92" width="345" height="56" rx="12" fill="#fff"/><text x="466" y="126" font-weight="700" fill="#0b1530">Thank-you writer</text><text x="790" y="126" fill="#5b6475" text-anchor="end">2 details, code builds</text>
+      <rect x="450" y="160" width="345" height="56" rx="12" fill="#fff"/><text x="466" y="194" font-weight="700" fill="#0b1530">Cover letter writer</text><text x="790" y="194" fill="#5b6475" text-anchor="end">+ rule checker</text>
+      <rect x="450" y="228" width="345" height="56" rx="12" fill="#fff"/><text x="466" y="262" font-weight="700" fill="#0b1530">Interview grader</text><text x="790" y="262" fill="#5b6475" text-anchor="end">math checked by code</text>
+      <rect x="450" y="296" width="345" height="56" rx="12" fill="#fff"/><text x="466" y="330" font-weight="700" fill="#0b1530">Background researcher</text><text x="790" y="330" fill="#5b6475" text-anchor="end">web only</text>
+      <rect x="450" y="364" width="345" height="56" rx="12" fill="#fff"/><text x="466" y="398" font-weight="700" fill="#0b1530">Deal fact finder</text><text x="790" y="398" fill="#5b6475" text-anchor="end">every number sourced</text>
+    </g>
+    <g stroke="#8fb3ff" stroke-width="1.8" fill="none" marker-end="url(#a)"><path d="M390 180 C420 120,420 45,448 45"/><path d="M390 195 C420 160,420 120,448 120"/><path d="M390 210 L448 188"/><path d="M390 230 C420 245,420 256,448 256"/><path d="M390 250 C420 300,420 324,448 324"/><path d="M390 270 C420 340,420 392,448 392"/></g>
+    <rect x="830" y="140" width="165" height="140" rx="14" fill="#fff"/><text x="912" y="180" text-anchor="middle" font-size="19" font-weight="700" fill="#0b1530">Your tracker</text><text x="912" y="208" text-anchor="middle" font-size="14" fill="#5b6475">people · chats · arrows</text><text x="912" y="230" text-anchor="middle" font-size="14" fill="#5b6475">bank facts · deals</text><text x="912" y="252" text-anchor="middle" font-size="14" fill="#5b6475">per-user rows</text>
+    <path d="M795 45 C820 45,815 160,828 175" stroke="#22c55e" stroke-width="3" fill="none" marker-end="url(#a)"/>
+  </svg>
+  <p class="small">All agents run on gpt-6-luna (course key via Portkey; students can bring their own key). Typed outputs, validated tools.</p>
+</section>
+
+<section>
+  <div class="kicker">Demo · one real run</div>
+  <h2>One sentence in: 5 changes, a thank-you draft, 21.5 seconds</h2>
+  <div class="grid2" style="grid-template-columns:1.25fr 1fr">
+    <img class="shot" src="screenshots/run_thread.jpg" alt="Assistant run">
+    <ul style="font-size:.95em">
+      <li><code>lookup</code> finds Hannah Park</li>
+      <li><code>save_fact</code> <span style="color:#f87171">refused</span> (bad category), retried</li>
+      <li><code>save_person</code> Will Grant · <code>save_entry</code> chat</li>
+      <li><code>connect_steps</code> Hannah → Will</li>
+      <li>Thank-you writer: club template, send Mon 9:00 AM</li>
+      <li class="small">15,289 in (11,042 cached) · 687 out · Undo available</li>
+    </ul>
+  </div>
+</section>
+
+<section>
+  <div class="kicker">Demo · the rest of the app</div>
+  <div class="grid2 thumb" style="gap:14px 22px">
+    <div><img class="shot" src="screenshots/map.jpg" alt="Recruiting map"><p class="small" style="margin:.3em 0">Recruiting Map: stage, what's waiting, next deadline</p></div>
+    <div><img class="shot" src="screenshots/bank_evercore_crop.jpg" alt="Bank journey"><p class="small" style="margin:.3em 0">Each bank's journey: chat → dinner → application</p></div>
+    <div><img class="shot" src="screenshots/practice_graded.jpg" alt="Practice"><p class="small" style="margin:.3em 0">Practice: new numbers each time, answer checked by code</p></div>
+    <div><img class="shot" src="screenshots/letter_written_crop.jpg" alt="Cover letter"><p class="small" style="margin:.3em 0">Cover letters from what you logged, with gaps flagged</p></div>
+  </div>
+</section>
+
+<section>
+  <div class="kicker">Cost to run · measured from 93 logged runs</div>
+  <h2>About a tenth of a cent per run</h2>
+  <div class="cards">
+    <div class="card"><b>$0.0012</b><span>file a chat + draft the thank-you (real run)</span></div>
+    <div class="card"><b>~$0.13</b><span>per active student per month</span></div>
+    <div class="card"><b>~$20/mo</b><span>100 students, incl. $7 hosting</span></div>
+    <div class="card"><b>~$1,450/mo</b><span>10,000 students, incl. bigger servers</span></div>
+  </div>
+  <ul style="margin-top:.9em">
+    <li><b>Prompt caching:</b> 76% of the assistant's input cached → <b>54% cheaper</b> per run</li>
+    <li>The model writes only what code can't: 2 details of a thank-you, never the math</li>
+    <li><b>Trade-off:</b> the cheap model needs retries (3.3 requests per assistant run; every letter came back with at least one flag to fix)</li>
+  </ul>
+  <p class="small">gpt-6-luna: $0.10/M input · $0.01/M cached · $0.50/M output</p>
+</section>
+
+<section>
+  <div class="kicker">Safety</div>
+  <h2>The injected email got filed, and nothing in it ran</h2>
+  <div class="grid2" style="grid-template-columns:1.2fr 1fr">
+    <img class="shot" src="screenshots/safety_injection.jpg" alt="Prompt injection refused">
+    <ul style="font-size:.9em">
+      <li><b>No delete or send tools</b>, so an injection has nothing dangerous to call. Contacts: 6 before, 6 after</li>
+      <li>Every row scoped to the signed-in user</li>
+      <li>Off-topic and stock tips refused</li>
+      <li><b>Daily budget</b> 400k tokens/account → HTTP 429 (tested)</li>
+      <li><b>Run caps</b> stop loops (tested) · <b>Undo</b> restores (tested)</li>
+      <li>Nothing is ever sent for you: drafts only</li>
+    </ul>
+  </div>
+</section>
+
+<section>
+  <div class="kicker">Impact</div>
+  <h2>A real user: me, since October 13</h2>
+  <div class="cards">
+    <div class="card"><b>53</b><span>people tracked across 12 banks</span></div>
+    <div class="card"><b>27</b><span>coffee chats + 10 events filed by the agent</span></div>
+    <div class="card"><b>72</b><span>AI runs for about 8 cents in total</span></div>
+    <div class="card"><b>~2 min</b><span>per chat instead of 15–20 (estimate)</span></div>
+  </div>
+  <p style="font-size:.7em;margin-top:1em">About <b>13 to 26 hours saved per student</b> per season on chats and letters (my estimates against measured app times).
+  If 50 first-years used it, that would be on the order of 1,000 hours for about $20 a month.</p>
+</section>
+
+<section>
+  <div class="kicker">What's next</div>
+  <h2>From my tracker to the whole club</h2>
+  <ul>
+    <li><b>Pilot with 5 to 10 Finance Club first-years</b> during interview season, timed against the spreadsheet</li>
+    <li>Calendar and Outlook connection, so scheduled chats file themselves</li>
+    <li>Voice mock interviews from the questions classmates logged for that exact bank and round</li>
+    <li>Other schools (the code keeps school settings switchable) and Postgres for scale</li>
+  </ul>
+  <p class="small" style="margin-top:1.4em">Try it: recruiting-hq.onrender.com · demo@recruiting-hq.demo / TryRecruitingHQ-2026 · github.com/lukenagli/recruiting-hq</p>
+</section>
+
+</div></div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/reveal.js/5.1.0/reveal.min.js"></script>
+<script>Reveal.initialize({ hash: true, width: 1280, height: 760, margin: 0.05, transition: "slide" });</script>
+</body>
+</html>

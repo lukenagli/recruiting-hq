@@ -27,6 +27,10 @@ APP_SECRET_FILE = ROOT / "data" / ".app_secret"
 PORTKEY_API_KEY_SET = bool(os.getenv("PORTKEY_API_KEY", "").strip())
 # Most tokens (input + output) one account may use per day across all AI features.
 DAILY_TOKEN_BUDGET = int(os.getenv("DAILY_TOKEN_BUDGET", "400000"))
+# The shared demo account for the teaching staff (backend/demo.py). It runs on the course key like the admin, under the
+# same daily budget, and is not a Yale address, so it never sees the Finance Club's own material.
+DEMO_EMAIL = "demo@recruiting-hq.demo"
+DEMO_PASSWORD = os.getenv("DEMO_PASSWORD", "TryRecruitingHQ-2026")
 # Real recruiting files stay on the owner's machine; the repo ships a made-up sample set.
 PRIVATE_BANKS_DIR = ROOT / "Recruiting Files" / "Interview Question Banks"
 SAMPLE_BANKS_DIR = ROOT / "data" / "sample" / "Interview Question Banks"
@@ -41,6 +45,11 @@ def banks_dir() -> Path:
     if os.getenv("USE_SAMPLE_DATA", "").strip() == "1" or not PRIVATE_BANKS_DIR.is_dir():
         return SAMPLE_BANKS_DIR
     return PRIVATE_BANKS_DIR
+
+
+def on_course_key(is_admin, email: str) -> bool:
+    """Accounts that run on the site owner's course key: the admin and the demo account."""
+    return PORTKEY_API_KEY_SET and (bool(is_admin) or (email or "").lower() == DEMO_EMAIL)
 
 
 def portkey_api_key() -> str:
