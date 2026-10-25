@@ -8,6 +8,7 @@ set relative to today, so there is always a thank-you owed, a chat coming up and
 the course key (config.on_course_key) under the normal daily token budget, and its address is not a Yale one, so the
 Finance Club's question bank, tracker and calendar are never shown to it.
 """
+import json
 import sys
 from datetime import date, datetime, timedelta
 
@@ -15,6 +16,8 @@ from . import accounts, config, deals, profile, stars
 from .db import connect, init_db
 
 NAME = "Jane Doe"
+# Bump when the sample below changes: the hosted site refills the demo account once on its next start.
+SAMPLE_VERSION = "2"
 
 RESUME = """JANE DOE
 Yale School of Management, MBA Candidate, Class of 2028
@@ -53,6 +56,9 @@ PEOPLE = [
     ("Sofia Marino", "Associate", "Morgan Stanley", "Technology", "yes", "outreach", 6, "Yale SOM '23. Introduced by Alex Chen."),
     ("Ben Okafor", "Associate", "Lazard", "M&A", "yes", "outreach", 8, "Yale SOM '24. Replied the same day."),
     ("Hannah Park", "Vice President", "Moelis", "Consumer & Retail", "no", "outreach", 10, "No reply yet; follow up after the weekend."),
+    ("Nina Alvarez", "2Y", "Lazard", "M&A", "student", "classmate", None, "Summered at Lazard in M&A. Put me in touch with Ben Okafor."),
+    ("Sam Ortiz", "2Y", "Moelis", "Consumer & Retail", "student", "classmate", None, "Summered at Moelis in Consumer & Retail."),
+    ("Rachel Kim", "Vice President", "Goldman Sachs", "Technology", "no", "event", None, "Met at the Goldman Sachs Technology info session."),
 ]
 
 # key, bank, kind, title, days from today, date note, format, status, thank-you, invite only, people, summary
@@ -69,6 +75,16 @@ CHATS = [
      "Sofia covers internet and software. We talked about the Activision deal and how her team thinks about AI capex. "
      "She asked why tech over consumer; suggested I reach out to her VP before the application."),
     ("ben", "Lazard", "coffee_chat", "Coffee chat with Ben Okafor", 3, "2:00 PM ET", "Zoom", "upcoming", "", "", ["Ben Okafor"], ""),
+    ("nina", "Lazard", "coffee_chat", "Coffee chat with Nina Alvarez", -7, "", "In person", "done", "sent", "", ["Nina Alvarez"],
+     "Nina said Lazard's M&A deal teams are small, so summer associates get early client exposure. She said bankers there "
+     "like candidates who can speak with conviction about a sector they know, and suggested I connect my consumer and "
+     "software modeling to that. She offered to introduce me to Ben Okafor."),
+    ("sam", "Moelis", "coffee_chat", "Coffee chat with Sam Ortiz", -6, "", "In person", "done", "sent", "", ["Sam Ortiz"],
+     "Sam said Moelis teams are lean, so summers build models from scratch and sit in on client calls. He liked that I "
+     "had built a three-statement model for a real acquisition and said to lead with it. Suggested I follow up with Hannah Park."),
+    ("rachel", "Goldman Sachs", "coffee_chat", "Coffee chat with Rachel Kim", -4, "", "Zoom", "done", "sent", "", ["Rachel Kim"],
+     "Met Rachel at the Technology info session and followed up for a chat. She covers enterprise software and talked "
+     "about how her team staffs summers on live deals early. She asked how my FP&A work would translate to diligence."),
 ]
 
 QUESTIONS = {
@@ -81,6 +97,8 @@ QUESTIONS = {
 LINKS = [  # bank, from, to, label
     ("Evercore", "chat:priya", "chat:dinner", "invited me to the dinner"),
     ("Morgan Stanley", "chat:alex", "person:Sofia Marino", "introduced me"),
+    ("Lazard", "chat:nina", "person:Ben Okafor", "introduced me"),
+    ("Moelis", "chat:sam", "person:Hannah Park", "suggested I reach out"),
 ]
 
 FACTS = [  # bank, category, fact
@@ -109,6 +127,152 @@ STORIES = {
                  "reflection": "Agreeing the outputs on day one kept the last night calm."},
 }
 
+
+# Cover letter drafts, written by the app's own cover letter writer (gpt-6-luna) from this tracker on 2026-10-25,
+# with three small hand fixes. [[NEED: ...]] markers are gaps the writer left rather than invent something.
+LETTERS = {  # bank: (paragraphs, warnings shown above the letter)
+    'Evercore': (
+        [
+            "My name is Jane Doe, and I am a first-year MBA candidate at the Yale School of Management writing to express"
+            " my interest in the Investment Banking Summer Associate role at Evercore. I am drawn to Evercore’s "
+            "generalist summer program because it offers the opportunity to build an investment banking skill set across "
+            "industries before joining a group. In speaking with Priya Raman, I learned that summer associates begin as "
+            "generalists and are later staffed by group. She also explained that Evercore’s role as an independent "
+            "advisor, without lending conflicts, shapes how clients use the firm. That independence and the chance to "
+            "develop a broad advisory foundation resonate with my goal of moving from corporate-side acquisition analysis"
+            " to advising companies on the other side of the table.",
+            "At Brightline Consumer Brands, where I worked as a Senior Financial Analyst for four years, I built the "
+            "three-statement model behind a $40 million bolt-on acquisition of a regional snack brand and presented the "
+            "returns to the CFO. Modeling consumer and software acquisitions from the corporate side has given me a "
+            "practical understanding of how companies assess strategic transactions; I now want to apply that perspective"
+            " in an advisory role. Priya Raman’s feedback on my bolt-on model reinforced the relevance of that experience"
+            " and prompted me to sharpen how I articulate my motivation for advisory. Evercore’s generalist program "
+            "particularly appeals to me as a way to broaden my transaction skills across industries before specializing "
+            "by group.",
+            "My other work at Brightline strengthened the analytical and execution skills I would bring to investment "
+            "banking. I ran the annual budget for a $300 million division and reduced forecast error from 9% to 3% by "
+            "rebuilding the driver model. I also led a five-person team that replaced spreadsheet-based monthly reporting"
+            " with a BI dashboard, saving 30 hours each month. Earlier, as a Credit Analyst at Midwest Regional Bank, I "
+            "underwrote 25 middle-market loans ranging from $5 million to $30 million and wrote credit memos for the loan"
+            " committee. Together, these experiences prepared me to analyze businesses carefully, communicate financial "
+            "conclusions, and contribute across a range of transactions and industries in Evercore’s generalist program.",
+            "Thank you to Priya Raman for sharing her perspective on Evercore and the summer associate experience. I am "
+            "excited about beginning my investment banking career at Evercore and look forward to discussing my "
+            "candidacy.",
+        ],
+        ["no recruiter name yet, so it is addressed to Hiring Manager; the guidance says to address it to the firm's recruiter"],
+    ),
+    'Morgan Stanley': (
+        [
+            "My name is Jane Doe, and I am a first-year MBA candidate at the Yale School of Management writing to express"
+            " my interest in the Investment Banking Summer Associate role in Morgan Stanley’s Technology group. I am "
+            "drawn to Technology because I have spent four years modeling consumer and software acquisitions from the "
+            "corporate side and want to advise companies from the other side of the table. In speaking with Sofia Marino,"
+            " I discussed the Activision deal and how her team thinks about AI capex; [[NEED: what those conversations "
+            "showed you about Morgan Stanley or its Technology group]]. Alex Chen explained that summer associates are "
+            "placed in one group from day one. That focused staffing model appeals to me as I seek to build deep "
+            "experience in technology investment banking.",
+            "At Brightline Consumer Brands, I built the three-statement model behind a $40 million bolt-on acquisition of"
+            " a regional snack brand and presented the returns to the CFO. That work gave me direct experience evaluating"
+            " an acquisition from the company’s perspective, and it strengthened my interest in helping clients assess "
+            "strategic transactions as an advisor. I would bring that transaction modeling experience to the group while "
+            "developing the advisory perspective I am pursuing at Yale.",
+            "I also ran the annual budget for a $300 million division and cut forecast error from 9% to 3% by rebuilding "
+            "the driver model. Separately, I led a five-person team in moving monthly reporting from spreadsheets to a BI"
+            " dashboard, saving 30 hours each month. These projects required me to improve financial analysis and "
+            "reporting processes while taking responsibility for delivering work with a team. Earlier, as a credit "
+            "analyst at Midwest Regional Bank, I underwrote 25 middle-market loans ranging from $5 million to $30 million"
+            " and wrote credit memos for the loan committee. Together, these experiences have prepared me to contribute "
+            "analytical rigor, modeling experience, and a collaborative approach to Morgan Stanley’s Technology group.",
+            "Thank you to Sofia Marino and Alex Chen for sharing their perspectives. I am excited about beginning my "
+            "investment banking career at Morgan Stanley and look forward to discussing my candidacy.",
+        ],
+        ["needs your input: what those conversations showed you about Morgan Stanley or its Technology group", "no recruiter name yet, so it is addressed to Hiring Manager; the guidance says to address it to the firm's recruiter"],
+    ),
+    'Lazard': (
+        [
+            "My name is Jane Doe, and I am a first-year MBA candidate at the Yale School of Management writing to express"
+            " my interest in the Investment Banking Summer Associate role in Lazard’s M&A group. I am drawn to Lazard by "
+            "what Nina Alvarez shared about its M&A deal teams: their small size gives summer associates early client "
+            "exposure, and bankers value candidates who can speak with conviction about a sector they know. That "
+            "perspective resonated with my four years modeling consumer and software acquisitions from the corporate side"
+            " and my desire to become the advisor on the other side of the table. I would be excited to bring that sector"
+            " and transaction experience to Lazard while developing as an M&A advisor and contributing in client-facing "
+            "settings.",
+            "At Brightline Consumer Brands, I built the three-statement model behind a $40 million bolt-on acquisition of"
+            " a regional snack brand and presented the returns to the CFO. Working through the transaction gave me direct"
+            " experience translating operating assumptions into an acquisition model and communicating its outcomes to "
+            "senior leadership. I also ran the annual budget for a $300 million division and cut forecast error from 9% "
+            "to 3% by rebuilding the driver model. These projects strengthened the analytical discipline I would bring to"
+            " evaluating transactions and supporting M&A clients.",
+            "I also led a five-person team that moved Brightline’s monthly reporting from spreadsheets to a BI dashboard,"
+            " saving 30 hours each month. Leading that rebuild required coordinating a team around a more effective "
+            "reporting process, while deepening my ability to turn financial information into usable analysis. Earlier, "
+            "as a credit analyst at Midwest Regional Bank, I underwrote 25 middle-market loans ranging from $5 million to"
+            " $30 million and wrote credit memos for the loan committee. Together, my acquisition modeling, forecasting, "
+            "reporting, and underwriting experience has prepared me to contribute a rigorous financial perspective and a "
+            "strong foundation for Lazard’s M&A work.",
+            "Thank you to Nina Alvarez for sharing her perspective on Lazard’s M&A team and what it values. I am excited "
+            "about beginning my investment banking career at Lazard and look forward to discussing my candidacy.",
+        ],
+        ["no recruiter name yet, so it is addressed to Hiring Manager; the guidance says to address it to the firm's recruiter"],
+    ),
+    'Moelis': (
+        [
+            "My name is Jane Doe, and I am a first-year MBA candidate at the Yale School of Management writing to express"
+            " my interest in the Investment Banking Summer Associate role in Moelis’s Consumer & Retail group. I am drawn"
+            " to Moelis by what Sam Ortiz shared about its lean teams: summer associates build models from scratch and "
+            "sit in on client calls, gaining direct responsibility and client exposure. Sam also said he liked that I had"
+            " built a three-statement model for a real acquisition and encouraged me to lead with that experience. "
+            "Consumer & Retail is a strong fit for my four years modeling consumer and software acquisitions from the "
+            "corporate side; I am eager to bring that perspective to the advisor’s side of the table.",
+            "As a Senior Financial Analyst at Brightline Consumer Brands, I built the three-statement model behind a $40 "
+            "million bolt-on acquisition of a regional snack brand and presented the returns to the CFO. Developing the "
+            "model for a real transaction gave me experience connecting operating assumptions to acquisition economics "
+            "and clearly communicating the resulting analysis. That work is directly relevant to advising consumer "
+            "businesses through important strategic decisions, and it is the experience Sam encouraged me to emphasize. I"
+            " also ran the annual budget for a $300 million division and rebuilt its driver model, reducing forecast "
+            "error from 9% to 3%. This strengthened my ability to identify the assumptions that drive performance and to "
+            "produce rigorous, decision-useful analysis.",
+            "I also led a five-person team in moving monthly reporting from spreadsheets to a BI dashboard, saving 30 "
+            "hours each month. The project required organizing a team around a practical analytical improvement and "
+            "delivering a more efficient reporting process. Earlier, as a Credit Analyst at Midwest Regional Bank, I "
+            "underwrote 25 middle-market loans ranging from $5 million to $30 million and wrote credit memos for the loan"
+            " committee. That experience developed my ability to assess financial information and present conclusions "
+            "clearly. Together, these roles have built the analytical foundation, transaction perspective, and "
+            "communication skills I hope to bring to Moelis’s Consumer & Retail group.",
+            "Thank you to Sam Ortiz for sharing his perspective on Moelis and its summer associate experience. I am "
+            "excited about beginning my investment banking career at Moelis and look forward to discussing my candidacy.",
+        ],
+        ["no recruiter name yet, so it is addressed to Hiring Manager; the guidance says to address it to the firm's recruiter"],
+    ),
+    'Goldman Sachs': (
+        [
+            "My name is Jane Doe, and I am a first-year MBA candidate at the Yale School of Management writing to express"
+            " my interest in the Investment Banking Summer Associate role in Goldman Sachs’ Technology group. In speaking"
+            " with Rachel Kim, I learned that the team staffs summer associates on live deals early, an approach that "
+            "would allow me to build transaction judgment through active deal work. Her question about how my FP&A "
+            "experience would translate to diligence sharpened my interest in bringing an operating-side perspective to "
+            "technology transactions. [[NEED: one additional reason Goldman Sachs appeals to you]]",
+            "At Brightline Consumer Brands, I spent four years in finance roles that brought me close to the decisions "
+            "behind acquisitions and business performance. I built the three-statement model for a $40 million bolt-on "
+            "acquisition of a regional snack brand and presented the returns to the CFO. That work, alongside modeling "
+            "consumer and software acquisitions from the corporate side, made me want to become the advisor on the other "
+            "side of the table. It also taught me to connect a transaction’s assumptions to operating "
+            "realities—experience I would bring to diligence and analysis in the Technology group.",
+            "I also ran the annual budget for a $300 million division and rebuilt its driver model, reducing forecast "
+            "error from 9% to 3%. Leading a five-person team to move monthly reporting from spreadsheets to a BI "
+            "dashboard further strengthened my ability to organize financial information and improve how teams use it; "
+            "the rebuild saves 30 hours each month. Earlier, as a credit analyst at Midwest Regional Bank, I underwrote "
+            "25 middle-market loans ranging from $5 million to $30 million and prepared credit memos for the loan "
+            "committee. Together, these experiences have developed my modeling, analytical and communication skills and "
+            "prepared me to contribute to Technology deal teams while continuing to grow as an investment banker.",
+            "Thank you to Rachel Kim and the Goldman Sachs team for their time and insight. I am excited about beginning "
+            "my investment banking career at Goldman Sachs and look forward to discussing my candidacy.",
+        ],
+        ["needs your input: one additional reason Goldman Sachs appeals to you", "no recruiter name yet, so it is addressed to Hiring Manager; the guidance says to address it to the firm's recruiter"],
+    ),
+}
 
 def _day(offset: int | None) -> str:
     return (date.today() + timedelta(days=offset)).isoformat() if offset is not None else ""
@@ -165,6 +329,9 @@ def _fill(conn, uid: int) -> None:
     deal_id = deals.ensure_deal(conn, uid, DEAL, "Morgan Stanley, Evercore")
     for section, label, value, source in DEAL_POINTS:
         deals.set_point(conn, deal_id, section, label, value, source)
+    for bank, (paragraphs, warnings) in LETTERS.items():
+        conn.execute("""INSERT INTO cover_letters (user_id, bank, paragraphs, warnings, edited, created_at, updated_at)
+                        VALUES (?, ?, ?, ?, 0, ?, ?)""", (uid, bank, json.dumps(paragraphs), json.dumps(warnings), now, now))
 
 
 def ensure(reset: bool = False) -> dict:
@@ -180,6 +347,10 @@ def ensure(reset: bool = False) -> dict:
             if row and row["name"] != NAME:  # the sample student was renamed: refill so every page uses the new name
                 conn.execute("UPDATE users SET name = ? WHERE id = ?", (NAME, uid))
                 reset = True
+            stored = conn.execute("SELECT value FROM app_settings WHERE key = 'demo_sample_version'").fetchone()
+            if existed and (stored["value"] if stored else "") != SAMPLE_VERSION:
+                reset = True
+            conn.execute("INSERT OR REPLACE INTO app_settings (key, value) VALUES ('demo_sample_version', ?)", (SAMPLE_VERSION,))
             if reset or not existed:
                 _fill(conn, uid)
     finally:

@@ -20,8 +20,9 @@ It is built for the Yale SOM Finance Club. I use it for my own banking recruitin
 
 1. Open https://recruiting-hq.onrender.com and log in with the demo account above.
    Recruiting HQ is a paid always-on instance, so it does not go to sleep.
-2. The demo account belongs to a made-up first-year, Jane Doe, whose tracker already has five banks, seven
-   contacts, coffee chats, a deal and two interview stories. Everyone in it is invented.
+2. The demo account belongs to a made-up first-year, Jane Doe, whose tracker already has five banks, ten
+   contacts, a coffee chat at every bank, a cover letter draft for each bank, a deal and two interview stories.
+   Everyone in it is invented.
 3. Things to try:
    - **Home → "Anything happen?"**: type something like *"Had a Zoom coffee chat with Hannah Park at Moelis today.
      She said summers start as generalists. She suggested I reach out to Will Grant on her team."* Under the reply,
