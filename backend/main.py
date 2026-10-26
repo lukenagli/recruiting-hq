@@ -726,6 +726,36 @@ async def upload_question_bank(file: UploadFile, user: dict = Depends(admin_user
     return out
 
 
+@app.post("/api/admin/question-bank/dedupe")
+def dedupe_question_bank(user: dict = Depends(admin_user)):
+    """Keep one copy of each question per bank in the shared question bank."""
+    init_db()
+    with connect() as conn:
+        return importer.dedupe_questions(conn)
+
+
+class SharedQuestion(BaseModel):
+    question: str
+    bank: str
+    qtype: str = "Technical"
+    round: str = "Unknown"
+    grp: str = ""
+    interviewer: str = ""
+    year: str = ""
+    answer_notes: str = ""
+
+
+class SharedQuestions(BaseModel):
+    source: str  # where they came from, e.g. "2Y notes: JPM first-round chats"
+    questions: list[SharedQuestion]
+
+
+@app.post("/api/admin/question-bank/add")
+def add_shared_questions(req: SharedQuestions, user: dict = Depends(admin_user)):
+    """Add questions the admin collected (for example a 2Y's write-up) to the shared question bank, skipping any it has."""
+    return importer.add_questions(req.source, [q.model_dump() for q in req.questions])
+
+
 class ReferenceUpload(BaseModel):
     source: str
     passages: list[dict]

@@ -26,6 +26,7 @@ from . import practice_bank as pb
 from . import reference as answer_library
 from . import profile as user_profile
 from .db import connect, init_db
+from .importer import same_question
 from .llm import Chosen, usage_dict
 
 CATEGORIES = {  # what the user picks -> question types in the bank
@@ -157,6 +158,18 @@ def _level(strength: tuple[float, int] | None) -> str:
     return "hard" if strength[0] >= 0.8 else "medium" if strength[0] >= 0.5 else "easy"
 
 
+def _fresh(uid: int, pool: list[dict]) -> list[dict]:
+    """One copy of each question (the same wording asked at several banks counts once), leaving out questions this
+    user has already answered in any session, until they have answered everything that fits their filters."""
+    with connect(read_only=True) as conn:
+        done = {same_question(r["question"]) for r in conn.execute("SELECT question FROM prep_attempts WHERE user_id = ?", (uid,))}
+    unique: dict[str, dict] = {}
+    for q in pool:
+        unique.setdefault(same_question(q["question"]), q)
+    new = [q for k, q in unique.items() if k not in done]
+    return new or list(unique.values())
+
+
 def next_question(uid: int, categories: list[str], topics: list[str], stage: str, difficulty: str, bank: str,
                   seen: list[str], like: dict | None = None, club: bool = True) -> dict | None:
     """One question matching the filters, not already in `seen`. Without `club`, the school question bank is left out."""
@@ -188,6 +201,7 @@ def next_question(uid: int, categories: list[str], topics: list[str], stage: str
         pool += [q for q in map(_guide_question, answer_library.guide_questions(uid))
                  if q["key"] not in seen_set and q["category"] in categories]
     pool = [q for q in pool if q["category"] != "Technical" or q["topic"] in topics]
+    pool = _fresh(uid, pool)
 
     def allowed(topic: str) -> set[str]:
         if stage in STAGE_DIFFICULTY:

@@ -4,6 +4,7 @@ Run with:  python -m backend.importer
 Safe to re-run: a question already in the database is skipped, so each run reports only what is new.
 """
 import hashlib
+import re
 import sys
 from datetime import date, datetime
 from pathlib import Path
@@ -126,9 +127,76 @@ def _dedupe_key(q: dict) -> str:
     return hashlib.sha256("|".join(p.lower() for p in parts).encode("utf-8")).hexdigest()
 
 
-def _save_questions(conn, source: str, path: Path, questions: list[dict], now: str) -> dict:
-    new = 0
+FILLER = re.compile(r"^(?:can|could|would) you (?:please )?|^please |\(edited\)|\bthe\b|\ba\b|\ban\b")
+
+
+def same_question(text: str) -> str:
+    """A question's wording reduced to what makes it a different question: case, punctuation, articles and polite
+    openers ("Can you…") are ignored, so the same question copied into several club sheets is recognised as one."""
+    text = re.sub(r"[^a-z0-9%$ ]+", " ", nz.clean(text).lower().replace("&", " and "))
+    return " ".join(FILLER.sub(" ", " ".join(text.split())).split())
+
+
+def _known(conn) -> set[tuple[str, str]]:
+    return {(same_question(r["question"]), r["bank"]) for r in conn.execute("SELECT question, bank FROM questions")}
+
+
+def dedupe_questions(conn) -> dict:
+    """Keep one copy of each question per bank (the first one stored), filling its empty details from the copies."""
+    rows = [dict(r) for r in conn.execute("SELECT * FROM questions ORDER BY id")]
+    keep: dict[tuple[str, str], dict] = {}
+    removed = 0
+    for r in rows:
+        k = (same_question(r["question"]), r["bank"])
+        first = keep.get(k)
+        if first is None:
+            keep[k] = r
+            continue
+        for col in ("grp", "interviewer", "topic", "answer_notes", "office", "year"):
+            if not (first[col] or "").strip() and (r[col] or "").strip():
+                first[col] = r[col]
+                conn.execute(f"UPDATE questions SET {col} = ? WHERE id = ?", (r[col], first["id"]))
+        if first["round"] in ("", "Unknown") and r["round"] not in ("", "Unknown"):
+            first["round"] = r["round"]
+            conn.execute("UPDATE questions SET round = ? WHERE id = ?", (r["round"], first["id"]))
+        conn.execute("DELETE FROM questions WHERE id = ?", (r["id"],))
+        removed += 1
+    return {"before": len(rows), "removed": removed, "after": len(rows) - removed}
+
+
+def add_questions(label: str, questions: list[dict]) -> dict:
+    """Questions the admin entered by hand (e.g. from a 2Y's write-up), saved like an imported sheet."""
+    init_db()
+    clean = []
     for q in questions:
+        text = nz.clean(q.get("question"))
+        if not text:
+            continue
+        clean.append({"source": "live_2y", "year": nz.optional(q.get("year")), "qtype": nz.qtype(q.get("qtype")),
+                      "bank": nz.bank(q.get("bank")), "office": "", "grp": nz.optional(q.get("grp")),
+                      "round": nz.round_(q.get("round")), "interviewer": nz.optional(q.get("interviewer")), "topic": "",
+                      "question": text, "answer_notes": nz.optional(q.get("answer_notes"))})
+    now = datetime.now().isoformat(timespec="seconds")
+    with connect() as conn:
+        new = _insert(conn, clean, now)
+        conn.execute("INSERT INTO imports (source, file, file_mtime, rows_read, rows_new, ran_at) VALUES ('manual', ?, ?, ?, ?, ?)",
+                     (label[:120], now, len(clean), new, now))
+    return {"source": label, "rows_read": len(clean), "rows_new": new}
+
+
+def _save_questions(conn, source: str, path: Path, questions: list[dict], now: str) -> dict:
+    return _log(conn, source, path, len(questions), _insert(conn, questions, now), now)
+
+
+def _insert(conn, questions: list[dict], now: str) -> int:
+    """Store the questions not already stored for their bank; returns how many were new."""
+    new = 0
+    known = _known(conn)
+    for q in questions:
+        k = (same_question(q["question"]), q["bank"])
+        if k in known:  # already stored for this bank, perhaps from another club sheet
+            continue
+        known.add(k)
         cur = conn.execute(
             """INSERT OR IGNORE INTO questions
                (source, year, qtype, bank, office, grp, round, interviewer, topic, question,
@@ -138,7 +206,7 @@ def _save_questions(conn, source: str, path: Path, questions: list[dict], now: s
             {**q, "dedupe_key": _dedupe_key(q), "first_seen": now},
         )
         new += cur.rowcount
-    return _log(conn, source, path, len(questions), new, now)
+    return new
 
 
 def _save_applications(conn, path: Path, apps: list[dict], now: str) -> dict:
