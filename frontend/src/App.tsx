@@ -1,8 +1,10 @@
 import { useEffect, useState } from 'react'
 import Assistant from './Assistant'
 import BankView from './BankView'
+import CatchUp from './CatchUp'
 import Deals from './Deals'
 import Home from './Home'
+import HomeNext from './HomeNext'
 import Letters from './Letters'
 import Login, { VerifyEmail } from './Login'
 import { get, post } from './api'
@@ -11,6 +13,7 @@ import MapView from './MapView'
 import Prep from './Prep'
 import Settings from './Settings'
 import Setup from './Setup'
+import Start from './Start'
 import Tour from './Tour'
 import { PreviewContext, SchoolContext, useSchool } from './ui'
 
@@ -91,12 +94,16 @@ export default function App() {
   const isHome = !section
   // Each section gets its own photo along the top, fading into the navy page.
   const backdrop = ({ prep: 'harkness', map: 'yale-night', bank: 'yale-night', deals: 'nyse', letters: 'sterling', settings: 'yale-night' } as Record<string, string>)[section ?? '']
-  let page = <Home name={user.name} assistant={<Assistant key={`inline-${user.id}-${version}`} inline userId={user.id} onChanged={() => setVersion((v) => v + 1)} />} />
+  const inlineAssistant = <Assistant key={`inline-${user.id}-${version}`} inline userId={user.id} onChanged={() => setVersion((v) => v + 1)} />
+  const preview = !!user.preview
+  let page = preview ? <HomeNext name={user.name} assistant={inlineAssistant} /> : <Home name={user.name} assistant={inlineAssistant} />
   if (section === 'prep') page = <Prep bank={query.get('bank') ?? ''} round={query.get('round') ?? ''} who={query.get('who') ?? ''} tab={query.get('tab') ?? ''} />
   if (section === 'map') page = <MapView />
   if (section === 'deals') page = <Deals />
   if (section === 'tour') page = <Tour />
-  if (section === 'settings') page = <Settings user={user} />
+  if (section === 'settings') page = <Settings user={user} onSignOut={preview ? signOut : undefined} />
+  if (preview && section === 'start') page = <Start />
+  if (preview && section === 'catch-up') page = <CatchUp />
   if (section === 'letters') page = <Letters bank={arg ?? ''} />
   if (section === 'bank' && arg) page = <BankView bank={arg} initial={query.get('sel') ?? ''} />
 
@@ -125,18 +132,26 @@ export default function App() {
           <a href="#/letters" className={section === 'letters' ? 'active' : ''}>
             Cover Letters
           </a>
-          <a href="#/settings" className={section === 'settings' ? 'active' : ''}>
-            Settings
-          </a>
-          <button className="signout" onClick={signOut} title={`Signed in as ${user.email}`}>
-            Sign out
-          </button>
+          {preview ? (
+            <a href="#/settings" className={`nav-gear ${section === 'settings' ? 'active' : ''}`} aria-label="Settings" title={`Settings · signed in as ${user.email}`}>
+              <svg viewBox="0 0 24 24" aria-hidden><circle cx="12" cy="12" r="3.2" /><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1Z" /></svg>
+            </a>
+          ) : (
+            <>
+              <a href="#/settings" className={section === 'settings' ? 'active' : ''}>
+                Settings
+              </a>
+              <button className="signout" onClick={signOut} title={`Signed in as ${user.email}`}>
+                Sign out
+              </button>
+            </>
+          )}
         </nav>
       </header>
       {backdrop && <div className="page-backdrop" style={{ backgroundImage: `url(/bg-${backdrop}.jpg)` }} aria-hidden />}
       {/* Re-keying the page after the assistant changes something makes it reload its data. */}
       <main key={version}>{page}</main>
-      {!isHome && section !== 'tour' && <Assistant key={user.id} userId={user.id} onChanged={() => setVersion((v) => v + 1)} />}
+      {!isHome && section !== 'tour' && section !== 'catch-up' && <Assistant key={user.id} userId={user.id} onChanged={() => setVersion((v) => v + 1)} />}
     </SchoolContext.Provider>
     </PreviewContext.Provider>
   )

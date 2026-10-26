@@ -432,7 +432,7 @@ def save_entry(
         return _refuse(ctx, "save_entry", args, f"status must be one of {sorted(STATUSES)}.")
     if format not in FORMATS:
         return _refuse(ctx, "save_entry", args, f"format must be one of {sorted(FORMATS - {''})} or empty.")
-    if _bad_date(date) or (thank_you not in ("", "n/a") and _bad_date(thank_you)):
+    if _bad_date(date) or (thank_you not in ("", "n/a", "sent") and _bad_date(thank_you)):
         return _refuse(ctx, "save_entry", args, "Dates must be real dates as YYYY-MM-DD.")
     if entry_id is None and not title:
         return _refuse(ctx, "save_entry", args, "A new entry needs a title.")

@@ -13,7 +13,7 @@ const PROVIDERS = [
   { id: 'openai', label: 'OpenAI', where: 'https://platform.openai.com/api-keys', hint: 'Starts with sk-' },
 ]
 
-export default function Settings({ user }: { user: User }) {
+export default function Settings({ user, onSignOut }: { user: User; onSignOut?: () => void }) {
   const { data, error, reload } = useApi<AiSettings>('/api/settings/ai')
   const [provider, setProvider] = useState('portkey')
   const [key, setKey] = useState('')
@@ -45,9 +45,16 @@ export default function Settings({ user }: { user: User }) {
   return (
     <div className="settings">
       <h1>Settings</h1>
-      <p className="lede">
-        Signed in as {user.name} ({user.email}). New here? <a href="#/tour">Take the 2-minute tour</a>.
-      </p>
+      {onSignOut ? (
+        <p className="lede settings-who">
+          Signed in as {user.name} ({user.email}).
+          <button className="btn" onClick={onSignOut}>Sign out</button>
+        </p>
+      ) : (
+        <p className="lede">
+          Signed in as {user.name} ({user.email}). New here? <a href="#/tour">Take the 2-minute tour</a>.
+        </p>
+      )}
 
       <section className="card">
         <h3>Your AI key</h3>

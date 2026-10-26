@@ -8,3 +8,4 @@ python-multipart
 cryptography
 python-docx
 pypdf
+olefile

@@ -12,7 +12,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from pydantic_ai import Agent
 
-from . import accounts, assistant, attachments, auth, budget, config, cover_letters, deal_docs, deals, importer, legal, llm, network, onboarding, practice, profile, schools, reference, research, stars, templates, thank_you, transfer, user_keys
+from . import accounts, assistant, attachments, auth, budget, catch_up, config, cover_letters, deal_docs, deals, importer, legal, llm, network, onboarding, practice, profile, schools, reference, research, stars, templates, thank_you, transfer, user_keys
 from .auth import admin_user, current_user
 from .db import connect, init_db
 from .llm import get_model, usage_dict
@@ -492,7 +492,7 @@ async def assistant_file(file: UploadFile, message: str = Form(""), history: str
     chosen = ai_for(user)
     name = (file.filename or "file").strip()
     try:
-        text, binary = attachments.read(name, await file.read())
+        text, binary = attachments.read(name, await file.read(), outlook=accounts.in_preview(user))
     except attachments.AttachmentError as err:
         raise HTTPException(status_code=400, detail=str(err))
     try:
@@ -503,6 +503,29 @@ async def assistant_file(file: UploadFile, message: str = Form(""), history: str
     body = f'{note}\n\nAttached file "{name}":\n{text}' if text else f'{note}\n\n(Attached file "{name}" is shown to you below.)'
     out = await assistant.run(user, chosen, body, past if isinstance(past, list) else [], transcript=True, attachment=binary)
     return await with_thank_you_drafts(user, chosen, out)
+
+
+@app.post("/api/catch-up")
+async def catch_up_bank(req: catch_up.BankCatchUp, user: dict = Depends(current_user)):
+    """Preview: one bank of a student's past recruiting, from the catch-up form, filed by the assistant."""
+    if not accounts.in_preview(user):
+        raise HTTPException(status_code=404, detail="Not found")
+    if not any(p.name.strip() for p in req.people) and not (req.emails + req.notes + req.sheet_rows).strip() and not req.applied:
+        return {"reply": "Nothing to file for this bank.", "steps": [], "usage": None, "run_id": None, "changed": False}
+    chosen = ai_for(user)
+    sc = schools.for_user(user["id"])
+    return await assistant.run(user, chosen, catch_up.message(req, sc["short"] or "school", sc["peer"]), [], transcript=True)
+
+
+@app.post("/api/catch-up/sheet")
+async def catch_up_sheet(file: UploadFile, user: dict = Depends(current_user)):
+    """Preview: a student's own networking spreadsheet, split into one block of rows per bank (nothing is saved yet)."""
+    if not accounts.in_preview(user):
+        raise HTTPException(status_code=404, detail="Not found")
+    try:
+        return catch_up.split_sheet(file.filename or "sheet", await file.read())
+    except catch_up.SheetError as err:
+        raise HTTPException(status_code=400, detail=str(err))
 
 
 @app.post("/api/assistant/undo")
