@@ -10,6 +10,7 @@
 Every download is https only, to an allowed host, size-capped, and saved through deal_docs.upload like a user
 upload, so "Fill from my documents" then works on it with page-level sources.
 """
+import asyncio
 import ipaddress
 import os
 import re
@@ -275,7 +276,17 @@ def _filename(label: str, ext: str) -> str:
     return re.sub(r"\s+", " ", re.sub(r"[^\w&.,' -]+", " ", label)).strip()[:150] + f".{ext}"
 
 
+# One gather at a time on the server: each downloads and reads large PDFs, and the site runs on one small worker.
+_GATHERING = asyncio.Lock()
+
+
 async def gather(uid: int, chosen: Chosen, deal_id: int) -> dict:
+    async with _GATHERING:
+        return await _gather(uid, chosen, deal_id)
+
+
+async def _gather(uid: int, chosen: Chosen, deal_id: int) -> dict:
+    # Downloads and PDF reading run in a worker thread so the site keeps answering (and passing health checks).
     ensure()
     with connect(read_only=True) as conn:
         deal = conn.execute("SELECT * FROM deals WHERE id = ? AND user_id = ?", (deal_id, uid)).fetchone()
@@ -290,7 +301,7 @@ async def gather(uid: int, chosen: Chosen, deal_id: int) -> dict:
     notes = []
 
     try:
-        hits = _edgar_hits([buyer, target])
+        hits = await asyncio.to_thread(_edgar_hits, [buyer, target])
     except httpx.HTTPError:
         hits = []
         notes.append("SEC EDGAR didn't answer, so no SEC filings were added.")
@@ -327,9 +338,9 @@ async def gather(uid: int, chosen: Chosen, deal_id: int) -> dict:
 
     added, skipped, hubs = [], [], []
 
-    def save(kind: str, label: str, got: tuple[bytes, str, str]) -> None:
+    async def save(kind: str, label: str, got: tuple[bytes, str, str]) -> None:
         data, ext, url = got
-        out = deal_docs.upload(uid, deal_id, _filename(label, ext), data, kind)
+        out = await asyncio.to_thread(deal_docs.upload, uid, deal_id, _filename(label, ext), data, kind)
         if out.get("ok"):
             with connect() as conn:
                 conn.execute("UPDATE deal_documents SET source_url = ? WHERE id = ? AND user_id = ?", (url, out["id"], uid))
@@ -342,13 +353,13 @@ async def gather(uid: int, chosen: Chosen, deal_id: int) -> dict:
         if url in have:
             continue
         try:
-            got = _fetch_document(url, label, tokens, hubs)
+            got = await asyncio.to_thread(_fetch_document, url, label, tokens, hubs)
         except httpx.HTTPError:
             got = None
         if got is None:
             skipped.append(label)
         elif got[2] not in have:
-            save(kind, label, got)
+            await save(kind, label, got)
 
     # A slot still empty may be listed on a company page already found (a UK offer page lists every deal document).
     for kind, title in HUB_TITLES.items():
@@ -358,11 +369,11 @@ async def gather(uid: int, chosen: Chosen, deal_id: int) -> dict:
             link = _best_pdf(html, hub_url, title, tokens)
             if link and link not in have:
                 try:
-                    pdf = _download(link, tokens, linked=True)
+                    pdf = await asyncio.to_thread(_download, link, tokens, True)
                 except httpx.HTTPError:
                     pdf = None
                 if pdf and pdf[1] == "pdf":
-                    save(kind, f"{target or buyer} {title}", (pdf[0], "pdf", link))
+                    await save(kind, f"{target or buyer} {title}", (pdf[0], "pdf", link))
                     skipped = [s for s in skipped if not s.lower().startswith(title.lower().split()[0])]
                     break
 
