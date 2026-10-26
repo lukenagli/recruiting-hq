@@ -3,7 +3,7 @@ import { post } from './api'
 import type { BankDetail, Interaction, Person, ThankYouDraft } from './api'
 import DraftCard from './DraftCard'
 import JourneyMap from './JourneyMap'
-import { Loading, Logo, StatusTag, alumLabel, fmtDate, roleOf, useApi, useSchool } from './ui'
+import { Loading, Logo, StatusTag, alumLabel, fmtDate, roleOf, useApi, usePreview, useSchool } from './ui'
 
 function when(i: { date: string; date_note: string }) {
   if (!i.date) return i.date_note || 'date not recorded'
@@ -20,8 +20,10 @@ function thankYou(chat: Interaction) {
 
 /** For a finished chat that still needs a thank-you: the saved draft, or a button to write one. */
 function ChatThankYou({ c, personId, onChanged }: { c: Interaction; personId: number; onChanged: () => void }) {
+  const preview = usePreview()
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
+  if (preview && c.status === 'done' && c.thank_you) return <SentThankYou c={c} personId={personId} onChanged={onChanged} />
   if (c.status !== 'done' || c.thank_you) return null
   if (c.draft)
     return <DraftCard id={c.draft.id} body={c.draft.body} check={c.draft.check_line} send={c.draft.send_line} sent={Boolean(c.draft.sent_at)} onSent={onChanged} />
@@ -46,6 +48,76 @@ function ChatThankYou({ c, personId, onChanged }: { c: Interaction; personId: nu
       </button>
       {error && <p className="notice error">{error}</p>}
     </>
+  )
+}
+
+/** Preview: a chat whose thank-you is done (or not needed). Shows the note that went out, to read or copy again;
+ *  lets you save one sent outside the app, or write one anyway when none was needed (a 2Y you've met before). */
+function SentThankYou({ c, personId, onChanged }: { c: Interaction; personId: number; onChanged: () => void }) {
+  const [mode, setMode] = useState<'' | 'paste'>('')
+  const [text, setText] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('')
+  const [copied, setCopied] = useState(false)
+
+  async function act(fn: () => Promise<{ ok: boolean; reason?: string }>) {
+    setBusy(true)
+    setError('')
+    try {
+      const out = await fn()
+      if (out.ok) onChanged()
+      else setError(out.reason ?? 'That did not work.')
+    } catch (e) {
+      setError((e as Error).message)
+    } finally {
+      setBusy(false)
+    }
+  }
+  const write = () => act(() => post('/api/thank-you', { interaction_id: c.id, person_id: personId }))
+
+  if (c.draft) {
+    const sent = Boolean(c.draft.sent_at) || c.thank_you !== 'n/a'
+    if (!sent) return <DraftCard id={c.draft.id} body={c.draft.body} check={c.draft.check_line} send={c.draft.send_line} onSent={onChanged} />
+    return (
+      <details className="sent-note">
+        <summary>{c.thank_you === 'n/a' ? 'Thank-you you sent' : 'Read the thank-you you sent'}</summary>
+        <pre>{c.draft.body}</pre>
+        <button
+          className="btn"
+          onClick={async () => {
+            await navigator.clipboard.writeText(c.draft!.body).catch(() => undefined)
+            setCopied(true)
+            setTimeout(() => setCopied(false), 2000)
+          }}
+        >
+          {copied ? 'Copied' : 'Copy'}
+        </button>
+      </details>
+    )
+  }
+  return (
+    <div className="sent-note-actions">
+      {mode === 'paste' ? (
+        <>
+          <textarea rows={6} value={text} onChange={(e) => setText(e.target.value)} placeholder="Paste the thank-you email you sent" />
+          <button className="btn" disabled={busy || !text.trim()}
+            onClick={() => act(() => post('/api/thank-you/record', { interaction_id: c.id, person_id: personId, body: text }))}>
+            {busy ? 'Saving…' : 'Save it'}
+          </button>
+          <button className="link" onClick={() => setMode('')}>Cancel</button>
+        </>
+      ) : (
+        <>
+          {c.thank_you === 'n/a' && (
+            <button className="btn" disabled={busy} onClick={write}>{busy ? 'Drafting…' : 'Write one anyway'}</button>
+          )}
+          <button className="link" onClick={() => setMode('paste')}>
+            {c.thank_you === 'n/a' ? 'Or save one you sent' : 'Save the email you sent, to find it here later'}
+          </button>
+        </>
+      )}
+      {error && <p className="notice error">{error}</p>}
+    </div>
   )
 }
 

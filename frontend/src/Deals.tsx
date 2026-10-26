@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { API_URL, del, post, uploadWith } from './api'
-import type { Deal, DealPoint, DealsData } from './api'
-import { Loading, Logo, useApi } from './ui'
+import type { Deal, DealDocument, DealPoint, DealsData } from './api'
+import { Loading, Logo, useApi, usePreview } from './ui'
 
 const DOMAINS: Record<string, string> = {
   'J.P. Morgan': 'jpmorgan.com',
@@ -44,7 +44,66 @@ function Source({ p, deal }: { p: DealPoint; deal: Deal }) {
   return p.source ? <span className="src">{p.source}</span> : null
 }
 
+/** Preview: save a document to your computer, and open the original filing where it came from. */
+function DocLinks({ d }: { d: DealDocument }) {
+  if (!usePreview()) return null
+  return (
+    <>
+      <a className="link" href={`${API_URL}/api/deals/documents/${d.id}/file?download=1`}>Download</a>
+      {d.source_url && (
+        <a className="link" href={d.source_url} target="_blank" rel="noreferrer">
+          {d.source_url.includes('sec.gov') ? 'On SEC.gov' : 'Original'}
+        </a>
+      )}
+    </>
+  )
+}
+
+/** Preview: analysis of the deal worth reading, each piece with its own angle. */
+function Reading({ deal, onChanged }: { deal: Deal; onChanged: () => void }) {
+  const [busy, setBusy] = useState(false)
+  const [message, setMessage] = useState('')
+  const items = deal.reading ?? []
+  async function find() {
+    setBusy(true)
+    setMessage('')
+    try {
+      const out = await post<{ ok: boolean; message?: string; reason?: string }>(`/api/deals/${deal.id}/reading`, {})
+      setMessage(out.message ?? out.reason ?? '')
+      onChanged()
+    } catch (e) {
+      setMessage((e as Error).message)
+    } finally {
+      setBusy(false)
+    }
+  }
+  return (
+    <section className="card deal-reading">
+      <div className="deal-docs-head">
+        <h3>Worth reading</h3>
+        <button className="ghost" disabled={busy} onClick={find}>
+          {busy ? 'Searching…' : items.length ? 'Find more' : 'Find analysis of this deal'}
+        </button>
+      </div>
+      <p className="fine">Pieces that each add a different angle (rationale, valuation, financing, regulators, market reaction), not the announcement repeated. Found by AI web search, so open each one before you quote it.</p>
+      <ul className="reading-list">
+        {items.map((a) => (
+          <li key={a.id}>
+            <span className="reading-angle">{a.angle}</span>
+            <a href={a.url} target="_blank" rel="noreferrer"><strong>{a.title}</strong></a>
+            <small>{[a.outlet, a.published].filter(Boolean).join(' · ')}</small>
+            <p>{a.takeaway}</p>
+            <button className="link danger-link" onClick={async () => { await del(`/api/deals/reading/${a.id}`); onChanged() }}>Remove</button>
+          </li>
+        ))}
+      </ul>
+      {message && <p className="notice">{message}</p>}
+    </section>
+  )
+}
+
 function Documents({ deal, data, onChanged }: { deal: Deal; data: DealsData; onChanged: () => void }) {
+  const preview = usePreview()
   const [kind, setKind] = useState(data.wanted[0]?.kind ?? 'Other')
   const [busy, setBusy] = useState('')
   const [message, setMessage] = useState('')
@@ -100,10 +159,19 @@ function Documents({ deal, data, onChanged }: { deal: Deal; data: DealsData; onC
           Find filings on SEC EDGAR
         </a>
       </div>
-      <p className="fine">
-        Upload these and the checklist fills itself, with every number linked to its page. Download filings from EDGAR as PDF, or save the
-        filing page as .htm.
-      </p>
+      {preview ? (
+        <div className="gather">
+          <button className="primary" disabled={busy !== ''} onClick={() => run(`/api/deals/${deal.id}/gather`, 'gather')}>
+            {busy === 'gather' ? 'Gathering from SEC EDGAR and the companies’ sites…' : 'Gather the documents for me'}
+          </button>
+          <p className="fine">Pulls the announcement, agreement, presentation, proxy and annual reports from SEC EDGAR, or from the companies' own sites and the London Stock Exchange for companies outside the US. Takes up to a minute. You can still upload your own below.</p>
+        </div>
+      ) : (
+        <p className="fine">
+          Upload these and the checklist fills itself, with every number linked to its page. Download filings from EDGAR as PDF, or save the
+          filing page as .htm.
+        </p>
+      )}
       <ul className="doc-checklist">
         {data.wanted.map((w) => {
           const docs = deal.documents.filter((d) => d.kind === w.kind)
@@ -123,6 +191,7 @@ function Documents({ deal, data, onChanged }: { deal: Deal; data: DealsData; onC
                       {d.pages} {d.pages === 1 ? 'page' : 'pages'}
                       {d.scanned === 'yes' ? ' · scanned, will be read by AI' : d.scanned === 'read' ? ' · scanned, read by AI' : ''}
                     </small>
+                    <DocLinks d={d} />
                     <button className="link danger-link" onClick={() => remove(d.id)}>
                       Remove
                     </button>
@@ -160,6 +229,7 @@ function Documents({ deal, data, onChanged }: { deal: Deal; data: DealsData; onC
                     <small>
                       {d.kind} · {d.pages} {d.pages === 1 ? 'page' : 'pages'}
                     </small>
+                    <DocLinks d={d} />
                     <button className="link danger-link" onClick={() => remove(d.id)}>
                       Remove
                     </button>
@@ -194,6 +264,7 @@ function Documents({ deal, data, onChanged }: { deal: Deal; data: DealsData; onC
 
 export default function Deals() {
   const { data, error, reload } = useApi<DealsData>('/api/deals')
+  const preview = usePreview()
   const [open, setOpen] = useState(0)
   const [adding, setAdding] = useState(false)
   const [title, setTitle] = useState('')
@@ -274,6 +345,7 @@ export default function Deals() {
           {deal.notes && <p className="muted">{deal.notes}</p>}
 
           <Documents key={deal.id} deal={deal} data={data} onChanged={reload} />
+          {preview && <Reading key={`r${deal.id}`} deal={deal} onChanged={reload} />}
 
           <section className="card deal-section">
             <h3>

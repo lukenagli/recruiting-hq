@@ -72,7 +72,9 @@ export type DealPoint = {
   page: string | null
   quote: string | null
 }
-export type DealDocument = { id: number; deal_id: number; filename: string; kind: string; size: number; uploaded_at: string; pages: number; scanned: string }
+export type DealDocument = { id: number; deal_id: number; filename: string; kind: string; size: number; uploaded_at: string; pages: number; scanned: string; source_url?: string }
+// Preview: an analysis piece about a deal, found by web search.
+export type DealReading = { id: number; title: string; outlet: string; url: string; published: string; angle: string; takeaway: string }
 export type Deal = {
   id: number
   title: string
@@ -83,6 +85,7 @@ export type Deal = {
   total: number
   sections: { name: string; timing: string; points: DealPoint[] }[]
   documents: DealDocument[]
+  reading?: DealReading[] // preview only
 }
 export type DealsData = {
   deals: Deal[]

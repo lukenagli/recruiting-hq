@@ -12,7 +12,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from pydantic_ai import Agent
 
-from . import accounts, assistant, attachments, auth, budget, catch_up, config, cover_letters, deal_docs, deals, importer, legal, llm, network, onboarding, practice, profile, schools, reference, research, stars, templates, thank_you, transfer, user_keys
+from . import accounts, assistant, attachments, auth, budget, catch_up, config, cover_letters, deal_docs, deal_sources, deals, importer, legal, llm, network, onboarding, practice, profile, schools, reference, research, stars, templates, thank_you, transfer, user_keys
 from .auth import admin_user, current_user
 from .db import connect, init_db
 from .llm import get_model, usage_dict
@@ -253,7 +253,37 @@ def practice_progress(user: dict = Depends(current_user)):
 
 @app.get("/api/deals")
 def my_deals(user: dict = Depends(current_user)):
-    return deals.all_deals(user["id"])
+    out = deals.all_deals(user["id"])
+    if accounts.in_preview(user):  # preview: each deal's reading list, and where each gathered document came from
+        reading, urls = deal_sources.reading(user["id"]), deal_sources.source_urls(user["id"])
+        for d in out["deals"]:
+            d["reading"] = reading.get(d["id"], [])
+            for doc in d["documents"]:
+                doc["source_url"] = urls.get(doc["id"], "")
+    return out
+
+
+@app.post("/api/deals/{deal_id}/gather")
+async def gather_deal_documents(deal_id: int, user: dict = Depends(current_user)):
+    """Preview: download the deal's filings from SEC EDGAR and the companies' own sites."""
+    if not accounts.in_preview(user):
+        raise HTTPException(status_code=404, detail="Not found")
+    return await deal_sources.gather(user["id"], ai_for(user), deal_id)
+
+
+@app.post("/api/deals/{deal_id}/reading")
+async def find_deal_reading(deal_id: int, user: dict = Depends(current_user)):
+    """Preview: analysis pieces about the deal, each with a different angle."""
+    if not accounts.in_preview(user):
+        raise HTTPException(status_code=404, detail="Not found")
+    return await deal_sources.find_reading(user["id"], ai_for(user), deal_id)
+
+
+@app.delete("/api/deals/reading/{item_id}")
+def remove_deal_reading(item_id: int, user: dict = Depends(current_user)):
+    if not accounts.in_preview(user):
+        raise HTTPException(status_code=404, detail="Not found")
+    return deal_sources.remove_reading(user["id"], item_id)
 
 
 class NewDeal(BaseModel):
@@ -308,11 +338,15 @@ async def upload_deal_document(deal_id: int, file: UploadFile, kind: str = Form(
 
 
 @app.get("/api/deals/documents/{doc_id}/file")
-def deal_document_file(doc_id: int, user: dict = Depends(current_user)):
+def deal_document_file(doc_id: int, download: bool = False, user: dict = Depends(current_user)):
     found = deal_docs.file(user["id"], doc_id)
     if found is None:
         raise HTTPException(status_code=404, detail="Document not found")
     name, data = found
+    if download:  # saved to the user's computer as the original file, never shown as a page on this site
+        safe = re.sub(r"[^\w.\-() &,']", "_", name)[:150]
+        return Response(content=data, media_type="application/octet-stream",
+                        headers={"Content-Disposition": f'attachment; filename="{safe}"', "X-Content-Type-Options": "nosniff"})
     kind = "application/pdf" if name.lower().endswith(".pdf") else "text/html" if name.lower().endswith((".htm", ".html")) else "text/plain"
     if kind == "text/html":
         kind = "text/plain"  # show a saved filing's source as text rather than running it as a page on this site
@@ -578,6 +612,20 @@ async def draft_thank_you(req: DraftRequest, user: dict = Depends(current_user))
 @app.post("/api/thank-you/{draft_id}/sent")
 def thank_you_sent(draft_id: int, user: dict = Depends(current_user)):
     return thank_you.mark_sent(user["id"], draft_id)
+
+
+class RecordRequest(BaseModel):
+    interaction_id: int
+    person_id: int
+    body: str
+
+
+@app.post("/api/thank-you/record")
+def record_thank_you(req: RecordRequest, user: dict = Depends(current_user)):
+    """Preview: keep a thank-you the student sent outside the app, so it shows on the contact."""
+    if not accounts.in_preview(user):
+        raise HTTPException(status_code=404, detail="Not found")
+    return thank_you.record_sent(user["id"], req.interaction_id, req.person_id, req.body)
 
 
 @app.post("/api/people/{person_id}/background")
