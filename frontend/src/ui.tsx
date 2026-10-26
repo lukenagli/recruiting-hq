@@ -106,6 +106,10 @@ export function roleOf(title: string) {
 }
 
 /** Who the signed-in user is (school and program), for wording across the app. */
+/** True for an account trying out changes that haven't shipped to everyone yet. Gate every preview change on it. */
+export const PreviewContext = createContext(false)
+export const usePreview = () => useContext(PreviewContext)
+
 export const SchoolContext = createContext<School>({
   school: '', school_full: '', short: '', level: 'mba', class_year: '', role: 'Summer Associate',
   peer: '2Y', peers: 'Students and classmates', alum: 'Alum', club: false,

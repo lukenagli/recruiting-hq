@@ -59,7 +59,12 @@ def public(user) -> dict:
     # Without email set up on the site nobody can be asked to confirm, so everyone counts as confirmed.
     verified = bool(user["email_verified_at"]) or not mailer.available()
     return {"id": user["id"], "email": user["email"], "name": user["name"], "is_admin": bool(user["is_admin"]),
-            "email_verified": verified}
+            "email_verified": verified, "preview": in_preview(user)}
+
+
+def in_preview(user) -> bool:
+    """Changes still being tried out are switched on only for the site's admin until they ship to everyone."""
+    return bool(user["is_admin"])
 
 
 def sign_up(email: str, name: str, password: str) -> tuple[dict, str]:

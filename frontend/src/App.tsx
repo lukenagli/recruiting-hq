@@ -12,7 +12,7 @@ import Prep from './Prep'
 import Settings from './Settings'
 import Setup from './Setup'
 import Tour from './Tour'
-import { SchoolContext, useSchool } from './ui'
+import { PreviewContext, SchoolContext, useSchool } from './ui'
 
 /** Tiny hash router: #/, #/prep?bank=Citi&round=Superday, #/map, #/bank/Citi */
 function useRoute() {
@@ -101,11 +101,17 @@ export default function App() {
   if (section === 'bank' && arg) page = <BankView bank={arg} initial={query.get('sel') ?? ''} />
 
   return (
+    <PreviewContext.Provider value={!!user.preview}>
     <SchoolContext.Provider value={school ?? fallback}>
       <header className="topbar">
         <a className="brand" href="#/">
           <span className="brand-mark">R</span> Recruiting HQ
         </a>
+        {user.preview && (
+          <span className="preview-badge" title="Your account sees changes being tried out before they go to everyone">
+            Preview
+          </span>
+        )}
         <nav>
           <a href="#/prep" className={section === 'prep' ? 'active' : ''}>
             Interview Prep
@@ -132,5 +138,6 @@ export default function App() {
       <main key={version}>{page}</main>
       {!isHome && section !== 'tour' && <Assistant key={user.id} userId={user.id} onChanged={() => setVersion((v) => v + 1)} />}
     </SchoolContext.Provider>
+    </PreviewContext.Provider>
   )
 }
