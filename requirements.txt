@@ -1,4 +1,4 @@
-pydantic-ai-slim[openai,anthropic]>=2.54,<3
+pydantic-ai-slim[openai,anthropic]>=2.54,<2.56  # 2.56+ rejects WebSearch max_uses on OpenAI models
 openai
 fastapi
 uvicorn[standard]
