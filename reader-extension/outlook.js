@@ -57,7 +57,30 @@ async function readFolder(name, since) {
   return out
 }
 
+/** Emails scheduled to send, read from the Drafts list WITHOUT opening them (Outlook opens a draft for editing).
+ *  Only rows Outlook marks [Scheduled]; unfinished drafts are left alone. The background opens Drafts by address. */
+async function scheduled(since) {
+  await rhqWaitFor(() => document.querySelector('[role="listbox"]'), 30000)
+  await rhqSleep(2000)
+  const out = []
+  for (const row of document.querySelectorAll('[role="listbox"] [role="option"]')) {
+    if (!/\[Scheduled\]/i.test(row.textContent)) continue // the marker is in the text, though not in the visible-text copy
+    const text = row.innerText.replace(/\s+/g, ' ').replace(/\[Scheduled\]\s*/i, '').trim()
+    const stamp = [...row.querySelectorAll('[title]')].map((t) => t.getAttribute('title') || '').find((t) => /\d{1,2}\/\d{1,2}\/\d{4} \d{1,2}:\d{2} [AP]M/.test(t))
+    const m = stamp && /(\d{1,2}\/\d{1,2}\/\d{4}) (\d{1,2}:\d{2} [AP]M)/.exec(stamp)
+    const at = m ? rhqIso(rhqParse(m[1], m[2])) : ''
+    if (!at || (since && at <= since)) continue
+    out.push({ key: `${row.getAttribute('data-convid') || text.slice(0, 80)}|scheduled|${at}`, at, author: '',
+               text: `SCHEDULED EMAIL I wrote (it will send automatically; it is already taken care of): ${text}` })
+  }
+  return out
+}
+
 chrome.runtime.onMessage.addListener((msg, _sender, reply) => {
+  if (msg.type === 'outlook-scheduled') {
+    scheduled(msg.since).then((items) => reply({ ok: true, items })).catch((e) => reply({ ok: false, error: String(e) }))
+    return true
+  }
   if (msg.type !== 'outlook-collect') return
   ;(async () => {
     await rhqWaitFor(() => document.querySelector('[role="tree"] [role="treeitem"]'), 30000)

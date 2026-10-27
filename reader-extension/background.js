@@ -93,8 +93,15 @@ async function file(batch, lines) {
 }
 
 async function syncOutlook(state, lines) {
-  const tab = await lockedTab('https://outlook.cloud.microsoft/mail/', OUTLOOK_LOCK)
+  const tab = await lockedTab('https://outlook.cloud.microsoft/mail/drafts', OUTLOOK_LOCK)
   try {
+    // Scheduled emails first: read from the Drafts list without opening them.
+    await loaded(tab.id)
+    const conversation = 'Scheduled to send (Drafts)'
+    const sched = await ask(tab.id, { type: 'outlook-scheduled', since: (state.checkpoints.outlook || {})[conversation] || state.baseline })
+    if (sched.ok) await file({ source: 'outlook', conversation, group_chat: false, items: sched.items }, lines)
+    else lines.push(`Outlook scheduled: ${sched.error}`)
+    await chrome.tabs.update(tab.id, { url: 'https://outlook.cloud.microsoft/mail/' }) // opened by address, no clicks
     await loaded(tab.id)
     const out = await ask(tab.id, { type: 'outlook-collect', checkpoints: state.checkpoints.outlook || {}, baseline: state.baseline })
     if (!out.ok) return lines.push(`Outlook: ${out.error}`)
