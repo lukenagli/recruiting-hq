@@ -60,15 +60,15 @@ export default function Refresh({ onDone }: { onDone?: () => void }) {
     <div className="refresh">
       {busy ? (
         <p className="refresh-warning working">
-          <strong>Refreshing…</strong> Chrome has opened a few tabs to read your Outlook and Slack (and is using your WhatsApp tab). Please
-          don't click in them or close them; they close on their own when it's done, usually in a few minutes.
+          <strong>Refreshing…</strong> A minimized Chrome window is reading your Outlook and Slack, and your WhatsApp tab is in use. Please
+          don't open or close that window, or click in WhatsApp; it closes on its own when it's done, usually in a few minutes.
         </p>
       ) : confirming ? (
         <div className="refresh-warning">
           <p>
-            <strong>Before you refresh:</strong> the reader will open a few tabs in your Chrome to read your Outlook and Slack, and will
-            use your open WhatsApp tab. Leave them alone while it works (a few minutes). It closes the tabs when it's done. It only reads:
-            it never sends, replies or reacts.
+            <strong>Before you refresh:</strong> the reader opens a minimized Chrome window (you'll see it in your taskbar) to read your
+            Outlook and Slack, and uses your open WhatsApp tab. Leave them alone while it works (a few minutes); the window closes itself
+            when it's done. It only reads: it never sends, replies or reacts.
           </p>
           <button className="primary" onClick={() => { setConfirming(false); sync() }}>Refresh now</button>
           <button className="ghost" onClick={() => setConfirming(false)}>Cancel</button>

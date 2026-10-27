@@ -32,9 +32,11 @@ async function unlockTab(tabId, filters) {
   await chrome.declarativeNetRequest.updateSessionRules({ removeRuleIds: filters.map((_, i) => base + i + 1) })
 }
 
-/** A background tab with the network lock on before it loads anything. */
+/** A tab with the network lock on before it loads anything, in a minimized window of its own so the student's
+ *  windows never fill with tabs. Closing its only tab closes the window. */
 async function lockedTab(url, filters) {
-  const tab = await chrome.tabs.create({ url: 'about:blank', active: false })
+  const win = await chrome.windows.create({ url: 'about:blank', state: 'minimized', focused: false })
+  const tab = win.tabs[0]
   await lockTab(tab.id, filters)
   await chrome.tabs.update(tab.id, { url })
   return tab
