@@ -1,0 +1,21 @@
+{
+  "manifest_version": 3,
+  "name": "Recruiting HQ Reader",
+  "version": "1.0.0",
+  "description": "Reads (never sends) what's new in your recruiting email, Slack and WhatsApp and files it in Recruiting HQ.",
+  "permissions": ["storage", "alarms"],
+  "host_permissions": [
+    "https://recruiting-hq.onrender.com/*",
+    "https://outlook.cloud.microsoft/*",
+    "https://outlook.office.com/*",
+    "https://app.slack.com/*",
+    "https://web.whatsapp.com/*"
+  ],
+  "background": { "service_worker": "background.js" },
+  "action": { "default_popup": "popup.html", "default_title": "Recruiting HQ Reader" },
+  "content_scripts": [
+    { "matches": ["https://outlook.cloud.microsoft/*", "https://outlook.office.com/*"], "js": ["safe.js", "outlook.js"], "run_at": "document_idle" },
+    { "matches": ["https://app.slack.com/*"], "js": ["safe.js", "slack.js"], "run_at": "document_idle" },
+    { "matches": ["https://web.whatsapp.com/*"], "js": ["safe.js", "whatsapp.js"], "run_at": "document_idle" }
+  ]
+}

@@ -12,7 +12,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from pydantic_ai import Agent
 
-from . import accounts, assistant, attachments, auth, budget, catch_up, config, cover_letters, deal_docs, deal_sources, deals, importer, legal, llm, network, onboarding, practice, profile, schools, reference, research, stars, templates, thank_you, transfer, user_keys
+from . import accounts, assistant, attachments, auth, budget, catch_up, config, cover_letters, deal_docs, deal_sources, deals, importer, legal, llm, network, onboarding, practice, profile, schools, reference, research, stars, sync, templates, thank_you, transfer, user_keys
 from .auth import admin_user, current_user
 from .db import connect, init_db
 from .llm import get_model, usage_dict
@@ -560,6 +560,38 @@ async def catch_up_sheet(file: UploadFile, user: dict = Depends(current_user)):
         return catch_up.split_sheet(file.filename or "sheet", await file.read())
     except catch_up.SheetError as err:
         raise HTTPException(status_code=400, detail=str(err))
+
+
+# ---- Preview: the Recruiting HQ Reader (read-only sync from email, Slack and WhatsApp) ----
+
+def preview_user(user: dict = Depends(current_user)) -> dict:
+    if not accounts.in_preview(user):
+        raise HTTPException(status_code=404, detail="Not found")
+    return user
+
+
+@app.get("/api/sync/state")
+def sync_state(user: dict = Depends(preview_user)):
+    return sync.state(user["id"])
+
+
+@app.post("/api/sync/key")
+def sync_key(user: dict = Depends(preview_user)):
+    """A sign-in key for the reader extension, shown once; making a new one turns the old one off."""
+    return {"key": sync.new_key(user)}
+
+
+@app.post("/api/sync/key/revoke")
+def sync_key_revoke(user: dict = Depends(preview_user)):
+    sync.revoke(user["id"])
+    return {"ok": True}
+
+
+@app.post("/api/sync/ingest")
+async def sync_ingest(batch: sync.Batch, user: dict = Depends(preview_user)):
+    if batch.source not in ("outlook", "slack", "whatsapp") or len(batch.items) > 400:
+        raise HTTPException(status_code=400, detail="Unknown source or too many messages at once.")
+    return await sync.ingest(user, ai_for(user), batch)
 
 
 @app.post("/api/assistant/undo")

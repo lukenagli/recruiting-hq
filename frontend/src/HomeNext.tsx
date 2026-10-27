@@ -234,8 +234,17 @@ function summary(d: HomeData) {
   ].join(' · ')
 }
 
+/** Today in the student's own time zone. The server runs on UTC, which is already tomorrow by 8 PM in New Haven. */
+function localToday() {
+  const d = new Date()
+  const p = (n: number) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`
+}
+
 export default function HomeNext({ name }: { name: string }) {
-  const { data, error } = useApi<HomeData>('/api/home')
+  const api = useApi<HomeData>('/api/home')
+  const { error } = api
+  const data = api.data && { ...api.data, today: localToday() }
   const banks = useApi<BankSummary[]>('/api/banks')
   const ai = useApi<AiSettings>('/api/settings/ai')
   const cal = useApi<CalendarItem[]>('/api/calendar')

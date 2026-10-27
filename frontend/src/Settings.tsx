@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { post } from './api'
 import type { AiSettings, SetupState, User } from './api'
 import AboutYou from './AboutYou'
+import ReaderSettings from './ReaderSettings'
 import StudyGuides from './StudyGuides'
 import { CoverTemplate, EmailTemplates } from './Templates'
 import { PracticeHistory } from './Progress'
@@ -107,6 +108,8 @@ export default function Settings({ user, onSignOut }: { user: User; onSignOut?: 
           </button>
         </form>
       </section>
+
+      {onSignOut && <ReaderSettings />}
 
       <AboutYou />
 

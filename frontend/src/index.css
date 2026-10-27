@@ -1286,3 +1286,14 @@ main h1 { text-shadow: 0 2px 16px rgba(4, 10, 26, 0.5); }
   .agenda-time { flex-basis: 58px; }
 }
 .home.next .season-strip { scrollbar-width: thin; scrollbar-color: rgba(255, 255, 255, 0.22) transparent; }
+
+/* Preview: the reader extension card in Settings */
+.reader-steps { padding-left: 20px; margin: 8px 0 12px; }
+.reader-steps li { margin-bottom: 4px; }
+.reader-key { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.reader-key input { flex: 1; min-width: 220px; font-family: Consolas, monospace; font-size: 13px; padding: 8px 10px; border: 1.5px solid var(--line); border-radius: 8px; }
+.reader-key .fine { flex-basis: 100%; margin: 0; }
+.reader-card .danger-link { display: inline-block; margin: 8px 0 0 12px; }
+.reader-log { list-style: none; padding: 0; margin: 0; font-size: 13px; }
+.reader-log li { padding: 5px 0; border-top: 1px solid var(--line); }
+.reader-log span { color: var(--muted); }
