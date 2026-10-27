@@ -75,7 +75,7 @@ function UpdateBar() {
 
 /** Minutes after midnight for a time note like "9:30 AM ET", "11 AM" or "noon"; untimed items go last in their day. */
 function minutes(note: string) {
-  if (/noon/i.test(note)) return 12 * 60
+  if (/\bnoon\b/i.test(note)) return 12 * 60
   const t = /(\d{1,2})(?::(\d{2}))?\s*([ap])\.?m/i.exec(note)
   if (!t) return 24 * 60
   return ((Number(t[1]) % 12) + (/p/i.test(t[3]) ? 12 : 0)) * 60 + Number(t[2] ?? 0)
@@ -83,7 +83,7 @@ function minutes(note: string) {
 
 /** Just the time from a note like "6:00 PM ET at Ammos Estiatorio" ("6:00 PM"), or "Noon". */
 function clock(note: string) {
-  if (/noon/i.test(note)) return 'Noon'
+  if (/\bnoon\b/i.test(note)) return 'Noon'
   const t = /\d{1,2}(?::\d{2})?\s*[ap]\.?m\.?/i.exec(note)
   return t ? t[0].toUpperCase().replace(/\./g, '') : ''
 }

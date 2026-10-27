@@ -42,7 +42,7 @@ async function readFolder(name, since) {
   const rows = [...document.querySelectorAll('[role="listbox"] [role="option"]')].slice(0, MAX_PER_FOLDER)
   for (const row of rows) {
     if (sinceDay && rowDay(row) < sinceDay) break // newest first: everything below is older
-    if (/draft/i.test(row.getAttribute('aria-label') || '')) continue // never open a draft: Outlook opens it for editing
+    if (/\bdraft\b/i.test(row.getAttribute('aria-label') || '')) continue // never open a draft: Outlook opens it for editing
     if (!rhqSafeClick(row, 'outlook-messages')) continue
     await rhqSleep(1800)
     const pane = document.querySelector('[aria-label="Reading Pane"], #ReadingPaneContainerId, [data-app-section="ReadingPane"]') || document.querySelector('[role="main"]')

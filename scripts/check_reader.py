@@ -39,6 +39,8 @@ def main() -> int:
     problems = []
     for name in PAGE_SCRIPTS:
         src = (ROOT / name).read_text(encoding="utf-8")
+        if re.search(r"[\x00-\x08\x0b\x0c\x0e-\x1f]", src):  # e.g. a backspace where a regex meant \b: that check silently never matches
+            problems.append(f"{name}: contains a control character")
         code = re.sub(r"//[^\n]*", "", src)  # comments may describe what is forbidden
         for pattern, what in FORBIDDEN.items():
             for m in re.finditer(pattern, code):
