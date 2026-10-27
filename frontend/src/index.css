@@ -1345,3 +1345,5 @@ main h1 { text-shadow: 0 2px 16px rgba(4, 10, 26, 0.5); }
 .capiq-link { display: flex; gap: 8px; width: 100%; }
 .capiq-link input { flex: 1; min-width: 0; font: inherit; border: 1.5px solid var(--line); border-radius: 8px; padding: 7px 9px; background: var(--card); color: var(--ink); }
 .capiq .primary, .capiq .btn { margin: 0; }
+.capiq-upload input { display: none; }
+.capiq-upload { cursor: pointer; font-size: 13px; }

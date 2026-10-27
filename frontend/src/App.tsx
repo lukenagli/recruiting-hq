@@ -61,6 +61,25 @@ export default function App() {
     return () => window.removeEventListener('auth-required', lapsed)
   }, [])
 
+  // Preview: the new app icon (home screen, browser tab, installed app on Windows) once a preview account is signed in.
+  useEffect(() => {
+    if (!user?.preview) return
+    const set = (rel: string, href: string) => {
+      let el = document.head.querySelector<HTMLLinkElement>(`link[rel="${rel}"]`)
+      if (!el) {
+        el = document.createElement('link')
+        el.rel = rel
+        document.head.appendChild(el)
+      }
+      el.href = href
+    }
+    set('icon', '/app-icon.ico')
+    set('apple-touch-icon', '/app-apple-touch.png')
+    set('manifest', '/app.webmanifest')
+    document.querySelector('meta[name="theme-color"]')?.setAttribute('content', '#0a183a')
+    document.querySelector('meta[name="apple-mobile-web-app-title"]')?.setAttribute('content', 'Recruiting HQ')
+  }, [user?.preview])
+
   async function signOut() {
     await post('/api/logout', {}).catch(() => undefined)
     setUser(null)

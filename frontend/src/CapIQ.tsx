@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { post } from './api'
+import { post, uploadWith } from './api'
 import type { Deal } from './api'
 import { useReader } from './Refresh'
 import { fmtDate } from './ui'
@@ -14,6 +14,7 @@ export default function CapIQ({ deal, onChanged }: { deal: Deal; onChanged: () =
   const [asking, setAsking] = useState(false)
   const [started, setStarted] = useState(false)
   const [message, setMessage] = useState('')
+  const [uploading, setUploading] = useState(false)
   const busy = !!reader.status?.busy
   useEffect(() => {
     if (started && !busy && reader.status?.last) {
@@ -31,6 +32,21 @@ export default function CapIQ({ deal, onChanged }: { deal: Deal; onChanged: () =
       onChanged()
     } catch (e) {
       setMessage((e as Error).message)
+    }
+  }
+
+  async function uploadPdf(file: File | undefined) {
+    if (!file) return
+    setUploading(true)
+    setMessage('')
+    try {
+      await uploadWith(`/api/deals/${deal.id}/documents`, file, { kind: 'Capital IQ transaction summary' })
+      setMessage('Saved with the documents above. Click "Fill from my documents" to read its numbers into the pitch.')
+      onChanged()
+    } catch (e) {
+      setMessage((e as Error).message)
+    } finally {
+      setUploading(false)
     }
   }
 
@@ -73,6 +89,10 @@ export default function CapIQ({ deal, onChanged }: { deal: Deal; onChanged: () =
         <p className="fine">This uses the Recruiting HQ Reader. <a href="#/settings">Set it up in Settings</a>.</p>
       )}
       {deal.capiq_at && <small className="muted">Last pulled {fmtDate(deal.capiq_at.slice(0, 10))}. The summary PDF is in the documents above.</small>}
+      <label className="link file-link capiq-upload">
+        <input type="file" accept=".pdf" onChange={(e) => uploadPdf(e.target.files?.[0])} disabled={uploading} />
+        {uploading ? 'Reading…' : 'Off campus? Upload a Capital IQ page you saved as a PDF'}
+      </label>
       {message && <p className="notice">{message}</p>}
     </div>
   )

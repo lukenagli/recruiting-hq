@@ -43,7 +43,24 @@ function Source({ p, deal }: { p: DealPoint; deal: Deal }) {
         Found online by AI · verify
       </a>
     )
-  return p.source ? <span className="src">{p.source}</span> : null
+  return p.source ? <NotedSource source={p.source} deal={deal} /> : null
+}
+
+/** A source written as text ("Capital IQ, Oct 10, 2026", a web address, "My notes"). Preview: Capital IQ links to the
+ *  deal's saved CapIQ summary (or its CapIQ page), and a web address links to itself. */
+function NotedSource({ source, deal }: { source: string; deal: Deal }) {
+  const preview = usePreview()
+  if (!preview) return <span className="src">{source}</span>
+  const url = /https?:\/\/[^\s;,)]+/.exec(source)?.[0]
+  const capiqDoc = deal.documents.find((d) => d.kind === 'Capital IQ transaction summary')
+  const href = url ?? (/capital ?iq|capiq/i.test(source) ? (capiqDoc ? fileUrl(capiqDoc.id) : deal.capiq_url) : '')
+  if (!href) return <span className="src">{source}</span>
+  return (
+    <a className="src src-doc" href={href} target="_blank" rel="noreferrer"
+      title={href === deal.capiq_url ? 'Opens the deal in Capital IQ (Yale Wi-Fi and Capital IQ sign-in needed)' : ''}>
+      {source}
+    </a>
+  )
 }
 
 /** Preview: save a document to your computer, and open the page it was found on (the filing on EDGAR, or the

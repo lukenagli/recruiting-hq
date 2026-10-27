@@ -64,6 +64,9 @@ def set_link(uid: int, deal_id: int, url: str) -> dict:
     with connect() as conn:
         n = conn.execute("UPDATE deals SET capiq_url = ?, capiq_wanted = ? WHERE id = ? AND user_id = ?",
                          (link, int(bool(link)), deal_id, uid)).rowcount
+        if n and link:  # a CapIQ PDF uploaded before the link was known now links to it
+            conn.execute("""UPDATE deal_documents SET source_url = ?, source_page = ? WHERE user_id = ? AND deal_id = ? AND kind = ?
+                            AND COALESCE(source_url, '') = ''""", (link, link, uid, deal_id, KIND))
     return {"ok": bool(n), "capiq_url": link}
 
 
@@ -73,6 +76,22 @@ def want(uid: int, deal_id: int) -> dict:
     with connect() as conn:
         conn.execute("UPDATE deals SET capiq_wanted = 1 WHERE id = ? AND user_id = ? AND capiq_url != ''", (deal_id, uid))
     return {"ok": True}
+
+
+def attach_upload(uid: int, deal_id: int, doc_id: int) -> None:
+    """A CapIQ page the student saved as a PDF themselves (on campus): it replaces any earlier summary and links to the
+    deal's CapIQ page. "Fill from my documents" reads it like any scanned page."""
+    ensure()
+    with connect(read_only=True) as conn:
+        deal = conn.execute("SELECT capiq_url FROM deals WHERE id = ? AND user_id = ?", (deal_id, uid)).fetchone()
+        old = [r["id"] for r in conn.execute(
+            "SELECT id FROM deal_documents WHERE user_id = ? AND deal_id = ? AND kind = ? AND id != ?", (uid, deal_id, KIND, doc_id))]
+    for doc in old:
+        deal_docs.delete(uid, doc)
+    if deal and deal["capiq_url"]:
+        with connect() as conn:
+            conn.execute("UPDATE deal_documents SET source_url = ?, source_page = ? WHERE id = ? AND user_id = ?",
+                         (deal["capiq_url"], deal["capiq_url"], doc_id, uid))
 
 
 def jobs(uid: int) -> list[dict]:

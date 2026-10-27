@@ -425,9 +425,13 @@ def remove_ai_key(user: dict = Depends(current_user)):
 @app.post("/api/deals/{deal_id}/documents")
 async def upload_deal_document(deal_id: int, file: UploadFile, kind: str = Form("Other"), user: dict = Depends(current_user)):
     data = await file.read()
+    if kind == deal_docs.CAPIQ_KIND and not accounts.in_preview(user):
+        kind = "Other"
     out = deal_docs.upload(user["id"], deal_id, file.filename or "document.pdf", data, kind)
     if not out["ok"]:
         raise HTTPException(status_code=400, detail=out["reason"])
+    if kind == deal_docs.CAPIQ_KIND:  # preview: a CapIQ page the student saved as a PDF, linked to the deal's CapIQ page
+        capiq.attach_upload(user["id"], deal_id, out["id"])
     return out
 
 
