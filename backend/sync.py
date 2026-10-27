@@ -69,6 +69,13 @@ RELEVANT = re.compile(
     r"offer|cut\b|next step|allocation|booya|cocktail|drinks|coffee chat|thank.you|recruit", re.I)
 
 
+# Email is read from every folder, so before anything goes to the model, mail must mention banking recruiting, the
+# finance club or one of the banks on the site.
+EMAIL_WORDS = re.compile(
+    r"finance club|investment bank|\bibd?\b|m&a|analyst|associate|managing director|\bvp\b|networking|coffee|resume|"
+    r"internship|summer associate|career|calendar|invitation|accepted:|zoom|teams meeting|first round|scheduled email|"
+    + "|".join(re.escape(b.lower()) for b in bank_info.DOMAINS), re.I)
+
 # The club chats also carry events and announcements that mention no bank.
 CLUB_WORDS = re.compile(r"event|session|workshop|panel|meeting|deadline|due\b|register|rsvp|sign.?up|resume|mock|case|"
                         r"\btonight\b|tomorrow|\bmon|\btue|\bwed|\bthu|\bfri|\bsat|\bsun|zoom|room|evans|location|reminder", re.I)
@@ -193,7 +200,8 @@ def set_config(uid: int, config: ReaderConfig) -> dict:
     ensure()
     channels = [{"id": str(c.get("id", ""))[:20], "name": str(c.get("name", "")).lstrip("#")[:80], "group": bool(c.get("group"))}
                 for c in config.slack_channels
-                if re.fullmatch(r"[CDG][A-Z0-9]{6,15}", str(c.get("id", ""))) or (not c.get("id") and str(c.get("name", "")).strip())]
+                # channels only: a direct message's id starts with D and is never kept
+                if re.fullmatch(r"[CG][A-Z0-9]{6,15}", str(c.get("id", ""))) or (not c.get("id") and str(c.get("name", "")).strip())]
     clean = {"slack_team": config.slack_team if re.fullmatch(r"[A-Z0-9]{6,15}", config.slack_team) else "",
              "slack_channels": channels[:30], "whatsapp_chats": [c[:100] for c in config.whatsapp_chats][:10]}
     with connect() as conn:
@@ -218,8 +226,9 @@ def _message(batch: Batch, items: list[Item], school: str) -> str:
     head = (f"New messages from {where}, {batch.conversation!r}, read by the Recruiting HQ Reader (it only reads; nothing is ever "
             f"sent). This recruiting season began {SEASON_START}: anything about an earlier season, or a file from an earlier "
             "year, is background only, never a current deadline, step or contact.\n"
-            "File only what concerns my own recruiting: my chats, invitations, interviews, dinners, applications, deadlines, "
-            "decisions and next steps, the people involved, and facts about how a bank's process works. ")
+            "File only what concerns my own investment banking recruiting and the finance club: my chats, invitations, "
+            "interviews, dinners, applications, deadlines, decisions and next steps, the people involved, and facts about how a "
+            "bank's process works. Ignore everything else (classes, other clubs, personal mail, newsletters, shopping). ")
     if batch.group_chat:
         head += (f"This is a group chat of {school} students: do not save other students' personal results (who was invited, cut "
                  "or got an offer); keep only what tells me something about a bank's process or timing, or what mentions me. ")
@@ -240,10 +249,15 @@ async def ingest(user: dict, chosen: Chosen, batch: Batch) -> dict:
     last_at, last_keys = (row["last_at"], set(row["last_keys"].split("|"))) if row else (batch.baseline, set())
     fresh = [i for i in batch.items if i.at[:10] >= SEASON_START and (i.at > last_at or (i.at == last_at and _key(i) not in last_keys))]
     fresh.sort(key=lambda i: i.at)
+    if batch.source == "slack" and batch.conversation.lower().startswith("dm with"):
+        return _log(uid, now, batch, len(batch.items), 0, 0, "Direct messages are never read.")
     club = shared.is_club_chat(batch.conversation)
     if club and not user["is_admin"]:  # read once for everyone by the admin's reader
         return _log(uid, now, batch, len(batch.items), 0, 0, "The club feed covers this chat for everyone, so it is skipped.")
-    relevant = [i for i in fresh if not (batch.group_chat or club) or RELEVANT.search(i.text) or (club and CLUB_WORDS.search(i.text))]
+    if batch.source == "outlook":  # every folder is read, so mail with nothing about banking recruiting is dropped here
+        relevant = [i for i in fresh if RELEVANT.search(i.text) or EMAIL_WORDS.search(i.text)]
+    else:
+        relevant = [i for i in fresh if not (batch.group_chat or club) or RELEVANT.search(i.text) or (club and CLUB_WORDS.search(i.text))]
     filed, note = 0, ""
     if relevant and club:
         if _sync_used_today(uid) >= SYNC_BUDGET:

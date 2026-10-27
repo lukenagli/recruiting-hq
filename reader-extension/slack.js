@@ -38,17 +38,10 @@ async function collect(since) {
   return [...seen.values()].filter((m) => m.at > since).sort((a, b) => a.at.localeCompare(b.at))
 }
 
-/** The 1:1 direct messages listed in the sidebar (ids start with D), read from the page. */
-function directMessages() {
-  return [...document.querySelectorAll('[data-qa-channel-sidebar-channel-id^="D"]')].map((e) => ({
-    id: e.getAttribute('data-qa-channel-sidebar-channel-id'),
-    name: e.innerText.trim().split('\n')[0],
-  }))
-}
-
-/** The channels listed in the sidebar, read from the page, so channels picked by name can be opened by address. */
+/** The channels listed in the sidebar (ids start with C), read from the page, so channels picked by name can be opened
+ *  by address. Direct and group messages (ids starting D or G) are never listed or read. */
 function channels() {
-  return [...document.querySelectorAll('[data-qa-channel-sidebar-channel-id^="C"], [data-qa-channel-sidebar-channel-id^="G"]')].map((e) => ({
+  return [...document.querySelectorAll('[data-qa-channel-sidebar-channel-id^="C"]')].map((e) => ({
     id: e.getAttribute('data-qa-channel-sidebar-channel-id'),
     name: e.innerText.trim().split('\n')[0].replace(/^#\s*/, ''),
   }))
@@ -57,10 +50,6 @@ function channels() {
 chrome.runtime.onMessage.addListener((msg, _sender, reply) => {
   if (msg.type === 'slack-channels') {
     rhqWaitFor(() => document.querySelector('[data-qa-channel-sidebar-channel-id]'), 30000).then(() => reply({ ok: true, channels: channels() }))
-    return true
-  }
-  if (msg.type === 'slack-dms') {
-    rhqWaitFor(() => document.querySelector('[data-qa-channel-sidebar-channel-id]'), 30000).then(() => reply({ ok: true, dms: directMessages() }))
     return true
   }
   if (msg.type !== 'slack-collect') return

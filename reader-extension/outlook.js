@@ -9,16 +9,17 @@ function folderNode(name) {
   return [...document.querySelectorAll('[role="tree"] [role="treeitem"]')].find((t) => (t.getAttribute('title') || '').startsWith(`${name} - `))
 }
 
-/** The folders to read: Inbox, Sent Items, Recruiting and everything listed under it. */
+// Never read: unsent or thrown-away mail, and Outlook's own system folders.
+const SKIP_FOLDERS = new Set(['Drafts', 'Deleted Items', 'Junk Email', 'Archive', 'Outbox', 'Conversation History', 'Notes', 'RSS Feeds',
+  'RSS Subscriptions', 'Sync Issues', 'Conflicts', 'Local Failures', 'Server Failures', 'Clutter', 'Scheduled'])
+
+/** Every mail folder shown in the folder list (everyone files mail differently), Inbox and Sent Items first.
+ *  What isn't about banking recruiting or the finance club is dropped later, before anything is filed. */
 function folders() {
-  const names = [...document.querySelectorAll('[role="tree"] [role="treeitem"]')].map((t) => (t.getAttribute('title') || '').replace(/ - \d+ items?.*$/, ''))
-  const start = names.indexOf('Recruiting')
-  const under = []
-  for (let i = start + 1; start >= 0 && i < names.length; i++) {
-    if (['Personal', 'Drafts', 'Sent Items', 'Deleted Items', 'Archive', 'Junk Email', 'Conversation History', 'Notes', 'Other'].includes(names[i])) break
-    under.push(names[i])
-  }
-  return ['Inbox', 'Sent Items', ...(start >= 0 ? ['Recruiting', ...under] : [])]
+  const names = [...document.querySelectorAll('[role="tree"] [role="treeitem"]')]
+    .map((t) => (t.getAttribute('title') || '').replace(/ - \d+ items?.*$/, '').trim())
+    .filter((n) => n && !SKIP_FOLDERS.has(n))
+  return [...new Set(['Inbox', 'Sent Items', ...names])]
 }
 
 /** Rough day of a list row ("11:14 AM" today, "Fri" this week, "Fri 10/16", "9/24/2026"), for skipping old rows fast. */

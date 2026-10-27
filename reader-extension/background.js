@@ -131,9 +131,7 @@ async function syncSlack(state, lines) {
       if (found) channels.push({ ...c, id: found.id })
       else lines.push(`Slack #${c.name}: not in your sidebar (join the channel in Slack to include it).`)
     }
-    const dms = await ask(tab.id, { type: 'slack-dms' })
-    const convos = [...channels, ...((dms.ok && dms.dms) || []).map((d) => ({ id: d.id, name: `DM with ${d.name}`, group: false }))]
-    for (const c of convos) {
+    for (const c of channels) { // the channels only: direct messages are never read
       await chrome.tabs.update(tab.id, { url: `https://app.slack.com/client/${workspace}/${c.id}` }) // opened by address, no clicks
       await loaded(tab.id)
       const since = (state.checkpoints.slack || {})[c.name] || state.baseline
