@@ -9,6 +9,9 @@ COPY frontend/ ./
 RUN npm run build
 
 FROM python:3.14-slim
+# The site runs on New Haven time, so "today" (home page, deadlines, the daily AI allowance) matches the students' day.
+RUN apt-get update && apt-get install -y --no-install-recommends tzdata && rm -rf /var/lib/apt/lists/*
+ENV TZ=America/New_York
 ADD https://github.com/benbjohnson/litestream/releases/download/v0.3.13/litestream-v0.3.13-linux-amd64.tar.gz /tmp/litestream.tar.gz
 RUN tar -xzf /tmp/litestream.tar.gz -C /usr/local/bin && rm /tmp/litestream.tar.gz
 WORKDIR /app
