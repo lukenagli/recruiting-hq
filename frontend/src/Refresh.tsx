@@ -30,7 +30,7 @@ export function ReaderProgress({ status }: { status: ReaderStatus | null }) {
   )
 }
 
-function send(type: 'ping' | 'sync' | 'capiq') {
+function send(type: 'ping' | 'sync' | 'capiq' | 'thanks') {
   window.postMessage({ source: 'rhq-page', type }, window.origin)
 }
 
@@ -50,7 +50,53 @@ export function useReader() {
       clearTimeout(t)
     }
   }, [])
-  return { status, installed: !!status, checked, sync: () => send('sync'), capiq: () => send('capiq') }
+  return { status, installed: !!status, checked, sync: () => send('sync'), capiq: () => send('capiq'), thanks: () => send('thanks') }
+}
+
+/** The one-time catch-up for someone already recruiting: the thank-you emails they already sent, each filed on the
+ *  person it thanks, so it shows on their page. Uses the reader; no AI. */
+export function ThanksCatchUp({ onDone }: { onDone?: () => void }) {
+  const { status, installed, checked, thanks } = useReader()
+  const [asking, setAsking] = useState(false)
+  const [started, setStarted] = useState(false)
+  const busy = !!status?.busy
+  useEffect(() => {
+    if (started && !busy && status?.last) onDone?.()
+  }, [busy, started]) // eslint-disable-line react-hooks/exhaustive-deps
+  const result = started && !busy ? status?.last?.lines.find((l) => l.startsWith('Thank-you')) : ''
+  return (
+    <section className="card cu-card thanks-catch-up">
+      <h2>Bring in the thank-you emails you've already sent</h2>
+      <p className="muted">
+        The reader goes back through your Outlook to August 1, finds each thank-you you sent after a coffee chat or event, and saves it on
+        that person's page, so you can see exactly what you wrote. It only reads, and it uses no AI.
+      </p>
+      {checked && !installed ? (
+        <p className="fine">This uses the Recruiting HQ Reader. <a href="#/settings">Set it up in Settings</a> first, then come back here.</p>
+      ) : busy && started ? (
+        <div className="refresh-warning working">
+          <p>
+            <strong>Bringing in your thank-you emails…</strong> This can take 10 to 20 minutes for a full season. Outlook is open in a
+            minimized Chrome window; leave it alone and it closes itself when it's done. You can keep using this site meanwhile.
+          </p>
+          <ReaderProgress status={status} />
+        </div>
+      ) : asking ? (
+        <div className="refresh-warning">
+          <p>
+            <strong>This may take a while.</strong> For a full season of recruiting it usually takes 10 to 20 minutes, with a progress bar
+            here the whole time. Outlook opens in a minimized Chrome window (you'll see it in your taskbar); please don't open or close it
+            until it's done. It only reads: it never sends, replies or changes anything.
+          </p>
+          <button className="primary" onClick={() => { setAsking(false); setStarted(true); thanks() }}>Start</button>
+          <button className="ghost" onClick={() => setAsking(false)}>Not now</button>
+        </div>
+      ) : (
+        <button className="btn" disabled={busy} onClick={() => setAsking(true)}>Bring in my thank-you emails</button>
+      )}
+      {result && <p className="notice">{result}</p>}
+    </section>
+  )
 }
 
 export default function Refresh({ onDone }: { onDone?: () => void }) {

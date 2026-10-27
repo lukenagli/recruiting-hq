@@ -13,7 +13,7 @@ from pydantic import BaseModel
 from pydantic_ai import Agent
 
 from . import banks as banks_info
-from . import accounts, assistant, attachments, auth, budget, capiq, catch_up, config, cover_letters, deal_docs, deal_recs, deal_sources, deals, importer, legal, llm, market, network, onboarding, practice, profile, schools, reference, research, shared, stars, sync, templates, thank_you, transfer, user_keys
+from . import accounts, assistant, attachments, auth, budget, capiq, catch_up, config, cover_letters, deal_docs, deal_recs, deal_sources, deals, importer, legal, llm, market, network, onboarding, practice, profile, schools, reference, research, shared, stars, sync, templates, thank_backfill, thank_you, transfer, user_keys
 from .auth import admin_user, current_user
 from .db import connect, init_db
 from .llm import get_model, usage_dict
@@ -707,6 +707,18 @@ def sync_key_revoke(user: dict = Depends(preview_user)):
 def sync_config(config: sync.ReaderConfig, user: dict = Depends(preview_user)):
     """What the reader reads (Slack channels, WhatsApp groups), kept in the account rather than in the extension's code."""
     return sync.set_config(user["id"], config)
+
+
+class ThankYouEmails(BaseModel):
+    emails: list[thank_backfill.Email]
+
+
+@app.post("/api/sync/thank-yous")
+def sync_thank_yous(req: ThankYouEmails, user: dict = Depends(preview_user)):
+    """For the reader's one-time catch-up: thank-you emails the student already sent, each filed on its person (no AI)."""
+    if len(req.emails) > 40 or sum(len(e.text) for e in req.emails) > 4_000_000:
+        raise HTTPException(status_code=400, detail="Send at most 40 emails at a time.")
+    return thank_backfill.save(user["id"], req.emails, user["name"])
 
 
 @app.post("/api/sync/ingest")

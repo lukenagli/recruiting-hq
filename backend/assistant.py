@@ -601,7 +601,8 @@ def merge_people(ctx: RunContext[Deps], bank: str, keep_id: int, duplicate_id: i
 
 
 @agent.tool
-def record_thank_you(ctx: RunContext[Deps], bank: str, entry_id: int, people: list[str], date: str, scheduled: bool = False) -> dict:
+def record_thank_you(ctx: RunContext[Deps], bank: str, entry_id: int, people: list[str], date: str, scheduled: bool = False,
+                     body: str = "") -> dict:
     """Record that the student thanked people from a coffee chat or event, seen in an email they sent or scheduled.
 
     Use it when the student's Sent Items or a scheduled email thanks someone for a chat, a call or meeting them at an
@@ -613,6 +614,8 @@ def record_thank_you(ctx: RunContext[Deps], bank: str, entry_id: int, people: li
         people: The people the email thanks, as named in the tracker.
         date: YYYY-MM-DD the email was sent, or is scheduled to send.
         scheduled: True for an email scheduled to send later.
+        body: The thank-you email's text exactly as written, from the greeting to the closing line (no signature),
+            when one email thanks one person. Empty when it thanks several people at once.
     """
     args = dict(bank=bank, entry_id=entry_id, people=people, date=date, scheduled=scheduled)
     uid, bank = ctx.deps.user_id, nz.bank(bank)
@@ -638,9 +641,10 @@ def record_thank_you(ctx: RunContext[Deps], bank: str, entry_id: int, people: li
             for pid in hit:
                 if not conn.execute("SELECT 1 FROM thank_you_drafts WHERE user_id = ? AND interaction_id = ? AND person_id = ? AND sent_at IS NOT NULL "
                                     "AND sent_at != ''", (uid, entry_id, pid)).fetchone():
-                    note = f"{'Scheduled' if scheduled else 'Sent'} from Outlook on {date} (seen by the reader; the email itself stays in Outlook)."
+                    note = f"{'Scheduled' if scheduled else 'Sent'} from Outlook on {date}."
+                    text = body.strip()[:4000] if body.strip() and len(hit) == 1 else note + " (seen by the reader; the email stays in Outlook)"
                     conn.execute("""INSERT INTO thank_you_drafts (user_id, interaction_id, person_id, body, check_line, send_line, warnings, created_at, sent_at)
-                                    VALUES (?, ?, ?, ?, '', ?, '[]', ?, ?)""", (uid, entry_id, pid, note, note, when, when))
+                                    VALUES (?, ?, ?, ?, '', ?, '[]', ?, ?)""", (uid, entry_id, pid, text, note, when, when))
             thanked = {r[0] for r in conn.execute("SELECT person_id FROM thank_you_drafts WHERE user_id = ? AND interaction_id = ? "
                                                   "AND sent_at IS NOT NULL AND sent_at != ''", (uid, entry_id))}
             if set(there) <= thanked:

@@ -77,7 +77,103 @@ async function scheduled(since) {
   return out
 }
 
+// ---- The one-time catch-up: thank-you emails the student already sent ----
+
+const THANKS = /thank you again for (meeting|speaking)|thank you for (meeting|taking|speaking)|wanted to thank|want to thank|thanks again for/i
+
+function listScroller() {
+  const row = document.querySelector('[role="listbox"] [role="option"]')
+  return row && row.closest('.customScrollBar')
+}
+
+function paneText() {
+  const pane = document.querySelector('[aria-label="Reading Pane"], #ReadingPaneContainerId, [data-app-section="ReadingPane"]') || document.querySelector('[role="main"]')
+  return pane ? pane.innerText : ''
+}
+
+/** Rows in the open folder that look like thank-yous, newest first, down to `sinceDay`. Scrolling only. */
+async function thankYouRows(sinceDay) {
+  const found = new Map()
+  let stale = 0
+  const sc = listScroller()
+  if (!sc) return []
+  sc.scrollTop = 0
+  await rhqSleep(600)
+  for (let k = 0; k < 300 && stale < 5; k++) {
+    let older = false
+    for (const row of document.querySelectorAll('[role="listbox"] [role="option"]')) {
+      const label = (row.getAttribute('aria-label') || '').replace(/\s+/g, ' ')
+      const id = row.getAttribute('data-convid')
+      if (rowDay(row) < sinceDay) older = true
+      if (id && THANKS.test(label) && !/draft/i.test(label) && rowDay(row) >= sinceDay) found.set(id, label)
+    }
+    if (older) break // newest first: everything below is from before the season
+    const s = listScroller()
+    const before = s.scrollTop
+    s.scrollTop += s.clientHeight * 0.6
+    await rhqSleep(450)
+    stale = s.scrollTop === before ? stale + 1 : 0
+  }
+  return [...found]
+}
+
+/** Open one conversation from the list (the list is redrawn after each one, so it is found again from the top). */
+async function openConversation(id) {
+  const sc = listScroller()
+  if (!sc) return null
+  sc.scrollTop = 0
+  await rhqSleep(500)
+  for (let k = 0; k < 300; k++) {
+    const row = [...document.querySelectorAll('[role="listbox"] [role="option"]')].find((r) => r.getAttribute('data-convid') === id)
+    if (row) {
+      const before = paneText()
+      if (!rhqSafeClick(row, 'outlook-messages')) return null
+      for (let w = 0; w < 20; w++) { // until the reading pane shows this conversation, not the last one
+        await rhqSleep(400)
+        if (paneText() !== before && paneText().length > 40) break
+      }
+      await rhqSleep(600)
+      return paneText()
+    }
+    const s = listScroller()
+    const top = s.scrollTop
+    s.scrollTop += s.clientHeight * 0.6
+    await rhqSleep(350)
+    if (s.scrollTop === top) return null
+  }
+  return null
+}
+
+async function thankYous(since) {
+  await rhqWaitFor(() => document.querySelector('[role="tree"] [role="treeitem"]'), 30000)
+  const sinceDay = new Date(since.slice(0, 10) + 'T00:00:00')
+  const list = folders()
+  const rows = []
+  for (const [i, name] of list.entries()) {
+    chrome.runtime.sendMessage({ type: 'outlook-progress', i, n: list.length, name: `looking through ${name}` }).catch(() => undefined)
+    const node = folderNode(name)
+    if (!node || !rhqSafeClick(node, 'outlook-folders')) continue
+    await rhqSleep(2500)
+    for (const [id, label] of await thankYouRows(sinceDay)) rows.push([name, id, label])
+  }
+  const emails = []
+  for (const [i, [name, id, label]] of rows.entries()) {
+    chrome.runtime.sendMessage({ type: 'thanks-progress', i, n: rows.length }).catch(() => undefined)
+    if (folderNode(name) && !document.title.startsWith(name)) {
+      rhqSafeClick(folderNode(name), 'outlook-folders')
+      await rhqSleep(2500)
+    }
+    const text = await openConversation(id)
+    if (text) emails.push({ label, text: text.slice(0, 60000) })
+  }
+  return emails
+}
+
 chrome.runtime.onMessage.addListener((msg, _sender, reply) => {
+  if (msg.type === 'outlook-thanks') {
+    thankYous(msg.since).then((emails) => reply({ ok: true, emails })).catch((e) => reply({ ok: false, error: String(e) }))
+    return true
+  }
   if (msg.type === 'outlook-scheduled') {
     scheduled(msg.since).then((items) => reply({ ok: true, items })).catch((e) => reply({ ok: false, error: String(e) }))
     return true

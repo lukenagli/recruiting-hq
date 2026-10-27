@@ -234,7 +234,8 @@ def _message(batch: Batch, items: list[Item], school: str) -> str:
                  "or got an offer); keep only what tells me something about a bank's process or timing, or what mentions me. ")
     if batch.source == "outlook":
         head += ("When an email I sent or scheduled thanks someone for a coffee chat, a call or meeting them at an event, find that "
-                 "chat or event with lookup and record it with record_thank_you (scheduled=True for a scheduled email). ")
+                 "chat or event with lookup and record it with record_thank_you (scheduled=True for a scheduled email), passing "
+                 "the email's own text from the greeting to the closing line as body. ")
     head += "Do not draft emails. If nothing is worth saving, save nothing and say so.\n\n"
     lines = [f"[{i.at}] {i.author}: {i.text.strip()}" for i in items]
     return head + "\n".join(lines)

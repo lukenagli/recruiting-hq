@@ -2,6 +2,7 @@ import { useRef, useState } from 'react'
 import { post, uploadWith } from './api'
 import type { AiSettings, AssistantReply, BankDetail, CalendarItem, HomeData, SetupState } from './api'
 import { useDictation } from './dictation'
+import { ThanksCatchUp } from './Refresh'
 import { Logo, fmtDate, useApi, useSchool } from './ui'
 
 /**
@@ -268,6 +269,7 @@ export default function CatchUp() {
           <a className="primary" href="#/map">See your Recruiting Map</a>
           <button className="btn" onClick={() => { setPicked([]); setStep('banks') }}>Catch up on more banks</button>
         </div>
+        {!working && <ThanksCatchUp />}
       </div>
     )
   }
@@ -346,6 +348,8 @@ export default function CatchUp() {
         </button>
         {sheetError && <p className="notice error">{sheetError}</p>}
       </section>
+
+      <ThanksCatchUp />
     </div>
   )
 }

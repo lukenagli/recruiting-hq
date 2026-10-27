@@ -46,8 +46,8 @@ async function lockedTab(url, filters) {
 // Earlier versions synced every 30 minutes; clear that timer if it is still set.
 chrome.runtime.onInstalled.addListener(() => chrome.alarms?.clearAll())
 chrome.runtime.onMessage.addListener((msg, sender, reply) => {
-  if (sender.id !== chrome.runtime.id || !['sync-now', 'capiq-now'].includes(msg.type)) return
-  ;(msg.type === 'capiq-now' ? capiqAll() : syncAll()).then(() => reply({ ok: true }))
+  if (sender.id !== chrome.runtime.id || !['sync-now', 'capiq-now', 'thanks-now'].includes(msg.type)) return
+  ;({ 'capiq-now': capiqAll, 'thanks-now': thanksAll }[msg.type] || syncAll)().then(() => reply({ ok: true }))
   return true
 })
 
@@ -243,6 +243,54 @@ async function capiqAll() {
   } finally {
     await chrome.storage.local.set({ running: 0, progress: { pct: 100, label: 'Done' },
                                      last: { at: new Date().toLocaleString(), lines: lines.length ? lines : ['Nothing new.'] } })
+  }
+}
+
+// Outlook reports each thank-you it opens during the catch-up.
+chrome.runtime.onMessage.addListener((msg, sender) => {
+  if (sender.id !== chrome.runtime.id || msg.type !== 'thanks-progress') return
+  progress(30 + (55 * msg.i) / Math.max(1, msg.n), `Reading thank-you emails (${msg.i + 1} of ${msg.n})`)
+})
+
+/** The one-time catch-up: every thank-you email the student sent this season, filed on the person it thanks.
+ *  Read only, like a refresh: Outlook opens in a minimized window with the network lock on. No AI is used. */
+async function thanksAll() {
+  const { running } = await chrome.storage.local.get('running')
+  if (running && Date.now() - running < 20 * 60 * 1000) return
+  await chrome.storage.local.set({ running: Date.now(), progress: { pct: 0, label: 'Opening Outlook' } })
+  const keepAlive = setInterval(() => chrome.runtime.getPlatformInfo(), 20000)
+  const lines = []
+  let tab = null
+  try {
+    const state = await api('/api/sync/state')
+    tab = await lockedTab('https://outlook.cloud.microsoft/mail/', OUTLOOK_LOCK)
+    await loaded(tab.id)
+    outlookShare = [2, 30]
+    const out = await ask(tab.id, { type: 'outlook-thanks', since: state.season_start })
+    outlookShare = null
+    if (!out.ok) throw new Error(out.error)
+    let saved = 0, already = 0
+    const unmatched = []
+    for (let i = 0; i < out.emails.length; i += 10) {
+      await progress(85 + (15 * i) / Math.max(1, out.emails.length), 'Filing them on each person')
+      const r = await api('/api/sync/thank-yous', { emails: out.emails.slice(i, i + 10) })
+      saved += r.saved
+      already += r.already
+      unmatched.push(...r.unmatched)
+    }
+    lines.push(`Thank-you emails: ${saved} filed, ${already} already on file.` +
+      (unmatched.length ? ` Not matched to anyone in your tracker: ${unmatched.slice(0, 8).join(', ')}.` : ''))
+  } catch (e) {
+    lines.push(`Thank-you catch-up: ${e.message || e}`)
+  } finally {
+    clearInterval(keepAlive)
+    outlookShare = null
+    if (tab) {
+      await chrome.tabs.remove(tab.id).catch(() => undefined)
+      await unlockTab(tab.id, OUTLOOK_LOCK)
+    }
+    await chrome.storage.local.set({ running: 0, progress: { pct: 100, label: 'Done' },
+                                     last: { at: new Date().toLocaleString(), lines } })
   }
 }
 

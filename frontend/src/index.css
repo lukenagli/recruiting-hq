@@ -1367,3 +1367,5 @@ main h1 { text-shadow: 0 2px 16px rgba(4, 10, 26, 0.5); }
 .share-prices input { font: inherit; border: 1.5px solid var(--line); border-radius: 8px; padding: 4px 8px; margin-left: 6px; }
 .share-prices .btn { margin: 0; }
 .share-prices .notice { width: 100%; margin: 0; }
+.thanks-catch-up { margin-top: 18px; display: flex; flex-direction: column; gap: 8px; align-items: flex-start; }
+.thanks-catch-up h2 { margin: 0; }
