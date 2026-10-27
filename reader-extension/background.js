@@ -87,6 +87,19 @@ async function ask(tabId, msg) {
   return { ok: false, error: 'The page did not answer.' }
 }
 
+/** How far along the run is, for the progress bar on the site: { pct: 0-100, label: what it is doing }. */
+async function progress(pct, label) {
+  await chrome.storage.local.set({ progress: { pct: Math.max(0, Math.min(100, Math.round(pct))), label } })
+}
+
+// Outlook reports each folder it opens; the run maps that onto its share of the bar.
+let outlookShare = null
+chrome.runtime.onMessage.addListener((msg, sender) => {
+  if (sender.id !== chrome.runtime.id || msg.type !== 'outlook-progress' || !outlookShare) return
+  const [from, to] = outlookShare
+  progress(from + ((to - from) * msg.i) / Math.max(1, msg.n), `Reading Outlook: ${msg.name} (${msg.i + 1} of ${msg.n})`)
+})
+
 async function file(batch, lines) {
   if (!batch.items.length) return
   const { baseline } = await chrome.storage.local.get('baseline')
@@ -98,16 +111,24 @@ async function syncOutlook(state, lines) {
   const tab = await lockedTab('https://outlook.cloud.microsoft/mail/drafts', OUTLOOK_LOCK)
   try {
     // Scheduled emails first: read from the Drafts list without opening them.
+    await progress(1, 'Opening Outlook')
     await loaded(tab.id)
     const conversation = 'Scheduled to send (Drafts)'
     const sched = await ask(tab.id, { type: 'outlook-scheduled', since: (state.checkpoints.outlook || {})[conversation] || state.baseline })
     if (sched.ok) await file({ source: 'outlook', conversation, group_chat: false, items: sched.items }, lines)
     else lines.push(`Outlook scheduled: ${sched.error}`)
     await chrome.tabs.update(tab.id, { url: 'https://outlook.cloud.microsoft/mail/' }) // opened by address, no clicks
+    await progress(5, 'Reading Outlook')
     await loaded(tab.id)
+    outlookShare = [5, 30]
     const out = await ask(tab.id, { type: 'outlook-collect', checkpoints: state.checkpoints.outlook || {}, baseline: state.baseline })
+    outlookShare = null
     if (!out.ok) return lines.push(`Outlook: ${out.error}`)
-    for (const b of out.batches) await file(b, lines)
+    const batches = out.batches.filter((b) => b.items.length)
+    for (const [i, b] of batches.entries()) {
+      await progress(30 + (20 * i) / batches.length, `Filing what's new in ${b.conversation} (${i + 1} of ${batches.length})`)
+      await file(b, lines)
+    }
   } finally {
     await chrome.tabs.remove(tab.id)
     await unlockTab(tab.id, OUTLOOK_LOCK)
@@ -131,7 +152,8 @@ async function syncSlack(state, lines) {
       if (found) channels.push({ ...c, id: found.id })
       else lines.push(`Slack #${c.name}: not in your sidebar (join the channel in Slack to include it).`)
     }
-    for (const c of channels) { // the channels only: direct messages are never read
+    for (const [i, c] of channels.entries()) { // the channels only: direct messages are never read
+      await progress(50 + (25 * i) / channels.length, `Reading Slack #${c.name.replace(/^#/, "")} (${i + 1} of ${channels.length})`)
       await chrome.tabs.update(tab.id, { url: `https://app.slack.com/client/${workspace}/${c.id}` }) // opened by address, no clicks
       await loaded(tab.id)
       const since = (state.checkpoints.slack || {})[c.name] || state.baseline
@@ -162,7 +184,8 @@ async function syncWhatsApp(state, lines) {
     await loaded(tab.id)
   }
   try {
-    for (const chat of chats) {
+    for (const [i, chat] of chats.entries()) {
+      await progress(75 + (25 * i) / chats.length, `Reading WhatsApp: ${chat} (${i + 1} of ${chats.length})`)
       const since = (state.checkpoints.whatsapp || {})[chat] || state.baseline
       const out = await ask(tab.id, { type: 'whatsapp-collect', chat, since })
       if (!out.ok) {
@@ -189,12 +212,13 @@ async function capiqGet(url) {
 async function syncCapIQ(lines) {
   const jobs = await api('/api/capiq/jobs')
   if (!jobs.length) return lines.push('Capital IQ: nothing waiting. Press "Pull from Capital IQ" on a deal first.')
-  for (const job of jobs) {
+  for (const [j, job] of jobs.entries()) {
     const pages = []
     let next = job.fetch
     let out = null
     for (let round = 0; round < 5 && next && next.length; round++) {
       for (const url of next.slice(0, 4)) {
+        await progress(((j + (round + 1) / 6) / jobs.length) * 100, `Reading Capital IQ for ${job.title}`)
         pages.push({ url, ...(await capiqGet(url)) })
         await sleep(1000)
       }
@@ -208,28 +232,30 @@ async function syncCapIQ(lines) {
 async function capiqAll() {
   const { running } = await chrome.storage.local.get('running')
   if (running && Date.now() - running < 20 * 60 * 1000) return
-  await chrome.storage.local.set({ running: Date.now() })
+  await chrome.storage.local.set({ running: Date.now(), progress: { pct: 0, label: 'Starting' } })
   const lines = []
   try {
     await syncCapIQ(lines)
   } catch (e) {
     lines.push(`Capital IQ: ${e.message || e}`)
   } finally {
-    await chrome.storage.local.set({ running: 0, last: { at: new Date().toLocaleString(), lines: lines.length ? lines : ['Nothing new.'] } })
+    await chrome.storage.local.set({ running: 0, progress: { pct: 100, label: 'Done' },
+                                     last: { at: new Date().toLocaleString(), lines: lines.length ? lines : ['Nothing new.'] } })
   }
 }
 
 async function syncAll() {
   const { running } = await chrome.storage.local.get('running')
   if (running && Date.now() - running < 20 * 60 * 1000) return // a sync is already going
-  await chrome.storage.local.set({ running: Date.now() })
+  await chrome.storage.local.set({ running: Date.now(), progress: { pct: 0, label: 'Starting' } })
   const keepAlive = setInterval(() => chrome.runtime.getPlatformInfo(), 20000) // keep the background awake while working
   const lines = []
   try {
     const state = await api('/api/sync/state')
     state.baseline = (await chrome.storage.local.get('baseline')).baseline // set when the key was first saved
-    for (const [name, step] of [['Outlook', syncOutlook], ['Slack', syncSlack], ['WhatsApp', syncWhatsApp]]) {
+    for (const [name, step, start] of [['Outlook', syncOutlook, 0], ['Slack', syncSlack, 50], ['WhatsApp', syncWhatsApp, 75]]) {
       try {
+        await progress(start, `Opening ${name}`)
         await step(state, lines)
       } catch (e) {
         lines.push(`${name}: ${e.message || e}`)
@@ -239,6 +265,8 @@ async function syncAll() {
     lines.push(String(e.message || e))
   } finally {
     clearInterval(keepAlive)
-    await chrome.storage.local.set({ running: 0, last: { at: new Date().toLocaleString(), lines: lines.length ? lines : ['Nothing new.'] } })
+    outlookShare = null
+    await chrome.storage.local.set({ running: 0, progress: { pct: 100, label: 'Done' },
+                                     last: { at: new Date().toLocaleString(), lines: lines.length ? lines : ['Nothing new.'] } })
   }
 }

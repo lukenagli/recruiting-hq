@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { post, uploadWith } from './api'
 import type { Deal } from './api'
-import { useReader } from './Refresh'
+import { ReaderProgress, useReader } from './Refresh'
 import { fmtDate } from './ui'
 
 /**
@@ -73,6 +73,7 @@ export default function CapIQ({ deal, onChanged }: { deal: Deal; onChanged: () =
           {busy && started ? 'Reading Capital IQ…' : deal.capiq_at ? 'Pull from Capital IQ again' : 'Pull from Capital IQ'}
         </button>
       )}
+      {started && <ReaderProgress status={reader.status} />}
       {asking && (
         <div className="refresh-warning">
           <p>

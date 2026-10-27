@@ -86,7 +86,9 @@ chrome.runtime.onMessage.addListener((msg, _sender, reply) => {
   ;(async () => {
     await rhqWaitFor(() => document.querySelector('[role="tree"] [role="treeitem"]'), 30000)
     const batches = []
-    for (const name of folders()) {
+    const list = folders()
+    for (const [i, name] of list.entries()) {
+      chrome.runtime.sendMessage({ type: 'outlook-progress', i, n: list.length, name }).catch(() => undefined)
       const since = msg.checkpoints[name] || msg.baseline
       const items = await readFolder(name, since)
       batches.push({ source: 'outlook', conversation: name, group_chat: false, items })

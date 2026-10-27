@@ -7,8 +7,8 @@ function answer(body) {
 }
 
 async function status() {
-  const { last, running, key } = await chrome.storage.local.get(['last', 'running', 'key'])
-  return { busy: !!(running && Date.now() - running < 20 * 60 * 1000), last: last || null, has_key: !!key }
+  const { last, running, key, progress } = await chrome.storage.local.get(['last', 'running', 'key', 'progress'])
+  return { busy: !!(running && Date.now() - running < 20 * 60 * 1000), last: last || null, has_key: !!key, progress: progress || null }
 }
 
 window.addEventListener('message', async (e) => {

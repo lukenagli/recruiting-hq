@@ -5,7 +5,29 @@ import { useEffect, useState } from 'react'
  * Slack and WhatsApp. The extension's bridge script answers on window.postMessage; with no extension, nothing answers.
  */
 
-export type ReaderStatus = { version: string; busy: boolean; has_key: boolean; last: { at: string; lines: string[] } | null }
+export type ReaderStatus = {
+  version: string
+  busy: boolean
+  has_key: boolean
+  last: { at: string; lines: string[] } | null
+  progress?: { pct: number; label: string } | null // from Reader 1.4
+}
+
+/** How far along the reader is, while it works. */
+export function ReaderProgress({ status }: { status: ReaderStatus | null }) {
+  const p = status?.progress
+  if (!status?.busy || !p) return null
+  return (
+    <div className="reader-progress" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={p.pct} aria-label="Reader progress">
+      <div className="reader-progress-track">
+        <i style={{ width: `${Math.max(3, p.pct)}%` }} />
+      </div>
+      <small>
+        {p.label} · {p.pct}%
+      </small>
+    </div>
+  )
+}
 
 function send(type: 'ping' | 'sync' | 'capiq') {
   window.postMessage({ source: 'rhq-page', type }, window.origin)
@@ -59,11 +81,14 @@ export default function Refresh({ onDone }: { onDone?: () => void }) {
   return (
     <div className="refresh">
       {busy ? (
-        <p className="refresh-warning working">
-          <strong>Refreshing…</strong> A minimized Chrome window is reading your Outlook, Slack and WhatsApp (or your own WhatsApp tab, if
-          it's open). Please don't open or close that window, or click in WhatsApp; it closes on its own when it's done, usually in a few
-          minutes.
-        </p>
+        <div className="refresh-warning working">
+          <p>
+            <strong>Refreshing…</strong> A minimized Chrome window is reading your Outlook, Slack and WhatsApp (or your own WhatsApp tab,
+            if it's open). Please don't open or close that window, or click in WhatsApp; it closes on its own when it's done, usually in a
+            few minutes.
+          </p>
+          <ReaderProgress status={status} />
+        </div>
       ) : confirming ? (
         <div className="refresh-warning">
           <p>
