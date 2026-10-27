@@ -373,6 +373,10 @@ def save_people(ctx: RunContext[Deps], bank: str, people: list[RosterPerson]) ->
                     continue
                 old = conn.execute("SELECT name FROM people WHERE id = ?", (pid,)).fetchone()["name"]
                 changes = []
+                twin = _person_id(conn, uid, name, bank)
+                if old != name and twin not in (None, pid):  # renaming would collide with another record of the same person
+                    skipped.append(f"{name} (already in the tracker as id {twin}; fold one into the other with merge_people)")
+                    continue
                 if old != name:
                     conn.execute("UPDATE people SET name = ? WHERE id = ? AND user_id = ?", (name, pid, uid))
                     changes.append(f"name {old} -> {name}")
@@ -538,6 +542,64 @@ def merge_entries(ctx: RunContext[Deps], bank: str, keep_id: int, duplicate_id: 
         conn.close()
     did = f"Merged the duplicate \"{dup['title']}\" into \"{keep['title']}\"" + (f" (added {', '.join(filled)})" if filled else "")
     return _done(ctx, "merge_entries", args, {"ok": True, "entry_id": keep_id, "did": did})
+
+
+PERSON_FIELDS = ("title", "grp", "subgroup", "email", "alum", "linkedin_url", "background", "background_sources", "background_at")
+
+
+@agent.tool
+def merge_people(ctx: RunContext[Deps], bank: str, keep_id: int, duplicate_id: int, name: str = "") -> dict:
+    """Fold a duplicate person (the same person saved twice, e.g. under a misspelled name) into the one to keep.
+
+    The kept person gets the duplicate's chats, events, links and thank-you notes, plus any field it has empty;
+    their notes and outreach dates are combined. Use lookup first to find both ids.
+
+    Args:
+        bank: Bank both people are at.
+        keep_id: Id of the person to keep (usually the one with more history).
+        duplicate_id: Id of the person to fold in and remove.
+        name: The correct spelling of their name, if the kept record has it wrong. Empty keeps the kept name.
+    """
+    args = dict(bank=bank, keep_id=keep_id, duplicate_id=duplicate_id, name=name)
+    uid, bank = ctx.deps.user_id, nz.bank(bank)
+    from . import accounts  # the switch for changes being tried out on the admin's account first
+
+    with connect(read_only=True) as conn:
+        user = conn.execute("SELECT is_admin FROM users WHERE id = ?", (uid,)).fetchone()
+    if not (user and accounts.in_preview(user)):
+        return _refuse(ctx, "merge_people", args, "Merging people is not available yet.")
+    if keep_id == duplicate_id:
+        return _refuse(ctx, "merge_people", args, "keep_id and duplicate_id are the same person.")
+    conn = _write(ctx)
+    try:
+        with conn:
+            rows = {r["id"]: dict(r) for r in conn.execute("SELECT * FROM people WHERE user_id = ? AND id IN (?, ?)", (uid, keep_id, duplicate_id))}
+            if len(rows) < 2:
+                return _refuse(ctx, "merge_people", args, "Both people must exist in this tracker. Use lookup to find their ids.")
+            keep, dup = rows[keep_id], rows[duplicate_id]
+            if keep["bank"] != bank or dup["bank"] != bank:
+                return _refuse(ctx, "merge_people", args, f"Both people must be at {bank}.")
+            for col in PERSON_FIELDS:
+                if not (keep.get(col) or "").strip() and (dup.get(col) or "").strip():
+                    conn.execute(f"UPDATE people SET {col} = ? WHERE id = ?", (dup[col], keep_id))
+            notes = " ".join(x for x in ((keep["notes"] or "").strip(), (dup["notes"] or "").strip()) if x)
+            dates = ", ".join(dict.fromkeys(d for d in f"{keep['outreach'] or ''}, {dup['outreach'] or ''}".split(", ") if d.strip()))
+            conn.execute("UPDATE people SET notes = ?, outreach = ? WHERE id = ?", (notes, dates, keep_id))
+            if keep["origin"] == "listed" and dup["origin"] != "listed":  # spoken with, under either record
+                conn.execute("UPDATE people SET origin = ? WHERE id = ?", (dup["origin"], keep_id))
+            conn.execute("UPDATE OR IGNORE interaction_people SET person_id = ? WHERE person_id = ?", (keep_id, duplicate_id))
+            conn.execute("DELETE FROM interaction_people WHERE person_id = ?", (duplicate_id,))
+            for end in ("src", "dst"):
+                conn.execute(f"UPDATE links SET {end} = ? WHERE user_id = ? AND {end} = ?", (f"person:{keep_id}", uid, f"person:{duplicate_id}"))
+            conn.execute("UPDATE thank_you_drafts SET person_id = ? WHERE user_id = ? AND person_id = ?", (keep_id, uid, duplicate_id))
+            conn.execute("DELETE FROM people WHERE id = ? AND user_id = ?", (duplicate_id, uid))
+            final = nz.clean(name) or keep["name"]
+            if final != keep["name"]:
+                conn.execute("UPDATE people SET name = ? WHERE id = ? AND user_id = ?", (final, keep_id, uid))
+    finally:
+        conn.close()
+    return _done(ctx, "merge_people", args, {"ok": True, "person_id": keep_id,
+                                             "did": f"Merged the duplicate {dup['name']} into {final} at {bank}"})
 
 
 @agent.tool
