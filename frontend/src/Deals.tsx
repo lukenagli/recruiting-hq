@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { API_URL, del, post, uploadWith } from './api'
+import { API_URL, del, get, post, uploadWith } from './api'
 import type { Deal, DealDocument, DealPoint, DealsData } from './api'
 import CapIQ from './CapIQ'
 import RecommendedDeals from './RecommendedDeals'
@@ -58,8 +58,41 @@ function NotedSource({ source, deal }: { source: string; deal: Deal }) {
   return (
     <a className="src src-doc" href={href} target="_blank" rel="noreferrer"
       title={href === deal.capiq_url ? 'Opens the deal in Capital IQ (Yale Wi-Fi and Capital IQ sign-in needed)' : ''}>
-      {source}
+      {(url && source.replace(url, '').replace(/[;,\s]+$/, '').trim()) || source}
     </a>
+  )
+}
+
+/** Preview: fill both companies' share price reaction from Yahoo Finance's daily prices (no AI). */
+function SharePrices({ deal, onChanged }: { deal: Deal; onChanged: () => void }) {
+  const [day, setDay] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [message, setMessage] = useState('')
+  useEffect(() => {
+    get<{ announced: string }>(`/api/deals/${deal.id}/announced`).then((r) => setDay((d) => d || r.announced), () => undefined)
+  }, [deal.id])
+  async function fill() {
+    setBusy(true)
+    setMessage('')
+    try {
+      const out = await post<{ ok: boolean; message?: string; reason?: string }>(`/api/deals/${deal.id}/market`, { announced: day })
+      setMessage(out.message ?? out.reason ?? '')
+      onChanged()
+    } catch (e) {
+      setMessage((e as Error).message)
+    } finally {
+      setBusy(false)
+    }
+  }
+  return (
+    <div className="share-prices">
+      <label>
+        Announced <input type="date" value={day} onChange={(e) => setDay(e.target.value)} />
+      </label>
+      <button className="btn" disabled={busy || !day} onClick={fill}>{busy ? 'Reading Yahoo Finance…' : 'Fill share prices from Yahoo Finance'}</button>
+      <small className="muted">The move on announcement day, 1 month and 6 months later, and today.</small>
+      {message && <p className="notice">{message}</p>}
+    </div>
   )
 }
 
@@ -392,6 +425,7 @@ export default function Deals() {
               <h3>
                 {s.name} <small>{s.timing}</small>
               </h3>
+              {preview && s.name === '4. Market reaction' && <SharePrices deal={deal} onChanged={reload} />}
               <dl>
                 {s.points.map((p) => (
                   <div key={p.id} className={p.value ? '' : 'missing'}>

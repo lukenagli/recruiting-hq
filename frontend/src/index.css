@@ -1363,3 +1363,7 @@ main h1 { text-shadow: 0 2px 16px rgba(4, 10, 26, 0.5); }
 .agenda li.past { opacity: 0.5; }
 .agenda li.past strong { font-weight: 600; }
 .brand-mark.brand-icon { padding: 0; background: none; object-fit: cover; box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.18); }
+.share-prices { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin: 0 0 10px; }
+.share-prices input { font: inherit; border: 1.5px solid var(--line); border-radius: 8px; padding: 4px 8px; margin-left: 6px; }
+.share-prices .btn { margin: 0; }
+.share-prices .notice { width: 100%; margin: 0; }

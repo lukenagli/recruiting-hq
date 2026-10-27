@@ -13,7 +13,7 @@ from pydantic import BaseModel
 from pydantic_ai import Agent
 
 from . import banks as banks_info
-from . import accounts, assistant, attachments, auth, budget, capiq, catch_up, config, cover_letters, deal_docs, deal_recs, deal_sources, deals, importer, legal, llm, network, onboarding, practice, profile, schools, reference, research, shared, stars, sync, templates, thank_you, transfer, user_keys
+from . import accounts, assistant, attachments, auth, budget, capiq, catch_up, config, cover_letters, deal_docs, deal_recs, deal_sources, deals, importer, legal, llm, market, network, onboarding, practice, profile, schools, reference, research, shared, stars, sync, templates, thank_you, transfer, user_keys
 from .auth import admin_user, current_user
 from .db import connect, init_db
 from .llm import get_model, usage_dict
@@ -342,6 +342,23 @@ def capiq_queue(user: dict = Depends(current_user)):
 @app.post("/api/deals/capiq")
 def capiq_result(got: deal_recs.CapIQDeal, user: dict = Depends(current_user)):
     return deal_recs.capiq_save(user["id"], got)
+
+
+@app.get("/api/deals/{deal_id}/announced")
+def deal_announced(deal_id: int, user: dict = Depends(preview_user)):
+    """Preview: the announcement date found in the deal's timeline, to prefill the share price lookup."""
+    found = market.announced_on(deal_id, user["id"])
+    return {"announced": found.isoformat() if found else ""}
+
+
+class MarketRequest(BaseModel):
+    announced: str = ""
+
+
+@app.post("/api/deals/{deal_id}/market")
+def deal_market(deal_id: int, req: MarketRequest, user: dict = Depends(preview_user)):
+    """Preview: both companies' share price reaction, from Yahoo Finance (no AI)."""
+    return market.fill(user["id"], deal_id, req.announced)
 
 
 class CapIQLink(BaseModel):
