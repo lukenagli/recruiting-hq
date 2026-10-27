@@ -149,17 +149,30 @@ async function syncSlack(state, lines) {
 }
 
 async function syncWhatsApp(state, lines) {
-  // WhatsApp Web only runs in one tab at a time, so the reader uses yours and skips WhatsApp if it isn't open.
-  const [tab] = await chrome.tabs.query({ url: 'https://web.whatsapp.com/*' })
-  if (!tab) return lines.push('WhatsApp: skipped (open web.whatsapp.com in Chrome to include it).')
-  for (const chat of (state.config || {}).whatsapp_chats || []) {
-    const since = (state.checkpoints.whatsapp || {})[chat] || state.baseline
-    const out = await ask(tab.id, { type: 'whatsapp-collect', chat, since })
-    if (!out.ok) {
-      lines.push(`WhatsApp ${chat}: ${out.error}`)
-      continue
+  const chats = (state.config || {}).whatsapp_chats || []
+  if (!chats.length) return
+  // WhatsApp Web runs in one tab at a time, and opening a second one would knock the student's offline. So the reader
+  // reads their WhatsApp tab when it is open, and otherwise opens WhatsApp in a minimized window of its own (signed in
+  // the way theirs is) and closes it afterwards.
+  let [tab] = await chrome.tabs.query({ url: 'https://web.whatsapp.com/*' })
+  let own = null
+  if (!tab) {
+    own = await chrome.windows.create({ url: 'https://web.whatsapp.com/', state: 'minimized', focused: false })
+    tab = own.tabs[0]
+    await loaded(tab.id)
+  }
+  try {
+    for (const chat of chats) {
+      const since = (state.checkpoints.whatsapp || {})[chat] || state.baseline
+      const out = await ask(tab.id, { type: 'whatsapp-collect', chat, since })
+      if (!out.ok) {
+        lines.push(`WhatsApp ${chat}: ${out.error}` + (own ? ' (If WhatsApp isn\'t linked in this Chrome, open web.whatsapp.com once and link your phone.)' : ''))
+        continue
+      }
+      await file({ source: 'whatsapp', conversation: chat, group_chat: true, items: out.items }, lines)
     }
-    await file({ source: 'whatsapp', conversation: chat, group_chat: true, items: out.items }, lines)
+  } finally {
+    if (own) await chrome.windows.remove(own.id)
   }
 }
 

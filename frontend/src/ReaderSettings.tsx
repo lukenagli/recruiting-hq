@@ -42,7 +42,7 @@ export default function ReaderSettings() {
         <li>In Chrome, open <code>chrome://extensions</code>, turn on <strong>Developer mode</strong> (top right), click <strong>Load unpacked</strong> and choose that folder.</li>
         <li>Click the puzzle-piece icon in Chrome's toolbar, then the pin next to Recruiting HQ Reader.</li>
         <li>Create a reader key below, click the Reader's icon, paste the key and click <strong>Save key</strong>.</li>
-        <li>Stay signed in to Outlook and Slack in Chrome. For WhatsApp, open web.whatsapp.com and link your phone.</li>
+        <li>Stay signed in to Outlook and Slack in Chrome. For WhatsApp, open web.whatsapp.com once and link your phone; after that it doesn't need to stay open.</li>
       </ol>
       {key ? (
         <div className="reader-key">
