@@ -10,6 +10,7 @@ assistant it hands messages to: no email, chat or messaging tool exists in this 
   messages about banks and the process; syncing may use at most SYNC_BUDGET tokens a day.
 """
 import hashlib
+import json
 import re
 from datetime import date, datetime
 
@@ -37,6 +38,10 @@ CREATE TABLE IF NOT EXISTS reader_keys (
     user_id     INTEGER NOT NULL,
     token_hash  TEXT NOT NULL PRIMARY KEY,
     created_at  TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS reader_config (
+    user_id  INTEGER PRIMARY KEY,
+    config   TEXT NOT NULL   -- JSON: slack_team, slack_channels [{id, name, group}], whatsapp_chats [name]
 );
 CREATE TABLE IF NOT EXISTS sync_log (
     id            INTEGER PRIMARY KEY,
@@ -108,10 +113,31 @@ def state(uid: int) -> dict:
         log = [dict(r) for r in conn.execute(
             "SELECT at, source, conversation, received, new, filed, note FROM sync_log WHERE user_id = ? ORDER BY id DESC LIMIT 20", (uid,))]
         has_key = conn.execute("SELECT 1 FROM reader_keys WHERE user_id = ?", (uid,)).fetchone() is not None
+        row = conn.execute("SELECT config FROM reader_config WHERE user_id = ?", (uid,)).fetchone()
     out: dict[str, dict[str, str]] = {}
     for r in rows:
         out.setdefault(r["source"], {})[r["conversation"]] = r["last_at"]
-    return {"checkpoints": out, "season_start": SEASON_START, "log": log, "has_key": has_key}
+    return {"checkpoints": out, "season_start": SEASON_START, "log": log, "has_key": has_key,
+            "config": json.loads(row["config"]) if row else {}}
+
+
+class ReaderConfig(BaseModel):
+    """What the reader reads. Kept in the account, not in the extension's (public) code."""
+    slack_team: str = ""
+    slack_channels: list[dict] = Field(default_factory=list)  # {id, name, group}
+    whatsapp_chats: list[str] = Field(default_factory=list)
+
+
+def set_config(uid: int, config: ReaderConfig) -> dict:
+    ensure()
+    channels = [{"id": str(c.get("id", ""))[:20], "name": str(c.get("name", ""))[:80], "group": bool(c.get("group"))}
+                for c in config.slack_channels if re.fullmatch(r"[CDG][A-Z0-9]{6,15}", str(c.get("id", "")))]
+    clean = {"slack_team": config.slack_team if re.fullmatch(r"[A-Z0-9]{6,15}", config.slack_team) else "",
+             "slack_channels": channels[:30], "whatsapp_chats": [c[:100] for c in config.whatsapp_chats][:10]}
+    with connect() as conn:
+        conn.execute("INSERT INTO reader_config (user_id, config) VALUES (?, ?) ON CONFLICT(user_id) DO UPDATE SET config = excluded.config",
+                     (uid, json.dumps(clean)))
+    return clean
 
 
 def _key(item: Item) -> str:

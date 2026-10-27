@@ -1,0 +1,57 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>Reader guard test</title>
+  </head>
+  <body>
+    <!-- A stand-in for an Outlook page, used to check the reader's click guard and tripwire. Open it in a browser. -->
+    <div role="tree"><div role="treeitem" id="folder" title="Inbox - 3 items">Inbox</div></div>
+    <div role="listbox">
+      <div role="option" id="row" aria-label="Collapsed Jane Doe Coffee chat Fri 10/16">Jane Doe: Coffee chat</div>
+      <div role="option" id="draftRow" aria-label="[Draft] jane.banker@example.com Thank you">Draft</div>
+      <div role="option" id="rowWithButton"><button id="flag" aria-label="Flag this message">Flag</button></div>
+    </div>
+    <div id="pane"><button id="reply" aria-label="Reply">Reply</button><button id="react" aria-label="React">👍</button></div>
+    <pre id="out"></pre>
+    <script src="../safe.js"></script>
+    <script>
+      const results = []
+      const check = (name, ok) => results.push(`${ok ? 'PASS' : 'FAIL'}  ${name}`)
+      const clicked = new Set()
+      for (const el of document.querySelectorAll('[id]')) el.addEventListener('click', () => clicked.add(el.id))
+      const $ = (id) => document.getElementById(id)
+
+      check('clicks a message row', rhqSafeClick($('row'), 'outlook-messages') && clicked.has('row'))
+      check('clicks a folder', rhqSafeClick($('folder'), 'outlook-folders') && clicked.has('folder'))
+      check('refuses a draft row', !rhqSafeClick($('draftRow'), 'outlook-messages') && !clicked.has('draftRow'))
+      check('refuses a button inside a row', !rhqSafeClick($('flag'), 'outlook-messages') && !clicked.has('flag'))
+      check('refuses Reply (outside the lists)', !rhqSafeClick($('reply'), 'outlook-messages') && !clicked.has('reply'))
+      check('refuses React (outside the lists)', !rhqSafeClick($('react'), 'outlook-messages') && !clicked.has('react'))
+      check('refuses an unknown list name', !rhqSafeClick($('row'), 'anything-else'))
+      check('tripwire quiet with no compose box', !rhqComposeOpen('outlook'))
+
+      // Now a compose box appears: every click must stop.
+      const editor = document.createElement('div')
+      editor.contentEditable = 'true'
+      editor.textContent = ' '
+      document.body.appendChild(editor)
+      let stopped = false
+      clicked.clear()
+      try { rhqSafeClick($('row'), 'outlook-messages') } catch (e) { stopped = e instanceof RhqStop }
+      check('tripwire stops everything when a compose box is open', stopped && !clicked.has('row'))
+      editor.remove()
+
+      const send = document.createElement('button')
+      send.setAttribute('aria-label', 'Send')
+      document.body.appendChild(send)
+      stopped = false
+      try { rhqSafeClick($('row'), 'outlook-messages') } catch (e) { stopped = e instanceof RhqStop }
+      check('tripwire stops everything when a Send button is visible', stopped)
+      send.remove()
+
+      document.getElementById('out').textContent = results.join('\n')
+      document.title = results.every((r) => r.startsWith('PASS')) ? 'ALL PASS' : 'SOME FAILED'
+    </script>
+  </body>
+</html>

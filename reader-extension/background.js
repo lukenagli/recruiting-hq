@@ -3,13 +3,42 @@
 // It only ever talks to recruiting-hq.onrender.com. Nothing here can send an email or a chat message.
 
 const API = 'https://recruiting-hq.onrender.com'
-const SLACK_TEAM = 'EBWC154PL'
-// Slack: the official club channel and DMs are read in full; the busy 1Y channel only for messages about the process.
-const SLACK_CHANNELS = [
-  { id: 'C03U2DX4M51', name: '#club-finance', group: false },
-  { id: 'C0C0HRAJLM7', name: '#finance-recruitment-2026', group: true },
-]
-const WHATSAPP_CHATS = ["Unofficial Channel - Maximizing Shareholder's Value", 'IB C&R Offer!!']
+// What to read (the Slack workspace and channels, the WhatsApp groups) is kept in the student's Recruiting HQ account,
+// not in this code: config = { slack_team, slack_channels: [{ id, name, group }], whatsapp_chats: [name] }.
+// Channels marked group are busy group chats, filed only for messages about the process.
+// The network lock: in the tabs the reader opens, Chrome blocks every request that could send, reply, forward,
+// react, delete, move or mark as read. Rules only ever block, and apply to the reader's own tabs, never to yours.
+const OUTLOOK_LOCK = ['action=CreateItem', 'action=SendItem', 'action=UpdateItem', 'action=DeleteItem', 'action=MoveItem', 'action=CopyItem',
+  'action=CreateResponse', 'action=ApplyConversationAction', 'reaction', '/send', '/reply', '/forward', 'sendmail', 'createreply', 'createforward']
+const SLACK_LOCK = ['/api/chat.', '/api/reactions.', '/api/files.upload', '/api/files.complete', '/api/files.share', '/api/conversations.mark',
+  '/api/conversations.join', '/api/conversations.open', '/api/pins.', '/api/stars.', '/api/drafts.', '/api/bookmarks.', '/api/calls.']
+
+async function lockTab(tabId, filters) {
+  const base = (tabId % 100000) * 100
+  await chrome.declarativeNetRequest.updateSessionRules({
+    removeRuleIds: filters.map((_, i) => base + i + 1),
+    addRules: filters.map((urlFilter, i) => ({
+      id: base + i + 1,
+      priority: 1,
+      action: { type: 'block' },
+      condition: { tabIds: [tabId], urlFilter, isUrlFilterCaseSensitive: false },
+    })),
+  })
+}
+
+async function unlockTab(tabId, filters) {
+  const base = (tabId % 100000) * 100
+  await chrome.declarativeNetRequest.updateSessionRules({ removeRuleIds: filters.map((_, i) => base + i + 1) })
+}
+
+/** A background tab with the network lock on before it loads anything. */
+async function lockedTab(url, filters) {
+  const tab = await chrome.tabs.create({ url: 'about:blank', active: false })
+  await lockTab(tab.id, filters)
+  await chrome.tabs.update(tab.id, { url })
+  return tab
+}
+
 
 chrome.runtime.onInstalled.addListener(() => chrome.alarms.create('sync', { periodInMinutes: 30 }))
 chrome.runtime.onStartup.addListener(() => chrome.alarms.create('sync', { periodInMinutes: 30 }))
@@ -64,25 +93,28 @@ async function file(batch, lines) {
 }
 
 async function syncOutlook(state, lines) {
-  const tab = await chrome.tabs.create({ url: 'https://outlook.cloud.microsoft/mail/', active: false })
+  const tab = await lockedTab('https://outlook.cloud.microsoft/mail/', OUTLOOK_LOCK)
   try {
     await loaded(tab.id)
     const out = await ask(tab.id, { type: 'outlook-collect', checkpoints: state.checkpoints.outlook || {}, baseline: state.baseline })
     if (!out.ok) return lines.push(`Outlook: ${out.error}`)
     for (const b of out.batches) await file(b, lines)
   } finally {
-    chrome.tabs.remove(tab.id)
+    await chrome.tabs.remove(tab.id)
+    await unlockTab(tab.id, OUTLOOK_LOCK)
   }
 }
 
 async function syncSlack(state, lines) {
-  const tab = await chrome.tabs.create({ url: `https://app.slack.com/client/${SLACK_TEAM}/${SLACK_CHANNELS[0].id}`, active: false })
+  const { slack_team: team, slack_channels: channels = [] } = state.config || {}
+  if (!team || !channels.length) return lines.push('Slack: no channels set up yet.')
+  const tab = await lockedTab(`https://app.slack.com/client/${team}/${channels[0].id}`, SLACK_LOCK)
   try {
     await loaded(tab.id)
     const dms = await ask(tab.id, { type: 'slack-dms' })
-    const convos = [...SLACK_CHANNELS, ...((dms.ok && dms.dms) || []).map((d) => ({ id: d.id, name: `DM with ${d.name}`, group: false }))]
+    const convos = [...channels, ...((dms.ok && dms.dms) || []).map((d) => ({ id: d.id, name: `DM with ${d.name}`, group: false }))]
     for (const c of convos) {
-      await chrome.tabs.update(tab.id, { url: `https://app.slack.com/client/${SLACK_TEAM}/${c.id}` }) // opened by address, no clicks
+      await chrome.tabs.update(tab.id, { url: `https://app.slack.com/client/${team}/${c.id}` }) // opened by address, no clicks
       await loaded(tab.id)
       const since = (state.checkpoints.slack || {})[c.name] || state.baseline
       const out = await ask(tab.id, { type: 'slack-collect', since })
@@ -93,7 +125,8 @@ async function syncSlack(state, lines) {
       await file({ source: 'slack', conversation: c.name, group_chat: c.group, items: out.items }, lines)
     }
   } finally {
-    chrome.tabs.remove(tab.id)
+    await chrome.tabs.remove(tab.id)
+    await unlockTab(tab.id, SLACK_LOCK)
   }
 }
 
@@ -101,7 +134,7 @@ async function syncWhatsApp(state, lines) {
   // WhatsApp Web only runs in one tab at a time, so the reader uses yours and skips WhatsApp if it isn't open.
   const [tab] = await chrome.tabs.query({ url: 'https://web.whatsapp.com/*' })
   if (!tab) return lines.push('WhatsApp: skipped (open web.whatsapp.com in Chrome to include it).')
-  for (const chat of WHATSAPP_CHATS) {
+  for (const chat of (state.config || {}).whatsapp_chats || []) {
     const since = (state.checkpoints.whatsapp || {})[chat] || state.baseline
     const out = await ask(tab.id, { type: 'whatsapp-collect', chat, since })
     if (!out.ok) {

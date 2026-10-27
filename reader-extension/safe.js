@@ -15,9 +15,22 @@ const RHQ_ALLOWED_LISTS = {
   'whatsapp-chats': '#pane-side',
 }
 
-const RHQ_FORBIDDEN = /send|reply|forward|react|compose|new message|new mail|post|submit|delete|archive|flag|pin|mute|call/i
+const RHQ_FORBIDDEN = /send|reply|forward|react|compose|new message|new mail|post|submit|delete|archive|flag|pin|mute|call|draft/i
+
+/** Tripwire: true when anything that could send is on screen (a compose or reply box, or a Send button). In Outlook
+ *  any editable area counts; WhatsApp always shows its message box, so there it counts only if it holds text. */
+function rhqComposeOpen(site) {
+  const editors = [...document.querySelectorAll('[contenteditable="true"], textarea, [role="textbox"]')]
+  const sendButton = [...document.querySelectorAll('button, [role="button"]')].some((b) => /^send\b/i.test((b.getAttribute('aria-label') || b.getAttribute('title') || '').trim()))
+  if (site === 'whatsapp') return editors.some((e) => e.closest('footer') && (e.innerText || e.value || '').trim()) || false
+  return editors.some((e) => e.offsetParent !== null && !e.closest('[role="search"], [role="combobox"], header')) || sendButton
+}
+
+class RhqStop extends Error {}
 
 function rhqSafeClick(el, listName) {
+  const site = listName.startsWith('whatsapp') ? 'whatsapp' : 'outlook'
+  if (rhqComposeOpen(site)) throw new RhqStop('Stopped: a compose or reply box was open, so the reader did nothing more.')
   const listSelector = RHQ_ALLOWED_LISTS[listName]
   if (!el || !listSelector) return false
   const list = el.closest(listSelector)

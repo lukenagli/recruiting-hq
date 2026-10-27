@@ -1,9 +1,9 @@
 {
   "manifest_version": 3,
   "name": "Recruiting HQ Reader",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Reads (never sends) what's new in your recruiting email, Slack and WhatsApp and files it in Recruiting HQ.",
-  "permissions": ["storage", "alarms"],
+  "permissions": ["storage", "alarms", "declarativeNetRequest"],
   "host_permissions": [
     "https://recruiting-hq.onrender.com/*",
     "https://outlook.cloud.microsoft/*",

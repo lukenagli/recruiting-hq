@@ -587,6 +587,12 @@ def sync_key_revoke(user: dict = Depends(preview_user)):
     return {"ok": True}
 
 
+@app.post("/api/sync/config")
+def sync_config(config: sync.ReaderConfig, user: dict = Depends(preview_user)):
+    """What the reader reads (Slack channels, WhatsApp groups), kept in the account rather than in the extension's code."""
+    return sync.set_config(user["id"], config)
+
+
 @app.post("/api/sync/ingest")
 async def sync_ingest(batch: sync.Batch, user: dict = Depends(preview_user)):
     if batch.source not in ("outlook", "slack", "whatsapp") or len(batch.items) > 400:

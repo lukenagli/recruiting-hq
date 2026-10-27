@@ -9,7 +9,8 @@ check rejects, in every script that runs on those sites:
   - clipboard and paste;
   - any .click() outside rhqSafeClick in safe.js;
   - network calls (fetch / XMLHttpRequest / sendBeacon) from page scripts: only the background talks to Recruiting HQ;
-and checks the manifest asks for no permission that could act on pages (scripting, debugger, tabs, cookies...).
+checks the manifest asks for no permission that could act on pages (scripting, debugger, tabs, cookies...), and that
+the background's network lock only ever blocks requests.
 """
 import json
 import re
@@ -30,7 +31,7 @@ FORBIDDEN = {
     r"window\.open|location\s*=|location\.href\s*=|\.assign\s*\(": "navigates the page",
 }
 SAFE_DEF = re.compile(r"function rhqSafeClick\(.*?\n}\n", re.S)
-BAD_PERMISSIONS = {"scripting", "debugger", "tabs", "cookies", "webRequest", "declarativeNetRequest", "nativeMessaging",
+BAD_PERMISSIONS = {"scripting", "debugger", "tabs", "cookies", "webRequest", "declarativeNetRequestWithHostAccess", "nativeMessaging",
                    "clipboardWrite", "clipboardRead", "management", "userScripts"}
 
 
@@ -57,6 +58,12 @@ def main() -> int:
             problems.append(f"background.js: unexpected address {url}")
     if re.search(r"executeScript|chrome\.debugger|chrome\.scripting", background):
         problems.append("background.js: runs code in pages")
+    # The network lock may only block requests: never allow, redirect, rewrite headers or upgrade them.
+    for kind in re.findall(r"action:\s*\{\s*type:\s*'([A-Za-z]+)'", background):
+        if kind != "block":
+            problems.append(f"background.js: a network rule of type '{kind}' (only 'block' is allowed)")
+    if re.search(r"updateDynamicRules|redirect|modifyHeaders|allowAllRequests|upgradeScheme", background):
+        problems.append("background.js: network rules that do more than block")
     if problems:
         print("Reader check FAILED:\n  " + "\n  ".join(problems))
         return 1
