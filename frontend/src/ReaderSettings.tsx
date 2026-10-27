@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { post } from './api'
+import { API_URL, post } from './api'
 import Refresh from './Refresh'
 import { fmtDate, useApi } from './ui'
 
@@ -35,9 +35,14 @@ export default function ReaderSettings() {
         files it here. It never runs on its own. <strong>It can only read: it cannot send, reply, react or type anywhere.</strong>
       </p>
       <ol className="reader-steps">
-        <li>In Chrome, open <code>chrome://extensions</code>, turn on Developer mode, click "Load unpacked" and pick the <code>reader-extension</code> folder.</li>
-        <li>Create a reader key below and paste it into the extension's window (click its icon in the toolbar).</li>
-        <li>Stay signed in to Outlook and Slack in Chrome, and keep web.whatsapp.com open in a tab.</li>
+        <li>
+          <a className="btn" href={`${API_URL}/api/reader.zip`}>Download the Reader</a> and unzip it into a folder you'll keep (for example
+          Documents\Recruiting HQ Reader).
+        </li>
+        <li>In Chrome, open <code>chrome://extensions</code>, turn on <strong>Developer mode</strong> (top right), click <strong>Load unpacked</strong> and choose that folder.</li>
+        <li>Click the puzzle-piece icon in Chrome's toolbar, then the pin next to Recruiting HQ Reader.</li>
+        <li>Create a reader key below, click the Reader's icon, paste the key and click <strong>Save key</strong>.</li>
+        <li>Stay signed in to Outlook and Slack in Chrome. For WhatsApp, open web.whatsapp.com and link your phone.</li>
       </ol>
       {key ? (
         <div className="reader-key">

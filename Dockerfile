@@ -18,6 +18,7 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 COPY backend/ backend/
+COPY reader-extension/ reader-extension/
 COPY --from=web /web/dist frontend/dist
 COPY deploy/litestream.yml /etc/litestream.yml
 COPY deploy/run.sh run.sh

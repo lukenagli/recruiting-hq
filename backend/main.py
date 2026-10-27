@@ -131,6 +131,21 @@ def health():
     return {"ok": True, "model": config.MODEL_NAME}
 
 
+@app.get("/api/reader.zip")
+def reader_download():
+    """The Recruiting HQ Reader extension as a zip, for "Load unpacked" in Chrome (its code is the same for everyone)."""
+    import io
+    import zipfile
+    folder = config.ROOT / "reader-extension"
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
+        for f in sorted(folder.iterdir()):
+            if f.is_file() and f.suffix in (".js", ".json", ".html", ".png"):
+                z.write(f, f"Recruiting HQ Reader/{f.name}")
+    return Response(buf.getvalue(), media_type="application/zip",
+                    headers={"Content-Disposition": 'attachment; filename="Recruiting HQ Reader.zip"'})
+
+
 # ---- Reading the tracker ----
 
 @app.get("/api/home")
