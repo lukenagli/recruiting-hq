@@ -1313,3 +1313,12 @@ main h1 { text-shadow: 0 2px 16px rgba(4, 10, 26, 0.5); }
 .refresh-warning .primary, .refresh-warning .ghost { margin: 0 8px 0 0; }
 .refresh-warning.working { border-color: var(--blue); }
 .refresh-last { font-size: 12.5px; }
+
+/* Cover letters: start from your own letter */
+.letter-start { margin: 8px 0 18px; max-width: 820px; }
+.letter-start h2 { margin: 0 0 4px; }
+.letter-steps { padding-left: 20px; display: flex; flex-direction: column; gap: 12px; }
+.letter-steps .btn { margin-left: 6px; }
+.letter-steps .dropzone { margin-top: 8px; }
+.your-letter .file-link input { display: none; }
+.your-letter .file-link { cursor: pointer; }

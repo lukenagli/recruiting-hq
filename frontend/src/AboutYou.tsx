@@ -75,7 +75,7 @@ export default function AboutYou() {
   return (
     <section className="card about-you">
       <h3>About you</h3>
-      <p className="muted">Your cover letters and interview practice use only what's here, in Interview Prep → Key information and in your tracker. Nothing is made up.</p>
+      <p className="muted">Your cover letters and interview practice use only what's here, your own cover letter and your tracker. Nothing is made up.</p>
 
       <div className="about-block">
         <h4>Resume</h4>
@@ -150,11 +150,6 @@ export default function AboutYou() {
           </div>
         ))}
       </div>
-
-      <p className="fine">
-        Why your target group, what to highlight and your notable projects are in <a href="#/prep?tab=stories">Interview Prep → Key information</a>,
-        next to your STAR stories.
-      </p>
 
       {error && <p className="notice error">{error}</p>}
       <div className="about-save">

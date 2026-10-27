@@ -37,8 +37,12 @@ OTHER_BANK_ALIASES = {
 }
 
 INSTRUCTIONS = """\
-You write investment banking internship cover letters for students, following the shape of the student's \
-own template exactly, built from what the student actually learned in their own conversations.
+You tailor a student's own investment banking cover letter to one bank. The student wrote the letter \
+themselves (often for another bank). Keep it: the same paragraphs, sentences, experience and wording wherever they \
+are not about a particular bank. Rewrite only what belongs to the bank: the bank, group and office, the people the \
+student has spoken with there and what those conversations showed them, why this bank and group, and any line \
+that names another bank or its people. Build those parts from what the student actually learned in their own \
+conversations.
 
 Paragraph 1, introduction: start "My name is <name>, and I am <school line> writing to express my interest in \
 the <role>" (the role is given below) and name the group, bank and office when given. Then say why this \
@@ -73,7 +77,7 @@ is about why this bank and why the student fits.
 - Follow any rules in the student's own notes (for example words or punctuation to avoid).
 - Plain text paragraphs only: no greeting, no sign-off, no headings.
 - Stay within the word range given under "Shape", so the letter fits on one page.
-- If an example letter is given, match its voice and level of detail, but write fresh text for this bank.
+- Everything that is not bank-specific stays as the student wrote it, apart from fixing a sentence the new bank breaks.
 """
 
 
@@ -156,8 +160,8 @@ def _prompt(ctx: dict, prof: dict, bank: str) -> str:
         f"Resume:\n{prof['resume_text'] or '(not provided)'}",
     ]
     if prof["example_letter"]:
-        parts.append("The student's template, for structure, voice and level of detail (it may have been written for another "
-                     f"bank, so do not copy bank-specific content):\n{prof['example_letter']}")
+        parts.append("The student's own letter, to tailor (it may have been written for another bank: replace its "
+                     f"bank-specific parts and keep the rest):\n{prof['example_letter']}")
     return "\n\n".join(parts)
 
 
@@ -199,8 +203,9 @@ def problems(paragraphs: list[str], bank: str, ctx: dict, template: str = "") ->
 async def write(uid: int, chosen: Chosen, bank: str) -> dict:
     init_db()
     prof = profiles.get(uid)
-    if not prof["resume_text"].strip():
-        return {"ok": False, "reason": "Add your resume in Settings first, so the letter can use your real experience."}
+    if not prof["example_letter"].strip():
+        return {"ok": False, "reason": "Upload a cover letter you wrote yourself first (top of this page). Each bank's letter is "
+                                       "your letter, tailored to that bank."}
     with connect(read_only=True) as conn:
         ctx = _context(conn, uid, bank)
     base = _prompt(ctx, prof, bank)
