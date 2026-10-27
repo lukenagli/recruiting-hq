@@ -7,6 +7,8 @@ PORT="${PORT:-10000}"
 if [ -n "$LITESTREAM_BUCKET" ]; then
   litestream restore -if-db-not-exists -if-replica-exists -config /etc/litestream.yml "$APP_DB_PATH"
 fi
+# The teaching staff's demo account (created once; never stops the site from starting).
+python -m backend.demo || echo "WARNING: could not set up the demo account."
 if [ -n "$LITESTREAM_BUCKET" ]; then
   exec litestream replicate -config /etc/litestream.yml -exec "uvicorn backend.main:app --host 0.0.0.0 --port $PORT"
 fi

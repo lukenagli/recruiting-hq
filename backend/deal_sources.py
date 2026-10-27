@@ -65,7 +65,7 @@ def _user_agent() -> str:
     if os.getenv("SEC_USER_AGENT", "").strip():
         return os.environ["SEC_USER_AGENT"].strip()
     sender = re.search(r"[\w.+-]+@[\w-]+\.[\w.]+", os.getenv("EMAIL_FROM", ""))
-    return f"Recruiting HQ {sender.group(0)}" if sender else "Recruiting HQ recruiting-hq-app.onrender.com"
+    return f"Recruiting HQ {sender.group(0)}" if sender else "Recruiting HQ recruiting-hq.onrender.com"
 
 
 def parties(title: str) -> tuple[str, str]:

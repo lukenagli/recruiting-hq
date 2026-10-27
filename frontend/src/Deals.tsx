@@ -116,7 +116,7 @@ function Documents({ deal, data, onChanged }: { deal: Deal; data: DealsData; onC
   // SEC filings saved as web pages earlier are turned into PDFs as soon as the deal is opened.
   const webPages = deal.documents.filter((d) => /\.html?$/i.test(d.filename)).length
   useEffect(() => {
-    if (!webPages) return
+    if (!webPages || !preview) return
     setMessage(`Turning ${webPages} SEC web page${webPages > 1 ? 's' : ''} into PDF${webPages > 1 ? 's' : ''}…`)
     post(`/api/deals/${deal.id}/to-pdf`, {}).then(() => { setMessage(''); onChanged() }, (e) => setMessage((e as Error).message))
   }, [deal.id, webPages]) // eslint-disable-line react-hooks/exhaustive-deps

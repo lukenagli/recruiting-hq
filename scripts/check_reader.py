@@ -56,7 +56,7 @@ def main() -> int:
         problems.append(f"manifest.json: page scripts not covered by this check: {sorted(scripts - set(PAGE_SCRIPTS))}")
     background = re.sub(r"//[^\n]*", "", (ROOT / "background.js").read_text(encoding="utf-8"))
     for url in re.findall(r"https://[^\s'\"`/]+", background):
-        if url not in ("https://recruiting-hq-app.onrender.com", "https://outlook.cloud.microsoft", "https://app.slack.com", "https://web.whatsapp.com"):
+        if url not in ("https://recruiting-hq.onrender.com", "https://outlook.cloud.microsoft", "https://app.slack.com", "https://web.whatsapp.com"):
             problems.append(f"background.js: unexpected address {url}")
     if re.search(r"executeScript|chrome\.debugger|chrome\.scripting", background):
         problems.append("background.js: runs code in pages")

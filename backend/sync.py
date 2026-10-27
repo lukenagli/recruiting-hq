@@ -162,7 +162,24 @@ def state(uid: int) -> dict:
         out.setdefault(r["source"], {})[r["conversation"]] = r["last_at"]
     config = json.loads(row["config"]) if row else {}
     config["slack_team"] = config.get("slack_team") or shared.slack_team()  # the club's workspace unless the student set one
+    # Every student is in the group chats for the groups they recruit for (the admin's list), without setting them up.
+    slack, whatsapp = config.setdefault("slack_channels", []), config.setdefault("whatsapp_chats", [])
+    for chat in _group_chats(uid):
+        if chat["app"] == "slack" and chat["name"].lower() not in {c["name"].lower() for c in slack}:
+            slack.append({"id": "", "name": chat["name"], "group": True})
+        elif chat["app"] == "whatsapp" and chat["name"] not in whatsapp:
+            whatsapp.append(chat["name"])
     return {"checkpoints": out, "season_start": SEASON_START, "log": log, "has_key": has_key, "config": config}
+
+
+def _group_chats(uid: int) -> list[dict]:
+    """The admin's group chats for the groups this student recruits for (profile and each bank's preferences)."""
+    with connect(read_only=True) as conn:
+        prefs = [r["prefs"] or "" for r in conn.execute("SELECT prefs FROM my_banks WHERE user_id = ?", (uid,))]
+        row = conn.execute("SELECT target_groups FROM user_profiles WHERE user_id = ?", (uid,)).fetchone()
+    groups = {g.strip().lower() for g in (row["target_groups"] if row else "").split(",") if g.strip()}
+    groups |= {g.strip().lower() for p in prefs for g in p.split(">") if g.strip()}
+    return [c for c in shared.chat_directory() if groups & {g.lower() for g in c["groups"]}]
 
 
 class ReaderConfig(BaseModel):
@@ -183,14 +200,6 @@ def set_config(uid: int, config: ReaderConfig) -> dict:
         conn.execute("INSERT INTO reader_config (user_id, config) VALUES (?, ?) ON CONFLICT(user_id) DO UPDATE SET config = excluded.config",
                      (uid, json.dumps(clean)))
     return clean
-
-
-def set_chats(uid: int, slack: list[str], whatsapp: list[str]) -> dict:
-    """The group chats a student picked in setup, by name. Channels already set up with their id are kept."""
-    current = state(uid)["config"]
-    known = {c["name"].lower(): c for c in current.get("slack_channels", [])}
-    channels = [known.get(n.lstrip("#").lower(), {"id": "", "name": n.lstrip("#"), "group": True}) for n in slack]
-    return set_config(uid, ReaderConfig(slack_team=current.get("slack_team", ""), slack_channels=channels, whatsapp_chats=whatsapp))
 
 
 def _key(item: Item) -> str:

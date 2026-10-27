@@ -5,7 +5,7 @@ from Settings. Nothing here is required.
 """
 from . import banks as bank_info
 from . import profile as user_profile
-from . import schools, templates, user_keys
+from . import accounts, schools, templates, user_keys
 from .db import connect, init_db
 
 
@@ -17,6 +17,7 @@ def state(uid: int) -> dict:
         chosen = [r["bank"] for r in conn.execute("SELECT bank FROM my_banks WHERE user_id = ? ORDER BY bank", (uid,))]
     ctx = schools.for_user(uid)
     key = user_keys.status(uid)
+    preview = accounts.in_preview_uid(uid)
     return {
         "profile": {k: prof[k] for k in ("school", "level", "class_year", "school_line", "contact_line", "target_groups",
                                          "email_template", "email_rules", "onboarded_at")}
@@ -25,7 +26,8 @@ def state(uid: int) -> dict:
         "context": ctx,
         "school_line_suggestion": schools.default_school_line(ctx),
         "banks": chosen,
-        "bank_choices": [{"bank": b, "domain": d} for b, d in sorted(bank_info.DOMAINS.items())],
+        "bank_choices": [{"bank": b, "domain": d} for b, d in sorted(bank_info.DOMAINS.items(), key=(lambda x: x[0].lower()) if preview else None)
+                         if preview or b not in bank_info.MORE_DOMAINS],
         "ai": key,
         "options": schools.options(),
         "email_templates": templates.email_templates(uid),

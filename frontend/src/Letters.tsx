@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { API_URL, upload } from './api'
 import type { LetterSummary, SetupState } from './api'
 import CoverLetterEditor from './CoverLetterEditor'
-import { Loading, Logo, fmtDate, useApi } from './ui'
+import { Loading, Logo, fmtDate, useApi, usePreview } from './ui'
 
 /** Your own letter comes first: download the Yale SOM template, write one letter yourself, upload it. */
 function YourLetter({ state, onChange }: { state: SetupState; onChange: () => void }) {
@@ -71,18 +71,26 @@ function YourLetter({ state, onChange }: { state: SetupState; onChange: () => vo
 export default function Letters({ bank }: { bank: string }) {
   const { data, error } = useApi<LetterSummary[]>('/api/cover-letters')
   const setup = useApi<SetupState>('/api/setup')
+  const preview = usePreview()
   if (!data || !setup.data) return <Loading error={error || setup.error} />
   const current = bank || data.find((l) => l.exists)?.bank || data[0]?.bank || ''
-  const ready = setup.data.cover_template.has_template
+  const ready = !preview || setup.data.cover_template.has_template // preview: letters start from the student's own letter
 
   return (
     <div>
       <h1>Cover Letters</h1>
-      <p className="lede">
-        One letter per bank, tailored from a letter you wrote yourself. Nothing is made up; gaps are highlighted for you to fill. Review every
-        one before you submit it.
-      </p>
-      <YourLetter state={setup.data} onChange={setup.reload} />
+      {preview ? (
+        <p className="lede">
+          One letter per bank, tailored from a letter you wrote yourself. Nothing is made up; gaps are highlighted for you to fill. Review
+          every one before you submit it.
+        </p>
+      ) : (
+        <p className="lede">
+          One letter per bank, following your cover letter template (set it in Settings → Setup): who you have spoken to and why the
+          bank, your experience, and a closing. Nothing is made up; gaps are highlighted for you to fill. Review every one before you submit it.
+        </p>
+      )}
+      {preview && <YourLetter state={setup.data} onChange={setup.reload} />}
       {ready && (
         <>
           <div className="chips banks">
@@ -93,7 +101,7 @@ export default function Letters({ bank }: { bank: string }) {
               </a>
             ))}
           </div>
-          {data.length === 0 && <p className="muted">No banks yet. Pick your banks in Settings.</p>}
+          {data.length === 0 && <p className="muted">No banks yet. Add banks through the assistant or the Recruiting Map.</p>}
           {current && <CoverLetterEditor key={current} bank={current} />}
         </>
       )}

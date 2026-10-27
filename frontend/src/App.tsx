@@ -116,6 +116,11 @@ export default function App() {
         <a className="brand" href="#/">
           <span className="brand-mark">R</span> Recruiting HQ
         </a>
+        {user.preview && (
+          <span className="preview-badge" title="Your account sees changes being tried out before they go to everyone">
+            Preview
+          </span>
+        )}
         <nav>
           {user.is_admin && (
             <a href="#/admin" className={section === 'admin' ? 'active' : ''}>
@@ -152,7 +157,7 @@ export default function App() {
       </header>
       {backdrop && <div className="page-backdrop" style={{ backgroundImage: `url(/bg-${backdrop}.jpg)` }} aria-hidden />}
       {/* Re-keying the page after the assistant changes something makes it reload its data. */}
-      <main key={version}>{page}</main>
+      <main key={version} className={preview ? 'preview-on' : undefined}>{page}</main>
       {(!isHome || preview) && section !== 'tour' && section !== 'catch-up' && <Assistant key={user.id} userId={user.id} onChanged={() => setVersion((v) => v + 1)} />}
     </SchoolContext.Provider>
     </PreviewContext.Provider>

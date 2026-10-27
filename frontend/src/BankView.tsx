@@ -334,7 +334,7 @@ export default function BankView({ bank, initial = '' }: { bank: string; initial
       </div>
 
       {preview && app.status !== 'out' && <RecommendedDeals bank={data.bank} />}
-      <ClubFeed bank={data.bank} />
+      {preview && <ClubFeed bank={data.bank} />}
 
       <h2>How it has gone</h2>
       <p className="muted">Each step in date order. Click a card for the details.</p>

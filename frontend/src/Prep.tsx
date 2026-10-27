@@ -1,8 +1,9 @@
 import { useState } from 'react'
 import Practice from './Practice'
 import Progress from './Progress'
+import Stories from './Stories'
 import type { PrepOptions, Question } from './api'
-import { Loading, Logo, useApi, useSchool } from './ui'
+import { Loading, Logo, useApi, usePreview, useSchool } from './ui'
 
 const ROUND_HELP: Record<string, string> = {
   'Coffee Chat': 'Informal call with a banker or a student who has been through it',
@@ -88,6 +89,7 @@ function Results({ bank, round, who }: { bank: string; round: string; who: strin
 
 const TABS = [
   ['practice', 'Practice'],
+  ['stories', 'Key information'],
   ['progress', 'My progress'],
   ['browse', 'Browse the question bank'],
 ]
@@ -95,9 +97,10 @@ const TABS = [
 export default function Prep({ bank, round, who, tab }: { bank: string; round: string; who: string; tab: string }) {
   const { data, error } = useApi<PrepOptions>('/api/prep/options')
   const school = useSchool()
+  const preview = usePreview()
   const [topic, setTopic] = useState('')
   if (!data) return <Loading error={error} />
-  const tabs = TABS.filter(([id]) => id !== 'browse' || school.club) // the question bank is the school club's material
+  const tabs = TABS.filter(([id]) => (id !== 'browse' || school.club) && (id !== 'stories' || !preview)) // the question bank is the school club's material; preview drops Key information
   const current = tab && tabs.some(([id]) => id === tab) ? tab : round && school.club ? 'browse' : 'practice'
   const header = (
     <>
@@ -116,6 +119,13 @@ export default function Prep({ bank, round, who, tab }: { bank: string; round: s
       <div className="prep">
         {header}
         <Practice key={topic} options={data} start={topic ? { categories: ['Technical'], topics: [topic], stage: '', difficulty: 'adaptive' } : undefined} />
+      </div>
+    )
+  if (current === 'stories')
+    return (
+      <div className="prep">
+        {header}
+        <Stories />
       </div>
     )
   if (current === 'progress')

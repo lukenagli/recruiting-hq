@@ -356,7 +356,7 @@ html.modal-open, html.modal-open body { overflow: hidden; }
 
 /* Settings and the add-your-key prompt */
 .settings .card { max-width: 720px; }
-.settings > .card + .card, .settings > section + section { margin-top: 18px; }
+.preview-on .settings > .card + .card, .preview-on .settings > section + section { margin-top: 18px; }
 .settings form { margin-top: 12px; }
 .key-callout { display: block; max-width: 1040px; margin: -10px auto 18px; color: var(--ink); }
 .key-callout:hover { text-decoration: none; background: #d9e6ff; }

@@ -21,7 +21,7 @@ from pydantic_ai.usage import UsageLimits
 
 from . import banks as bank_info
 from . import profile as profiles
-from . import schools, shared, templates
+from . import accounts, schools, shared, templates
 from .db import connect, init_db
 from .llm import Chosen, usage_dict
 
@@ -36,14 +36,21 @@ OTHER_BANK_ALIASES = {
     "Greenhill": ["Greenhill"], "Piper Sandler": ["Piper Sandler"],
 }
 
-INSTRUCTIONS = """\
+WRITE = """\
+You write investment banking internship cover letters for students, following the shape of the student's \
+own template exactly, built from what the student actually learned in their own conversations.
+"""
+# Preview: every letter is the student's own letter, tailored to the bank.
+TAILOR = """\
 You tailor a student's own investment banking cover letter to one bank. The student wrote the letter \
 themselves (often for another bank). Keep it: the same paragraphs, sentences, experience and wording wherever they \
 are not about a particular bank. Rewrite only what belongs to the bank: the bank, group and office, the people the \
 student has spoken with there and what those conversations showed them, why this bank and group, and any line \
 that names another bank or its people. Build those parts from what the student actually learned in their own \
 conversations.
+"""
 
+INSTRUCTIONS = """
 Paragraph 1, introduction: start "My name is <name>, and I am <school line> writing to express my interest in \
 the <role>" (the role is given below) and name the group, bank and office when given. Then say why this \
 bank, drawn from the student's conversations: name the people they have spoken with (only names from the lists \
@@ -77,15 +84,17 @@ is about why this bank and why the student fits.
 - Follow any rules in the student's own notes (for example words or punctuation to avoid).
 - Plain text paragraphs only: no greeting, no sign-off, no headings.
 - Stay within the word range given under "Shape", so the letter fits on one page.
-- Everything that is not bank-specific stays as the student wrote it, apart from fixing a sentence the new bank breaks.
 """
+WRITE_RULE = "- If an example letter is given, match its voice and level of detail, but write fresh text for this bank.\n"
+TAILOR_RULE = "- Everything that is not bank-specific stays as the student wrote it, apart from fixing a sentence the new bank breaks.\n"
 
 
 class Letter(BaseModel):
     paragraphs: list[str] = Field(description="The letter's body paragraphs in order, exactly as many as the Shape asks for.")
 
 
-agent = Agent(output_type=Letter, instructions=INSTRUCTIONS, name="cover_letter_writer")
+agent = Agent(output_type=Letter, instructions=WRITE + INSTRUCTIONS + WRITE_RULE, name="cover_letter_writer")
+tailor_agent = Agent(output_type=Letter, instructions=TAILOR + INSTRUCTIONS + TAILOR_RULE, name="cover_letter_writer")
 
 
 def shape(template: str) -> tuple[int, int, int]:
@@ -135,7 +144,7 @@ def _context(conn, uid: int, bank: str) -> dict:
             "school": schools.for_user(uid, conn)}
 
 
-def _prompt(ctx: dict, prof: dict, bank: str) -> str:
+def _prompt(ctx: dict, prof: dict, bank: str, tailor: bool = False) -> str:
     def lines(people):
         return "\n".join(f"- {p['name']} ({', '.join(x for x in (p['title'], p['grp']) if x) or 'role not recorded'}): "
                          f"{p['said'] or 'no notes recorded'}" for people_ in [people] for p in people_) or "- (none)"
@@ -159,9 +168,12 @@ def _prompt(ctx: dict, prof: dict, bank: str) -> str:
         f"About the student (target groups, why, what to highlight, projects, rules):\n{profiles.background(prof) or '(none)'}",
         f"Resume:\n{prof['resume_text'] or '(not provided)'}",
     ]
-    if prof["example_letter"]:
+    if prof["example_letter"] and tailor:
         parts.append("The student's own letter, to tailor (it may have been written for another bank: replace its "
                      f"bank-specific parts and keep the rest):\n{prof['example_letter']}")
+    elif prof["example_letter"]:
+        parts.append("The student's template, for structure, voice and level of detail (it may have been written for another "
+                     f"bank, so do not copy bank-specific content):\n{prof['example_letter']}")
     return "\n\n".join(parts)
 
 
@@ -203,18 +215,22 @@ def problems(paragraphs: list[str], bank: str, ctx: dict, template: str = "") ->
 async def write(uid: int, chosen: Chosen, bank: str) -> dict:
     init_db()
     prof = profiles.get(uid)
-    if not prof["example_letter"].strip():
+    tailor = accounts.in_preview_uid(uid)  # preview: the student's own letter, tailored
+    if tailor and not prof["example_letter"].strip():
         return {"ok": False, "reason": "Upload a cover letter you wrote yourself first (top of this page). Each bank's letter is "
                                        "your letter, tailored to that bank."}
+    if not tailor and not prof["resume_text"].strip():
+        return {"ok": False, "reason": "Add your resume in Settings first, so the letter can use your real experience."}
     with connect(read_only=True) as conn:
         ctx = _context(conn, uid, bank)
-    base = _prompt(ctx, prof, bank)
+    base = _prompt(ctx, prof, bank, tailor)
+    writer = tailor_agent if tailor else agent
     started = datetime.now().isoformat(timespec="seconds")
     total = {"input_tokens": 0, "cached_input_tokens": 0, "output_tokens": 0, "requests": 0}
     prompt, issues, paragraphs = base, [], []
     output = NativeOutput(Letter) if chosen.provider == "anthropic" else None  # Claude rejects forced tool calls
     for _ in range(2):
-        result = await agent.run(prompt, model=chosen.model, model_settings=chosen.settings, usage_limits=LIMITS, output_type=output)
+        result = await writer.run(prompt, model=chosen.model, model_settings=chosen.settings, usage_limits=LIMITS, output_type=output)
         for k, v in usage_dict(result.usage).items():
             total[k] += v
         paragraphs = [" ".join(p.split()) for p in result.output.paragraphs if p.strip()]
@@ -227,7 +243,7 @@ async def write(uid: int, chosen: Chosen, bank: str) -> dict:
         issues.append(f"needs your input: {need.strip()}")
     if not ctx["spoken"]:
         issues.append(f"you have not logged anyone you spoke with at {bank}, so the letter names no one; the guidance says to list the people you have spoken to")
-    if not shared.bank_detail(bank, ctx["mine"])["recruiter_name"]:
+    if not shared.bank_detail(bank, ctx["mine"], tailor)["recruiter_name"]:
         issues.append("no recruiter name yet, so it is addressed to Hiring Manager; the guidance says to address it to the firm's recruiter")
     now = datetime.now().isoformat(timespec="seconds")
     with connect() as conn:
@@ -247,7 +263,7 @@ async def write(uid: int, chosen: Chosen, bank: str) -> dict:
 
 
 def _recipient(uid: int, bank: str, mine: dict) -> list[str]:
-    info = shared.bank_detail(bank, mine)
+    info = shared.bank_detail(bank, mine, accounts.in_preview_uid(uid))
     lines = [info["recruiter_name"] or "Hiring Manager"]
     if info["recruiter_title"]:
         lines.append(info["recruiter_title"])
@@ -263,7 +279,7 @@ def get(uid: int, bank: str) -> dict:
         mine = conn.execute("SELECT * FROM my_banks WHERE user_id = ? AND bank = ?", (uid, bank)).fetchone()
         user = conn.execute("SELECT name FROM users WHERE id = ?", (uid,)).fetchone()
     mine = dict(mine) if mine else {}
-    info = shared.bank_detail(bank, mine)  # the student's own details, else the ones the admin pushed to everyone
+    info = shared.bank_detail(bank, mine, accounts.in_preview_uid(uid))  # the student's own, else what the admin pushed
     return {
         "bank": bank,
         "exists": row is not None,
@@ -300,6 +316,7 @@ def save_edits(uid: int, bank: str, paragraphs: list[str] | None, details: dict)
 def overview(uid: int) -> list[dict]:
     """Every bank the user is still in, with whether a letter exists yet."""
     init_db()
+    pushed = accounts.in_preview_uid(uid)
     with connect(read_only=True) as conn:
         banks = [r["bank"] for r in conn.execute(
             "SELECT bank FROM my_banks WHERE user_id = ? AND COALESCE(status, '') != 'out' ORDER BY bank", (uid,))]
@@ -308,7 +325,7 @@ def overview(uid: int) -> list[dict]:
     return [{"bank": b, "domain": bank_info.domain(b), "exists": b in letters,
              "warnings": len(json.loads(letters[b]["warnings"])) if b in letters else 0,
              "updated_at": letters[b]["updated_at"] if b in letters else "", "edited": bool(letters[b]["edited"]) if b in letters else False,
-             "recruiter": shared.bank_detail(b, {"recruiter_name": recruiters.get(b) or ""})["recruiter_name"]} for b in banks]
+             "recruiter": shared.bank_detail(b, {"recruiter_name": recruiters.get(b) or ""}, pushed)["recruiter_name"]} for b in banks]
 
 
 def _set_text(paragraph, text: str) -> None:

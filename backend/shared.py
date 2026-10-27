@@ -20,7 +20,7 @@ SCHEMA = """
 CREATE TABLE IF NOT EXISTS club_updates (
     id          INTEGER PRIMARY KEY,
     created_at  TEXT NOT NULL,
-    source      TEXT NOT NULL,      -- the chat it came from, e.g. "Slack #club-finance"
+    source      TEXT NOT NULL,      -- the chat it came from, e.g. "Slack #general"
     posted_at   TEXT NOT NULL,      -- when the message was posted
     kind        TEXT NOT NULL,      -- event | deadline | process | announcement
     bank        TEXT NOT NULL DEFAULT '',
@@ -30,7 +30,6 @@ CREATE TABLE IF NOT EXISTS club_updates (
     hidden      INTEGER NOT NULL DEFAULT 0  -- the admin removed it from the feed
 )"""
 
-CLUB_CHATS = ["club-finance", "finance-recruitment-2026", "Unofficial Channel - Maximizing Shareholder's Value"]
 BANK_FIELDS = ("recruiter_name", "recruiter_title", "letter_name", "address")
 
 
@@ -59,9 +58,10 @@ def _set(key: str, value) -> None:
 
 # ---- Bank details for cover letters ----
 
-def bank_defaults() -> dict[str, dict]:
-    """{bank: {recruiter_name, recruiter_title, letter_name, address}}: the admin's pushed version over the built-in one."""
-    saved = _get("bank_defaults", {})
+def bank_defaults(pushed: bool = True) -> dict[str, dict]:
+    """{bank: {recruiter_name, recruiter_title, letter_name, address}}: the admin's pushed version over the built-in one
+    (pushed=False: the built-in one only, for accounts not in the preview)."""
+    saved = _get("bank_defaults", {}) if pushed else {}
     out = {}
     for bank in sorted(set(bank_info.DOMAINS) | set(saved), key=str.lower):
         built_in = {"recruiter_name": "", "recruiter_title": "", "letter_name": bank_info.LETTER_NAMES.get(bank, ""),
@@ -80,16 +80,16 @@ def push_bank_defaults(updates: dict[str, dict]) -> dict:
     return bank_defaults()
 
 
-def bank_detail(bank: str, mine: dict) -> dict:
+def bank_detail(bank: str, mine: dict, pushed: bool = True) -> dict:
     """The details a letter uses for one bank: the student's own where they typed one, else the admin's default."""
-    base = bank_defaults().get(bank, {f: "" for f in BANK_FIELDS})
+    base = bank_defaults(pushed).get(bank, {f: "" for f in BANK_FIELDS})
     return {f: (mine.get(f) or base[f] or "") for f in BANK_FIELDS}
 
 
 # ---- Chats ----
 
 def club_chats() -> list[str]:
-    return _get("club_chats", CLUB_CHATS)
+    return _get("club_chats", [])  # set by the admin (names stay out of the public code)
 
 
 def set_club_chats(names: list[str]) -> list[str]:

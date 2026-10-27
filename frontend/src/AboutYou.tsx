@@ -1,13 +1,14 @@
 import { useEffect, useState } from 'react'
 import { post, upload } from './api'
 import type { Profile, SetupState } from './api'
-import { Loading, Logo, useApi } from './ui'
+import { Loading, Logo, useApi, usePreview } from './ui'
 
 const toggle = (list: string[], x: string) => (list.includes(x) ? list.filter((y) => y !== x) : [...list, x])
 
 /** Settings: everything about you that letters and interview practice draw on, edited in one place. */
 export default function AboutYou() {
   const setup = useApi<SetupState>('/api/setup')
+  const preview = usePreview()
   const prof = useApi<Profile>('/api/profile')
   const [banks, setBanks] = useState<string[]>([])
   const [groups, setGroups] = useState<string[]>([])
@@ -75,7 +76,11 @@ export default function AboutYou() {
   return (
     <section className="card about-you">
       <h3>About you</h3>
-      <p className="muted">Your cover letters and interview practice use only what's here, your own cover letter and your tracker. Nothing is made up.</p>
+      <p className="muted">
+        {preview
+          ? "Your cover letters and interview practice use only what's here, your own cover letter and your tracker. Nothing is made up."
+          : "Your cover letters and interview practice use only what's here, in Interview Prep → Key information and in your tracker. Nothing is made up."}
+      </p>
 
       <div className="about-block">
         <h4>Resume</h4>
@@ -150,6 +155,13 @@ export default function AboutYou() {
           </div>
         ))}
       </div>
+
+      {!preview && (
+        <p className="fine">
+          Why your target group, what to highlight and your notable projects are in <a href="#/prep?tab=stories">Interview Prep → Key information</a>,
+          next to your STAR stories.
+        </p>
+      )}
 
       {error && <p className="notice error">{error}</p>}
       <div className="about-save">

@@ -250,7 +250,8 @@ const STEPS: { kicker: string; title: string; text: ReactNode; demo: ReactNode }
     text: (
       <>
         Pick behavioral, technical or deal questions, by bank and difficulty. Answer by typing or out loud and you get a grade, the model
-        answer from your study guides, and you can ask follow-ups.
+        answer from your study guides, and you can ask follow-ups. In <em>Key information</em>, write your pitch and STAR stories once; practice
+        grades your behavioral answers against them.
       </>
     ),
     demo: (
@@ -303,7 +304,7 @@ const START: [string, string, string][] = [
   ['Add your AI key', 'Powers the assistant, grading and writing. Takes two minutes.', '#/settings'],
   ['Upload your resume and pick your banks', 'Everything else is built from these.', '#/settings'],
   ['Upload your study guides', 'Your own Breaking Into Wall Street PDFs, so practice can use their answers.', '#/settings'],
-  ['Write your first cover letter', 'In the Yale SOM template; the site tailors it for every other bank.', '#/letters'],
+  ['Write your pitch and STAR stories', 'Interview Prep → Key information.', '#/prep?tab=stories'],
   ['Tell it about your first coffee chat', 'The "Anything happen?" box on your homepage.', '#/'],
 ]
 

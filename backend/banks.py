@@ -22,6 +22,10 @@ DOMAINS = {
     "RBC": "rbccm.com",
     "Rothschild": "rothschildandco.com",
     "Wells Fargo": "wellsfargo.com",
+}
+
+# Preview: the rest of the banks on the 2026 group prestige ranking, offered in setup to preview accounts.
+MORE_DOMAINS = {
     "Qatalyst": "qatalyst.com",
     "Allen & Company": "",
     "LionTree": "liontree.com",
@@ -50,6 +54,7 @@ DOMAINS = {
     "Cantor Fitzgerald": "cantor.com",
     "BGL": "bglco.com",
 }
+DOMAINS.update(MORE_DOMAINS)
 
 
 # New York office addresses for cover letters (public information). Users can override one per bank.

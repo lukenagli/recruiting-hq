@@ -17,6 +17,7 @@ type Overview = {
   chat_directory: DirectoryChat[]
   slack_team: string
   feed: FeedItem[]
+  early_access: string[]
   groups: { industry_groups: string[]; product_groups: string[] }
   domains: Record<string, string>
 }
@@ -138,8 +139,8 @@ function Chats({ data }: { data: Overview }) {
         Club Slack workspace ID <small>(the T… part of app.slack.com/client/T…/; students' readers open this workspace)</small>
         <input value={team} onChange={(e) => setTeam(e.target.value)} placeholder="T0123ABCD" />
       </label>
-      <h3>Group chats students can pick in setup</h3>
-      <p className="fine">Setup shows each student the chats for the groups they recruit for. Their own reader reads the ones they pick.</p>
+      <h3>Group chats by group</h3>
+      <p className="fine">Everyone recruiting for a group is in that group's chats, so their own reader reads them; nobody has to set them up.</p>
       {directory.map((c, i) => (
         <div key={i} className="admin-chat">
           <input value={c.name} placeholder="Chat or channel name, exactly as it appears" onChange={(e) => edit(i, { name: e.target.value })} />
@@ -162,6 +163,39 @@ function Chats({ data }: { data: Overview }) {
       <div>
         <button className="primary" disabled={busy} onClick={push}>{busy ? 'Saving…' : 'Save for everyone'}</button>
       </div>
+      {message && <p className="notice">{message}</p>}
+    </section>
+  )
+}
+
+function EarlyAccess({ initial }: { initial: string[] }) {
+  const [text, setText] = useState(initial.join('\n'))
+  const [busy, setBusy] = useState(false)
+  const [message, setMessage] = useState('')
+  async function save() {
+    setBusy(true)
+    try {
+      const out = await post<string[]>('/api/admin/early-access', { emails: text.split(/[\s,;]+/) })
+      setText(out.join('\n'))
+      setMessage(`Saved. ${out.length} ${out.length === 1 ? 'person sees' : 'people see'} the preview, once they sign up with that email.`)
+    } catch (e) {
+      setMessage((e as Error).message)
+    } finally {
+      setBusy(false)
+    }
+  }
+  return (
+    <section className="card admin-card">
+      <h2>Early access</h2>
+      <p className="fine">
+        People who see the preview version (everything you see) instead of the version that was graded. One email per line; they sign up on
+        the site with that email. Everyone else, including the demo account, keeps the graded version.
+      </p>
+      <label className="field">
+        Emails
+        <textarea rows={4} value={text} onChange={(e) => setText(e.target.value)} placeholder="friend@yale.edu" />
+      </label>
+      <button className="primary" disabled={busy} onClick={save}>{busy ? 'Saving…' : 'Save'}</button>
       {message && <p className="notice">{message}</p>}
     </section>
   )
@@ -198,6 +232,7 @@ export default function Admin() {
       <h1>Admin</h1>
       <p className="lede">Everything here goes to every account. Students' own edits always win over what you push.</p>
       <Users users={data.users} />
+      <EarlyAccess initial={data.early_access} />
       <section className="card setup-card admin-card">
         <p className="fine">Email templates: edit and save them here, then click "Make these the standard for every account". Students who never changed a template get yours.</p>
         <EmailTemplates key={JSON.stringify(setup.data.email_templates)} state={setup.data} onChange={setup.reload} />

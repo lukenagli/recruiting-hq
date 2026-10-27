@@ -1,9 +1,9 @@
 # Render blueprint for the hosted site. Values marked sync: false are entered in Render's dashboard.
 services:
   - type: web
-    name: recruiting-hq-app
+    name: recruiting-hq
     runtime: docker
-    plan: free
+    plan: starter
     healthCheckPath: /api/health
     envVars:
       # The course key. Only the site's admin account (the first one created) and the teaching staff's demo

@@ -923,7 +923,18 @@ async def model_check(user: dict = Depends(admin_user)):
 def admin_overview(user: dict = Depends(admin_user)):
     return {"users": shared.users(), "bank_defaults": shared.bank_defaults(), "club_chats": shared.club_chats(),
             "chat_directory": shared.chat_directory(), "slack_team": shared.slack_team(), "feed": shared.feed(limit=80),
+            "early_access": sorted(accounts.early_access()),
             "groups": schools.options(), "domains": banks_info.DOMAINS}
+
+
+class EarlyAccess(BaseModel):
+    emails: list[str]
+
+
+@app.post("/api/admin/early-access")
+def set_early_access(req: EarlyAccess, user: dict = Depends(admin_user)):
+    """Who sees the preview besides the admin (friends trying it before it ships to everyone)."""
+    return accounts.set_early_access(req.emails)
 
 
 class BankDefaults(BaseModel):

@@ -11,6 +11,7 @@
 """
 import hashlib
 import hmac
+import json
 import re
 import secrets
 import time
@@ -63,8 +64,32 @@ def public(user) -> dict:
 
 
 def in_preview(user) -> bool:
-    """Everything is on for everyone on this site (the preview switch belonged to the graded copy)."""
-    return True
+    """Changes still being tried out are on for the site's admin and the people the admin gave early access."""
+    return bool(user["is_admin"]) or user["email"].lower() in early_access()
+
+
+def early_access() -> set[str]:
+    """Emails the admin let see the preview (friends trying it before it ships to everyone)."""
+    with connect(read_only=True) as conn:
+        row = conn.execute("SELECT value FROM app_settings WHERE key = 'early_access'").fetchone()
+    try:
+        return {e.lower() for e in json.loads(row["value"])} if row else set()
+    except ValueError:
+        return set()
+
+
+def set_early_access(emails: list[str]) -> list[str]:
+    clean = sorted({e.strip().lower() for e in emails if re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", e.strip())})
+    with connect() as conn:
+        conn.execute("INSERT INTO app_settings (key, value) VALUES ('early_access', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+                     (json.dumps(clean),))
+    return clean
+
+
+def in_preview_uid(uid: int) -> bool:
+    with connect(read_only=True) as conn:
+        user = conn.execute("SELECT is_admin, email FROM users WHERE id = ?", (uid,)).fetchone()
+    return bool(user) and in_preview(user)
 
 
 def sign_up(email: str, name: str, password: str) -> tuple[dict, str]:
