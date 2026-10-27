@@ -335,7 +335,8 @@ def record_sent(uid: int, interaction_id: int, person_id: int, body: str) -> dic
         return {"ok": False, "reason": "Paste the email first."}
     init_db()
     with connect() as conn:
-        chat = conn.execute("SELECT thank_you FROM interactions WHERE id = ? AND user_id = ? AND kind = 'coffee_chat'",
+        # a coffee chat, or an event (each person met there gets their own thank-you)
+        chat = conn.execute("SELECT thank_you, kind FROM interactions WHERE id = ? AND user_id = ? AND kind IN ('coffee_chat', 'event')",
                             (interaction_id, uid)).fetchone()
         linked = conn.execute("SELECT 1 FROM interaction_people ip JOIN people p ON p.id = ip.person_id WHERE ip.interaction_id = ? "
                               "AND ip.person_id = ? AND p.user_id = ?", (interaction_id, person_id, uid)).fetchone()
@@ -344,7 +345,10 @@ def record_sent(uid: int, interaction_id: int, person_id: int, body: str) -> dic
         now = datetime.now().isoformat(timespec="seconds")
         conn.execute("""INSERT INTO thank_you_drafts (user_id, interaction_id, person_id, body, check_line, send_line, warnings, created_at, sent_at)
                         VALUES (?, ?, ?, ?, '', '', '[]', ?, ?)""", (uid, interaction_id, person_id, body, now, now))
-        if chat["thank_you"] in ("", "n/a", None):
+        everyone = {r[0] for r in conn.execute("SELECT person_id FROM interaction_people WHERE interaction_id = ?", (interaction_id,))}
+        thanked = {r[0] for r in conn.execute("SELECT person_id FROM thank_you_drafts WHERE interaction_id = ? AND COALESCE(sent_at, '') != ''",
+                                              (interaction_id,))}
+        if chat["thank_you"] in ("", "n/a", None) and (chat["kind"] == "coffee_chat" or everyone <= thanked):
             conn.execute("UPDATE interactions SET thank_you = ? WHERE id = ?", (date.today().isoformat(), interaction_id))
     return {"ok": True}
 
