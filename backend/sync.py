@@ -232,6 +232,9 @@ def _message(batch: Batch, items: list[Item], school: str) -> str:
     if batch.group_chat:
         head += (f"This is a group chat of {school} students: do not save other students' personal results (who was invited, cut "
                  "or got an offer); keep only what tells me something about a bank's process or timing, or what mentions me. ")
+    if batch.source == "outlook":
+        head += ("When an email I sent or scheduled thanks someone for a coffee chat, a call or meeting them at an event, find that "
+                 "chat or event with lookup and record it with record_thank_you (scheduled=True for a scheduled email). ")
     head += "Do not draft emails. If nothing is worth saving, save nothing and say so.\n\n"
     lines = [f"[{i.at}] {i.author}: {i.text.strip()}" for i in items]
     return head + "\n".join(lines)

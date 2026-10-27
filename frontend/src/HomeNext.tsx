@@ -89,6 +89,14 @@ function clock(note: string) {
   return t ? t[0].toUpperCase().replace(/\./g, '') : ''
 }
 
+/** True once a timed item started more than an hour ago (it has happened); untimed items stay until the day is over. */
+function isPast(date: string, time: string, today: string) {
+  if (date < today) return true
+  if (date > today || minutes(time) >= 24 * 60) return false
+  const now = new Date()
+  return minutes(time) + 60 <= now.getHours() * 60 + now.getMinutes()
+}
+
 function Agenda({ d, out }: { d: HomeData; out: Set<string> }) {
   const items = [
     ...d.upcoming.map((u) => ({ date: u.date, time: clock(u.date_note ?? ''), title: u.title, bank: u.bank, kind: u.kind })),
@@ -106,7 +114,7 @@ function Agenda({ d, out }: { d: HomeData; out: Set<string> }) {
           <h3>{dayLabel(day, d.today)}</h3>
           <ul>
             {items.filter((i) => i.date === day).map((i) => (
-              <li key={`${i.bank}-${i.title}`} className={`k-${i.kind}`}>
+              <li key={`${i.bank}-${i.title}`} className={`k-${i.kind} ${isPast(i.date, i.time, d.today) ? 'past' : ''}`}>
                 <a href={i.kind === 'deadline' ? `#/bank/${encodeURIComponent(i.bank)}` : `#/prep?bank=${encodeURIComponent(i.bank)}`}>
                   <span className="agenda-time">{i.time || (i.kind === 'deadline' ? 'Due' : '')}</span>
                   <span className="agenda-what">
@@ -126,7 +134,15 @@ function Agenda({ d, out }: { d: HomeData; out: Set<string> }) {
 function Todos({ d, out }: { d: HomeData; out: Set<string> }) {
   const [all, setAll] = useState(false)
   const items = [
-    ...d.thank_yous_due.map((t) => ({ key: `ty${t.who}`, title: `Thank-you to ${t.who}`, bank: t.bank, date: t.date, when: t.date ? `spoke ${fmtDate(t.date)}` : '', urgent: true })),
+    // everyone from a coffee chat or networking event still to thank; each name drops off once the reader sees the email
+    ...(d.thanks_due ?? []).map((t) => ({
+      key: `ty${t.bank}${t.title}${t.date}`,
+      title: t.who.length === 1 ? `Send a thank-you email to ${t.who[0]}` : `Send thank-you emails to ${t.who.join(', ')}`,
+      bank: t.bank,
+      date: t.date,
+      when: t.kind === 'event' ? `${t.title}, ${fmtDate(t.date)}` : `spoke ${fmtDate(t.date)}`,
+      urgent: true,
+    })),
     ...(d.todos ?? []).map((t) => ({ key: `td${t.bank}${t.title}`, title: t.title, bank: t.bank, date: t.date, when: t.date ? fmtDate(t.date) : '', urgent: !!t.date && daysUntil(t.date, d.today) <= 1 })),
     ...d.deadlines.filter((a) => !out.has(a.bank) && daysUntil(a.date, d.today) > 7).map((a) => ({ key: `ap${a.bank}`, title: `Apply to ${a.bank}`, bank: a.bank, date: a.date, when: `due ${fmtDate(a.date)}`, urgent: false })),
   ].sort((a, b) => (a.date || '9999').localeCompare(b.date || '9999')) // earliest first, undated last

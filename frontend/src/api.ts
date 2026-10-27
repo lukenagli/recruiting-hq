@@ -186,6 +186,7 @@ export type BankDetail = BankSummary & {
 export type HomeData = {
   today: string
   thank_yous_due: { bank: string; who: string; date: string }[]
+  thanks_due?: { bank: string; title: string; kind: string; date: string; who: string[] }[] // preview home
   upcoming: { bank: string; title: string; date: string; kind: string; date_note?: string }[]
   todos?: { bank: string; title: string; date: string }[]
   deadlines: { bank: string; date: string; link: string }[]

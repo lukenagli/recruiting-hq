@@ -1358,3 +1358,7 @@ main h1 { text-shadow: 0 2px 16px rgba(4, 10, 26, 0.5); }
 .reader-progress small { font-size: 12.5px; color: #5d6880; }
 @media (prefers-reduced-motion: reduce) { .reader-progress-track i { transition: none; } }
 .refresh-warning .refresh-out { color: #9a3412; font-weight: 600; }
+
+/* Home agenda: something that already happened stays listed, grayed out */
+.agenda li.past { opacity: 0.5; }
+.agenda li.past strong { font-weight: 600; }

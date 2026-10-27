@@ -564,9 +564,7 @@ def merge_people(ctx: RunContext[Deps], bank: str, keep_id: int, duplicate_id: i
     uid, bank = ctx.deps.user_id, nz.bank(bank)
     from . import accounts  # the switch for changes being tried out on the admin's account first
 
-    with connect(read_only=True) as conn:
-        user = conn.execute("SELECT is_admin FROM users WHERE id = ?", (uid,)).fetchone()
-    if not (user and accounts.in_preview(user)):
+    if not accounts.in_preview_uid(uid):
         return _refuse(ctx, "merge_people", args, "Merging people is not available yet.")
     if keep_id == duplicate_id:
         return _refuse(ctx, "merge_people", args, "keep_id and duplicate_id are the same person.")
@@ -600,6 +598,58 @@ def merge_people(ctx: RunContext[Deps], bank: str, keep_id: int, duplicate_id: i
         conn.close()
     return _done(ctx, "merge_people", args, {"ok": True, "person_id": keep_id,
                                              "did": f"Merged the duplicate {dup['name']} into {final} at {bank}"})
+
+
+@agent.tool
+def record_thank_you(ctx: RunContext[Deps], bank: str, entry_id: int, people: list[str], date: str, scheduled: bool = False) -> dict:
+    """Record that the student thanked people from a coffee chat or event, seen in an email they sent or scheduled.
+
+    Use it when the student's Sent Items or a scheduled email thanks someone for a chat, a call or meeting them at an
+    event. Once everyone from that entry is thanked, the entry's thank-you is marked done. Use lookup for entry_id.
+
+    Args:
+        bank: Bank the entry belongs to.
+        entry_id: The coffee chat or event they were thanked for.
+        people: The people the email thanks, as named in the tracker.
+        date: YYYY-MM-DD the email was sent, or is scheduled to send.
+        scheduled: True for an email scheduled to send later.
+    """
+    args = dict(bank=bank, entry_id=entry_id, people=people, date=date, scheduled=scheduled)
+    uid, bank = ctx.deps.user_id, nz.bank(bank)
+    from . import accounts
+
+    if not accounts.in_preview_uid(uid):
+        return _refuse(ctx, "record_thank_you", args, "Not available yet.")
+    if _bad_date(date) or not date:
+        return _refuse(ctx, "record_thank_you", args, "date must be a real date as YYYY-MM-DD.")
+    conn = _write(ctx)
+    try:
+        with conn:
+            entry = conn.execute("SELECT id, kind, title FROM interactions WHERE id = ? AND user_id = ? AND bank = ?", (entry_id, uid, bank)).fetchone()
+            if entry is None or entry["kind"] not in ("coffee_chat", "event"):
+                return _refuse(ctx, "record_thank_you", args, f"No coffee chat or event {entry_id} at {bank}. Use lookup to find it.")
+            there = {r["person_id"]: r["name"] for r in conn.execute(
+                "SELECT ip.person_id, p.name FROM interaction_people ip JOIN people p ON p.id = ip.person_id WHERE ip.interaction_id = ?", (entry_id,))}
+            wanted = {nz.clean(n).lower() for n in people}
+            hit = [pid for pid, name in there.items() if name.lower() in wanted]
+            if not hit:
+                return _refuse(ctx, "record_thank_you", args, f"None of {people} is listed on {entry['title']}: {sorted(there.values())}.")
+            when = f"{date}T09:00:00"
+            for pid in hit:
+                if not conn.execute("SELECT 1 FROM thank_you_drafts WHERE user_id = ? AND interaction_id = ? AND person_id = ? AND sent_at IS NOT NULL "
+                                    "AND sent_at != ''", (uid, entry_id, pid)).fetchone():
+                    note = f"{'Scheduled' if scheduled else 'Sent'} from Outlook on {date} (seen by the reader; the email itself stays in Outlook)."
+                    conn.execute("""INSERT INTO thank_you_drafts (user_id, interaction_id, person_id, body, check_line, send_line, warnings, created_at, sent_at)
+                                    VALUES (?, ?, ?, ?, '', ?, '[]', ?, ?)""", (uid, entry_id, pid, note, note, when, when))
+            thanked = {r[0] for r in conn.execute("SELECT person_id FROM thank_you_drafts WHERE user_id = ? AND interaction_id = ? "
+                                                  "AND sent_at IS NOT NULL AND sent_at != ''", (uid, entry_id))}
+            if set(there) <= thanked:
+                conn.execute("UPDATE interactions SET thank_you = ? WHERE id = ? AND user_id = ? AND COALESCE(thank_you, '') IN ('', 'sent')",
+                             (date, entry_id, uid))
+    finally:
+        conn.close()
+    names = ", ".join(there[p] for p in hit)
+    return _done(ctx, "record_thank_you", args, {"ok": True, "did": f"Thank-you to {names} for {entry['title']} marked {'scheduled' if scheduled else 'sent'}"})
 
 
 @agent.tool

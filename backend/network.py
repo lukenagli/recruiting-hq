@@ -1,7 +1,7 @@
 """Read-side queries for the home page, the recruiting map and interview prep."""
 import json
 import re
-from datetime import date
+from datetime import date, datetime, timedelta
 
 from . import banks as bank_info
 from . import schools
@@ -255,6 +255,38 @@ def bank_detail(uid: int, bank: str) -> dict | None:
     }
 
 
+def _start_minutes(note: str) -> int | None:
+    """Minutes after midnight for a time note like "11:00 AM", "6 PM ET" or "noon"; None without a time."""
+    if re.search(r"\bnoon\b", note or "", re.I):
+        return 12 * 60
+    m = re.search(r"(\d{1,2})(?::(\d{2}))?\s*([ap])\.?m", note or "", re.I)
+    if not m:
+        return None
+    return (int(m[1]) % 12 + (12 if m[3].lower() == "p" else 0)) * 60 + int(m[2] or 0)
+
+
+def _thanks_due(uid: int, data: dict, names: dict) -> list[dict]:
+    """Coffee chats and networking events from the last two weeks that have happened (marked done, or their time has
+    passed) with people still to thank. A person counts as thanked once a thank-you to them was sent or scheduled
+    (recorded by the reader from Outlook, or sent from the app); the whole entry once its thank-you date is set."""
+    now = datetime.now()
+    today, since = now.date().isoformat(), (now.date() - timedelta(days=14)).isoformat()
+    with connect(read_only=True) as conn:
+        thanked = {(r["interaction_id"], r["person_id"]) for r in conn.execute(
+            "SELECT interaction_id, person_id FROM thank_you_drafts WHERE user_id = ? AND COALESCE(sent_at, '') != ''", (uid,))}
+    out = []
+    for i in data["interactions"]:
+        if i["kind"] not in ("coffee_chat", "event") or (i["thank_you"] or "") not in ("",) or not i["date"] or not since <= i["date"] <= today:
+            continue
+        start = _start_minutes(i["date_note"] or "")
+        happened = i["status"] == "done" or (i["status"] == "upcoming" and (
+            i["date"] < today or (start is not None and start + 60 <= now.hour * 60 + now.minute)))
+        left = [names[j["person_id"]] for j in i["people"] if (i["id"], j["person_id"]) not in thanked and j["person_id"] in names]
+        if happened and left:
+            out.append({"bank": i["bank"], "title": i["title"], "kind": i["kind"], "date": i["date"], "who": left})
+    return sorted(out, key=lambda t: t["date"])
+
+
 def home(uid: int) -> dict:
     init_db()
     today = date.today().isoformat()
@@ -286,6 +318,7 @@ def home(uid: int) -> dict:
             ({"bank": i["bank"], "title": i["title"], "date": i["date"] or ""} for i in data["interactions"] if i["status"] == "todo"),
             key=lambda t: t["date"] or "9999"),
         "deadlines": sorted(deadlines, key=lambda d: d["date"]),
+        "thanks_due": _thanks_due(uid, data, names),  # preview home
         "totals": {
             "banks": len(_bank_names(data)),
             "people": len(data["people"]),
