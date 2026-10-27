@@ -72,11 +72,28 @@ function UpdateBar() {
   )
 }
 
+/** Minutes after midnight for a time note like "9:30 AM ET", "11 AM" or "noon"; untimed items go last in their day. */
+function minutes(note: string) {
+  if (/noon/i.test(note)) return 12 * 60
+  const t = /(\d{1,2})(?::(\d{2}))?\s*([ap])\.?m/i.exec(note)
+  if (!t) return 24 * 60
+  return ((Number(t[1]) % 12) + (/p/i.test(t[3]) ? 12 : 0)) * 60 + Number(t[2] ?? 0)
+}
+
+/** Just the time from a note like "6:00 PM ET at Ammos Estiatorio" ("6:00 PM"), or "Noon". */
+function clock(note: string) {
+  if (/noon/i.test(note)) return 'Noon'
+  const t = /\d{1,2}(?::\d{2})?\s*[ap]\.?m\.?/i.exec(note)
+  return t ? t[0].toUpperCase().replace(/\./g, '') : ''
+}
+
 function Agenda({ d, out }: { d: HomeData; out: Set<string> }) {
   const items = [
-    ...d.upcoming.map((u) => ({ date: u.date, time: (u.date_note ?? '').split(',')[0], title: u.title, bank: u.bank, kind: u.kind })),
+    ...d.upcoming.map((u) => ({ date: u.date, time: clock(u.date_note ?? ''), title: u.title, bank: u.bank, kind: u.kind })),
     ...d.deadlines.filter((a) => !out.has(a.bank)).map((a) => ({ date: a.date, time: '', title: 'Application due', bank: a.bank, kind: 'deadline' })),
-  ].filter((i) => daysUntil(i.date, d.today) <= 7).sort((a, b) => a.date.localeCompare(b.date))
+  ]
+    .filter((i) => daysUntil(i.date, d.today) <= 7)
+    .sort((a, b) => a.date.localeCompare(b.date) || minutes(a.time) - minutes(b.time))
   const days = [...new Set(items.map((i) => i.date))]
   return (
     <section className="dash-card agenda">
@@ -107,10 +124,10 @@ function Agenda({ d, out }: { d: HomeData; out: Set<string> }) {
 function Todos({ d, out }: { d: HomeData; out: Set<string> }) {
   const [all, setAll] = useState(false)
   const items = [
-    ...d.thank_yous_due.map((t) => ({ key: `ty${t.who}`, title: `Thank-you to ${t.who}`, bank: t.bank, when: t.date ? `spoke ${fmtDate(t.date)}` : '', urgent: true })),
-    ...(d.todos ?? []).map((t) => ({ key: `td${t.bank}${t.title}`, title: t.title, bank: t.bank, when: t.date ? fmtDate(t.date) : '', urgent: !!t.date && daysUntil(t.date, d.today) <= 1 })),
-    ...d.deadlines.filter((a) => !out.has(a.bank) && daysUntil(a.date, d.today) > 7).map((a) => ({ key: `ap${a.bank}`, title: `Apply to ${a.bank}`, bank: a.bank, when: `due ${fmtDate(a.date)}`, urgent: false })),
-  ]
+    ...d.thank_yous_due.map((t) => ({ key: `ty${t.who}`, title: `Thank-you to ${t.who}`, bank: t.bank, date: t.date, when: t.date ? `spoke ${fmtDate(t.date)}` : '', urgent: true })),
+    ...(d.todos ?? []).map((t) => ({ key: `td${t.bank}${t.title}`, title: t.title, bank: t.bank, date: t.date, when: t.date ? fmtDate(t.date) : '', urgent: !!t.date && daysUntil(t.date, d.today) <= 1 })),
+    ...d.deadlines.filter((a) => !out.has(a.bank) && daysUntil(a.date, d.today) > 7).map((a) => ({ key: `ap${a.bank}`, title: `Apply to ${a.bank}`, bank: a.bank, date: a.date, when: `due ${fmtDate(a.date)}`, urgent: false })),
+  ].sort((a, b) => (a.date || '9999').localeCompare(b.date || '9999')) // earliest first, undated last
   const shown = all ? items : items.slice(0, 7)
   return (
     <section className="dash-card todos">
