@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { ASK_EVENT } from './Assistant'
 import type { AiSettings, BankSummary, CalendarItem, HomeData } from './api'
 import { useDictation } from './dictation'
+import ClubFeed from './ClubFeed'
 import Refresh from './Refresh'
 import { Loading, Logo, StagePips, daysUntil, fmtDate, useApi, useSchool } from './ui'
 
@@ -310,6 +311,7 @@ export default function HomeNext({ name }: { name: string }) {
             </div>
           )
         )}
+        <ClubFeed />
         {data && banks.data && banks.data.length > 0 && <Pipeline banks={banks.data} today={data.today} />}
         {data && cal.data && school.club && <Season items={cal.data} today={data.today} />}
       </div>

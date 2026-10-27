@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import Admin from './Admin'
 import Assistant from './Assistant'
 import BankView from './BankView'
 import CatchUp from './CatchUp'
@@ -106,6 +107,7 @@ export default function App() {
   if (preview && section === 'catch-up') page = <CatchUp />
   if (section === 'letters') page = <Letters bank={arg ?? ''} />
   if (section === 'bank' && arg) page = <BankView bank={arg} initial={query.get('sel') ?? ''} />
+  if (section === 'admin' && user.is_admin) page = <Admin />
 
   return (
     <PreviewContext.Provider value={!!user.preview}>
@@ -114,12 +116,12 @@ export default function App() {
         <a className="brand" href="#/">
           <span className="brand-mark">R</span> Recruiting HQ
         </a>
-        {user.preview && (
-          <span className="preview-badge" title="Your account sees changes being tried out before they go to everyone">
-            Preview
-          </span>
-        )}
         <nav>
+          {user.is_admin && (
+            <a href="#/admin" className={section === 'admin' ? 'active' : ''}>
+              Admin
+            </a>
+          )}
           <a href="#/prep" className={section === 'prep' ? 'active' : ''}>
             Interview Prep
           </a>

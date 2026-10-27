@@ -63,7 +63,7 @@ def bank_defaults() -> dict[str, dict]:
     """{bank: {recruiter_name, recruiter_title, letter_name, address}}: the admin's pushed version over the built-in one."""
     saved = _get("bank_defaults", {})
     out = {}
-    for bank in sorted(set(bank_info.DOMAINS) | set(saved)):
+    for bank in sorted(set(bank_info.DOMAINS) | set(saved), key=str.lower):
         built_in = {"recruiter_name": "", "recruiter_title": "", "letter_name": bank_info.LETTER_NAMES.get(bank, ""),
                     "address": bank_info.ADDRESSES.get(bank, "")}
         out[bank] = {f: (saved.get(bank, {}).get(f) or built_in[f]) for f in BANK_FIELDS}

@@ -3,6 +3,7 @@ import { post } from './api'
 import type { BankDetail, Interaction, Person, ThankYouDraft } from './api'
 import DraftCard from './DraftCard'
 import JourneyMap from './JourneyMap'
+import ClubFeed from './ClubFeed'
 import RecommendedDeals from './RecommendedDeals'
 import { Loading, Logo, StatusTag, alumLabel, fmtDate, roleOf, useApi, usePreview, useSchool } from './ui'
 
@@ -333,6 +334,7 @@ export default function BankView({ bank, initial = '' }: { bank: string; initial
       </div>
 
       {preview && app.status !== 'out' && <RecommendedDeals bank={data.bank} />}
+      <ClubFeed bank={data.bank} />
 
       <h2>How it has gone</h2>
       <p className="muted">Each step in date order. Click a card for the details.</p>

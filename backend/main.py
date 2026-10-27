@@ -12,6 +12,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from pydantic_ai import Agent
 
+from . import banks as banks_info
 from . import accounts, assistant, attachments, auth, budget, catch_up, config, cover_letters, deal_docs, deal_recs, deal_sources, deals, importer, legal, llm, network, onboarding, practice, profile, schools, reference, research, shared, stars, sync, templates, thank_you, transfer, user_keys
 from .auth import admin_user, current_user
 from .db import connect, init_db
@@ -907,7 +908,7 @@ async def model_check(user: dict = Depends(admin_user)):
 def admin_overview(user: dict = Depends(admin_user)):
     return {"users": shared.users(), "bank_defaults": shared.bank_defaults(), "club_chats": shared.club_chats(),
             "chat_directory": shared.chat_directory(), "slack_team": shared.slack_team(), "feed": shared.feed(limit=80),
-            "groups": schools.options()}
+            "groups": schools.options(), "domains": banks_info.DOMAINS}
 
 
 class BankDefaults(BaseModel):

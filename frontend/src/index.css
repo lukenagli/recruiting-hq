@@ -1322,3 +1322,19 @@ main h1 { text-shadow: 0 2px 16px rgba(4, 10, 26, 0.5); }
 .letter-steps .dropzone { margin-top: 8px; }
 .your-letter .file-link input { display: none; }
 .your-letter .file-link { cursor: pointer; }
+
+/* Club feed and the admin panel */
+.club-feed { margin: 16px 0; }
+.club-feed h3 { margin: 0 0 4px; }
+.admin-card { margin-bottom: 18px; }
+.admin-card h2 { margin-top: 0; }
+.admin-filter { max-width: 280px; margin: 6px 0 10px; }
+.admin-banks { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; max-height: 560px; overflow: auto; margin-bottom: 12px; }
+.admin-bank { display: flex; flex-direction: column; gap: 6px; border: 1px solid var(--line); border-radius: 12px; padding: 10px; }
+.admin-bank strong { display: flex; align-items: center; gap: 8px; }
+.admin-bank input, .admin-bank textarea, .admin-filter, .admin-card .field textarea, .admin-card .field input, .admin-chat input, .admin-chat select {
+  font: inherit; border: 1.5px solid var(--line); border-radius: 8px; padding: 7px 9px; background: var(--card); color: var(--ink); }
+.admin-card .field { display: flex; flex-direction: column; gap: 5px; margin: 10px 0; font-weight: 600; }
+.admin-card .field small { font-weight: 400; color: var(--muted); }
+.admin-chat { border-top: 1px solid var(--line); padding: 10px 0; display: flex; flex-direction: column; gap: 6px; }
+.admin-chat .danger-link { align-self: flex-start; font-size: 13px; }
