@@ -40,14 +40,38 @@ WRITE = """\
 You write investment banking internship cover letters for students, following the shape of the student's \
 own template exactly, built from what the student actually learned in their own conversations.
 """
-# Preview: every letter is the student's own letter, tailored to the bank.
+# Preview: every letter is the student's own letter, tailored to the bank, in the style of the club's 2Y sample letters.
+# Cover letters are a box to check: polished, general reasons for the firm with a light personal touch (the names of
+# the people met), never details from the conversations.
 TAILOR = """\
-You tailor a student's own investment banking cover letter to one bank. The student wrote the letter \
-themselves (often for another bank). Keep it: the same paragraphs, sentences, experience and wording wherever they \
-are not about a particular bank. Rewrite only what belongs to the bank: the bank, group and office, the people the \
-student has spoken with there and what those conversations showed them, why this bank and group, and any line \
-that names another bank or its people. Build those parts from what the student actually learned in their own \
-conversations.
+You tailor a student's own investment banking cover letter to one bank, in the style of the polished letters \
+second-years at the student's school sent (Cover Letter Guidance). Banks read these as a box to check: what matters \
+is a clean, professional "why this firm", the right names, and no mistakes. The student wrote the letter themselves \
+(often for another bank). Keep paragraphs 2 onward exactly as they wrote them, apart from a line that names another \
+bank. Rewrite only the opening paragraph, and the bank's name in the closing, for this bank.
+
+The opening paragraph follows this pattern, sentence by sentence:
+1. "My name is <name>, and I am <school line> writing to express my strong interest in the <role> [in the <group> group] \
+at <bank> [in <office>]."
+2. "Over the last couple of months, I have enjoyed learning more about <bank> through firm events as well as \
+conversations with <names>." (the people given below, bankers first, at most five, spelled exactly as given)
+3. One sentence of general praise the conversations "discussed": one or two of the firm's qualities such as its culture, \
+collaboration, teamwork, mentorship and investment in junior bankers, client focus, or the breadth of its platform.
+4. "The culture at the firm, in combination with <one high-level reason: the generalist program's breadth, or the chance \
+to advise companies in the student's group>, has cemented my interest in <bank>."
+
+Never put specifics from the conversations or about how recruiting works into the letter: no homework, case studies or \
+final projects, training, staffing or mentor assignments, whether the program is group-specific or generalist as a \
+fact someone told you, team sizes, offices or headcounts, deals, anecdotes, or what any one person said or did. Keep \
+it general and gracious, the way every sample letter is.
+
+Rules:
+- Never make anything up. Names must come from the list given; no facts about the bank beyond the general qualities above.
+- Mention no bank other than the one applied to, and no people from other banks.
+- Investment banking is the goal. Never suggest it is a step toward private equity, business school or anything else.
+- Follow any rules in the student's own notes (for example words or punctuation to avoid).
+- Plain text paragraphs only: no greeting, no sign-off, no headings. Use exactly the student's number of paragraphs.
+- Use a [[NEED: ...]] marker only for something the opening truly cannot do without (for example the group, when none is given).
 """
 
 INSTRUCTIONS = """
@@ -86,7 +110,6 @@ is about why this bank and why the student fits.
 - Stay within the word range given under "Shape", so the letter fits on one page.
 """
 WRITE_RULE = "- If an example letter is given, match its voice and level of detail, but write fresh text for this bank.\n"
-TAILOR_RULE = "- Everything that is not bank-specific stays as the student wrote it, apart from fixing a sentence the new bank breaks.\n"
 
 
 class Letter(BaseModel):
@@ -94,7 +117,7 @@ class Letter(BaseModel):
 
 
 agent = Agent(output_type=Letter, instructions=WRITE + INSTRUCTIONS + WRITE_RULE, name="cover_letter_writer")
-tailor_agent = Agent(output_type=Letter, instructions=TAILOR + INSTRUCTIONS + TAILOR_RULE, name="cover_letter_writer")
+tailor_agent = Agent(output_type=Letter, instructions=TAILOR, name="cover_letter_writer")
 
 
 def shape(template: str) -> tuple[int, int, int]:
@@ -154,6 +177,20 @@ def _prompt(ctx: dict, prof: dict, bank: str, tailor: bool = False) -> str:
     students = [p for p in ctx["spoken"] if is_student(p)]
     spoken = f"Bankers:\n{lines(bankers)}\n{sc['peers']} going to this bank (name them only if there are few bankers):\n{lines(students)}"
     n, lo, hi = shape(prof["example_letter"])
+    if tailor:  # names and roles only: what was said in the chats stays out of the letter
+        names = lambda ps: "\n".join(f"- {p['name']} ({', '.join(x for x in (p['title'], p['grp']) if x) or 'role not recorded'})" for p in ps) or "- (none)"  # noqa: E731
+        return "\n\n".join([
+            f"Student: {ctx['name']}",
+            f"School line: {prof['school_line'] or schools.default_school_line(sc) or '[[NEED: your school and year]]'}",
+            f"Shape: exactly {n} paragraphs, as in the student's letter.",
+            f"Applying to: Investment Banking {sc['role']} role at {bank}" + (f", {ctx['office']} office" if ctx["office"] else ""),
+            ("Program: generalist; the reason in sentence 4 is the breadth of the generalist program." if ctx["generalist"] else
+             f"Group: {ctx['group'] or '[[NEED: group]]'}; name it in the first sentence, and sentence 4's reason is advising companies in it."),
+            f"People the student has spoken with at {bank} (the only names you may use):\nBankers:\n{names(bankers)}\n"
+            f"{sc['peers']} going to this bank (name them after the bankers, only if there are few bankers):\n{names(students)}",
+            f"Rules from the student's own notes:\n{prof['email_rules'] or '(none)'}",
+            f"The student's own letter, to tailor (keep paragraphs 2 onward):\n{prof['example_letter']}",
+        ])
     parts = [
         f"Student: {ctx['name']}",
         f"School line: {prof['school_line'] or schools.default_school_line(sc) or '[[NEED: your school and year]]'}",
@@ -177,9 +214,17 @@ def _prompt(ctx: dict, prof: dict, bank: str, tailor: bool = False) -> str:
     return "\n\n".join(parts)
 
 
-def problems(paragraphs: list[str], bank: str, ctx: dict, template: str = "") -> list[str]:
+# Preview: details from the chats or about how recruiting works, which the 2Y sample letters never include.
+TOO_SPECIFIC = re.compile(r"homework|case study|final project|super ?day|group[- ]specific|generalist (pool|internship)|staff(ed|ing)|"
+                          r"junior and (a )?senior mentor|\b\d+ (analysts|associates|interns|people)\b|team size|I learned that", re.I)
+
+
+def problems(paragraphs: list[str], bank: str, ctx: dict, template: str = "", tailor: bool = False) -> list[str]:
     text = "\n".join(paragraphs)
     found = []
+    if tailor:
+        found += [f"it mentions \"{m}\": keep the opening to general reasons for the firm, as the sample letters do"
+                  for m in dict.fromkeys(m.group(0) for m in TOO_SPECIFIC.finditer(paragraphs[0] if paragraphs else ""))]
     words = len(text.split())
     n, lo, hi = shape(template)
     lo, hi = lo - 30, hi + 20  # a little slack around the asked-for range before it counts as a problem
@@ -234,7 +279,7 @@ async def write(uid: int, chosen: Chosen, bank: str) -> dict:
         for k, v in usage_dict(result.usage).items():
             total[k] += v
         paragraphs = [" ".join(p.split()) for p in result.output.paragraphs if p.strip()]
-        issues = problems(paragraphs, bank, ctx, prof["example_letter"])
+        issues = problems(paragraphs, bank, ctx, prof["example_letter"], tailor)
         if not issues:
             break
         prompt = f"{base}\n\nYour last draft broke these rules, fix them and return the whole letter again:\n- " + "\n- ".join(issues) \
