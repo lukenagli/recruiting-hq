@@ -235,7 +235,7 @@ export default function Admin() {
       <EarlyAccess initial={data.early_access} />
       <section className="card setup-card admin-card">
         <p className="fine">Email templates: edit and save them here, then click "Make these the standard for every account". Students who never changed a template get yours.</p>
-        <EmailTemplates key={JSON.stringify(setup.data.email_templates)} state={setup.data} onChange={setup.reload} />
+        <EmailTemplates key={JSON.stringify(setup.data.email_templates)} state={setup.data} onChange={setup.reload} publish />
       </section>
       <BankDetails initial={data.bank_defaults} domains={data.domains} />
       <Chats data={data} />
