@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { post } from './api'
+import Refresh from './Refresh'
 import { fmtDate, useApi } from './ui'
 
 type SyncState = {
@@ -30,8 +31,8 @@ export default function ReaderSettings() {
     <section className="card setup-card reader-card">
       <h2>Email, Slack and WhatsApp reader</h2>
       <p>
-        The Recruiting HQ Reader is a Chrome extension. Every 30 minutes it reads what's new in your Outlook, Slack and WhatsApp and files it
-        here. <strong>It can only read: it cannot send, reply, react or type anywhere.</strong>
+        The Recruiting HQ Reader is a Chrome extension. When you press Refresh, it reads what's new in your Outlook, Slack and WhatsApp and
+        files it here. It never runs on its own. <strong>It can only read: it cannot send, reply, react or type anywhere.</strong>
       </p>
       <ol className="reader-steps">
         <li>In Chrome, open <code>chrome://extensions</code>, turn on Developer mode, click "Load unpacked" and pick the <code>reader-extension</code> folder.</li>
@@ -58,6 +59,7 @@ export default function ReaderSettings() {
       {data.has_key && (
         <button className="link danger-link" onClick={turnOff}>Turn the reader off</button>
       )}
+      {data.has_key && <Refresh onDone={reload} />}
       {data.log.length > 0 && (
         <>
           <h4>Recent syncs</h4>

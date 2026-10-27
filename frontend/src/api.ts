@@ -75,10 +75,11 @@ export type DealPoint = {
 export type DealDocument = { id: number; deal_id: number; filename: string; kind: string; size: number; uploaded_at: string; pages: number; scanned: string; source_url?: string; source_page?: string }
 // Preview: an analysis piece about a deal, found by web search.
 export type RecommendedDeal = {
-  title: string; buyer: string; target: string; closed: string; value_usd_bn: number; consideration: string; sector: string
-  advisors_buyer: string[]; advisors_target: string[]; why: string; sources: string[]; covers: string[]; reasons: string[]
+  key: string; title: string; buyer: string; target: string; closed: string; value_usd_bn: number; consideration: string
+  industry_group: string; advisors_buyer: string[]; advisors_target: string[]; why: string; sources: string[]
+  covers: string[]; reasons: string[]; gaps: string[]; capiq_url: string; capiq: { found: boolean } | null
 }
-export type Recommendations = { deals: RecommendedDeal[]; found_at: string; banks: string[]; groups: string[] } // preview only
+export type Recommendations = { deals: RecommendedDeal[]; found_at: string; banks: string[]; groups: string[]; capiq_pending: number }
 export type DealReading = { id: number; title: string; outlet: string; url: string; published: string; angle: string; takeaway: string }
 export type Deal = {
   id: number

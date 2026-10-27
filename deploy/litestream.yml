@@ -5,7 +5,7 @@ dbs:
     replicas:
       - type: s3
         bucket: ${LITESTREAM_BUCKET}
-        path: recruiting-hq
+        path: recruiting-hq-app
         endpoint: ${LITESTREAM_ENDPOINT}
         region: ${LITESTREAM_REGION}
         access-key-id: ${LITESTREAM_ACCESS_KEY_ID}

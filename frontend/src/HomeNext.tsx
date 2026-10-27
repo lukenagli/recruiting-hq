@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { ASK_EVENT } from './Assistant'
 import type { AiSettings, BankSummary, CalendarItem, HomeData } from './api'
 import { useDictation } from './dictation'
+import Refresh from './Refresh'
 import { Loading, Logo, StagePips, daysUntil, fmtDate, useApi, useSchool } from './ui'
 
 /**
@@ -292,6 +293,7 @@ export default function HomeNext({ name }: { name: string }) {
       </header>
 
       <div className="dash">
+        <Refresh onDone={() => { api.reload(); banks.reload() }} />
         {ai.data && !ai.data.ready && (
           <a className="notice key-callout" href="#/settings">
             <strong>One thing first:</strong> paste your Yale class (Portkey) key in Settings to turn on the assistant.

@@ -65,7 +65,7 @@ def _user_agent() -> str:
     if os.getenv("SEC_USER_AGENT", "").strip():
         return os.environ["SEC_USER_AGENT"].strip()
     sender = re.search(r"[\w.+-]+@[\w-]+\.[\w.]+", os.getenv("EMAIL_FROM", ""))
-    return f"Recruiting HQ {sender.group(0)}" if sender else "Recruiting HQ recruiting-hq.onrender.com"
+    return f"Recruiting HQ {sender.group(0)}" if sender else "Recruiting HQ recruiting-hq-app.onrender.com"
 
 
 def parties(title: str) -> tuple[str, str]:
@@ -422,17 +422,7 @@ async def _gather(uid: int, chosen: Chosen, deal_id: int) -> dict:
                 conn.execute("UPDATE deal_documents SET source_page = ? WHERE id = ? AND user_id = ?", (page, d["id"], uid))
 
     # 3. Earlier SEC web-page copies: replaced where a company PDF now covers the slot, otherwise turned into PDFs.
-    replaced = converted = 0
-    for d in docs:
-        if not d["filename"].lower().endswith((".htm", ".html")) or "sec.gov" not in d["source_url"]:
-            continue
-        with connect(read_only=True) as conn:
-            cited = conn.execute("SELECT 1 FROM deal_points WHERE deal_id = ? AND doc_id = ?", (deal_id, str(d["id"]))).fetchone()
-        if d["kind"] in company_pdf and not cited:
-            deal_docs.delete(uid, d["id"])
-            replaced += 1
-        elif await asyncio.to_thread(_convert_stored, uid, d["id"], d["filename"], d["source_url"]):
-            converted += 1
+    replaced, converted = await asyncio.to_thread(_to_pdfs, uid, deal_id, company_pdf)
 
     message = (f"Added {len(added)} document{'s' if len(added) != 1 else ''}: {', '.join(added)}." if added else "No new documents were added.")
     if replaced or converted:
@@ -445,6 +435,38 @@ async def _gather(uid: int, chosen: Chosen, deal_id: int) -> dict:
     with connect() as conn:
         deal_docs._log(conn, uid, started, "deal_document_gatherer", f"Gather documents for {deal['title']}", message, "ok", total)
     return {"ok": True, "added": len(added), "message": message}
+
+
+def _to_pdfs(uid: int, deal_id: int, company_pdf: set[str]) -> tuple[int, int]:
+    """(replaced, converted): each stored SEC web page is deleted where a company PDF covers its slot and nothing
+    cites it, and otherwise turned into a PDF in place."""
+    with connect(read_only=True) as conn:
+        docs = [dict(r) for r in conn.execute(
+            "SELECT id, kind, filename, source_url FROM deal_documents WHERE user_id = ? AND deal_id = ?", (uid, deal_id))]
+    replaced = converted = 0
+    for d in docs:
+        if not d["filename"].lower().endswith((".htm", ".html")) or "sec.gov" not in (d["source_url"] or ""):
+            continue
+        with connect(read_only=True) as conn:
+            cited = conn.execute("SELECT 1 FROM deal_points WHERE deal_id = ? AND doc_id = ?", (deal_id, str(d["id"]))).fetchone()
+        if d["kind"] in company_pdf and not cited:
+            deal_docs.delete(uid, d["id"])
+            replaced += 1
+        elif _convert_stored(uid, d["id"], d["filename"], d["source_url"]):
+            converted += 1
+    return replaced, converted
+
+
+async def convert(uid: int, deal_id: int) -> dict:
+    """Turn the deal's stored SEC web pages into PDFs, without AI (runs when the deal is opened)."""
+    ensure()
+    async with _GATHERING:
+        with connect(read_only=True) as conn:
+            company_pdf = {r["kind"] for r in conn.execute(
+                "SELECT kind, filename, source_url FROM deal_documents WHERE user_id = ? AND deal_id = ?", (uid, deal_id))
+                if r["filename"].lower().endswith(".pdf") and "sec.gov" not in (r["source_url"] or "")}
+        replaced, converted = await asyncio.to_thread(_to_pdfs, uid, deal_id, company_pdf)
+    return {"ok": True, "converted": converted, "replaced": replaced}
 
 
 def _sec_index(url: str) -> str:

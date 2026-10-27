@@ -63,8 +63,8 @@ def public(user) -> dict:
 
 
 def in_preview(user) -> bool:
-    """Changes still being tried out are switched on only for the site's admin until they ship to everyone."""
-    return bool(user["is_admin"])
+    """Everything is on for everyone on this site (the preview switch belonged to the graded copy)."""
+    return True
 
 
 def sign_up(email: str, name: str, password: str) -> tuple[dict, str]:

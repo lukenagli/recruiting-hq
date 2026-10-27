@@ -1,8 +1,9 @@
-// Recruiting HQ Reader, background. Every 30 minutes (and on "Sync now") it collects what's new from Outlook,
-// Slack and WhatsApp through the read-only page scripts, and hands it to the student's Recruiting HQ account.
-// It only ever talks to recruiting-hq.onrender.com. Nothing here can send an email or a chat message.
+// Recruiting HQ Reader, background. Only when the student asks (Refresh on the site, or Sync now in this window) it
+// collects what's new from Outlook, Slack and WhatsApp through the read-only page scripts, and hands it to the
+// student's Recruiting HQ account. It never runs on a timer, so tabs only open while the student is waiting for them.
+// It only ever talks to recruiting-hq-app.onrender.com. Nothing here can send an email or a chat message.
 
-const API = 'https://recruiting-hq.onrender.com'
+const API = 'https://recruiting-hq-app.onrender.com'
 // What to read (the Slack workspace and channels, the WhatsApp groups) is kept in the student's Recruiting HQ account,
 // not in this code: config = { slack_team, slack_channels: [{ id, name, group }], whatsapp_chats: [name] }.
 // Channels marked group are busy group chats, filed only for messages about the process.
@@ -40,9 +41,8 @@ async function lockedTab(url, filters) {
 }
 
 
-chrome.runtime.onInstalled.addListener(() => chrome.alarms.create('sync', { periodInMinutes: 30 }))
-chrome.runtime.onStartup.addListener(() => chrome.alarms.create('sync', { periodInMinutes: 30 }))
-chrome.alarms.onAlarm.addListener((a) => a.name === 'sync' && syncAll())
+// Earlier versions synced every 30 minutes; clear that timer if it is still set.
+chrome.runtime.onInstalled.addListener(() => chrome.alarms?.clearAll())
 chrome.runtime.onMessage.addListener((msg, sender, reply) => {
   if (sender.id !== chrome.runtime.id || msg.type !== 'sync-now') return
   syncAll().then(() => reply({ ok: true }))

@@ -272,6 +272,12 @@ async def gather_deal_documents(deal_id: int, user: dict = Depends(current_user)
     return await deal_sources.gather(user["id"], ai_for(user), deal_id)
 
 
+@app.post("/api/deals/{deal_id}/to-pdf")
+async def deal_documents_to_pdf(deal_id: int, user: dict = Depends(current_user)):
+    """Turn the deal's SEC web-page copies into PDFs (no AI, so it works when the day's allowance is used)."""
+    return await deal_sources.convert(user["id"], deal_id)
+
+
 @app.post("/api/deals/{deal_id}/reading")
 async def find_deal_reading(deal_id: int, user: dict = Depends(current_user)):
     """Preview: analysis pieces about the deal, each with a different angle."""
@@ -300,6 +306,17 @@ async def find_recommended_deals(bank: str = "", user: dict = Depends(current_us
     if not accounts.in_preview(user):
         raise HTTPException(status_code=404, detail="Not found")
     return await deal_recs.recommend(user["id"], ai_for(user), bank)
+
+
+@app.get("/api/deals/capiq-queue")
+def capiq_queue(user: dict = Depends(current_user)):
+    """For the Reader: recommended deals still to look up on Capital IQ in the student's own Chrome."""
+    return deal_recs.capiq_queue(user["id"])
+
+
+@app.post("/api/deals/capiq")
+def capiq_result(got: deal_recs.CapIQDeal, user: dict = Depends(current_user)):
+    return deal_recs.capiq_save(user["id"], got)
 
 
 class NewDeal(BaseModel):
