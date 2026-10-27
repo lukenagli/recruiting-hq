@@ -3,6 +3,7 @@ import { post } from './api'
 import type { BankDetail, Interaction, Person, ThankYouDraft } from './api'
 import DraftCard from './DraftCard'
 import JourneyMap from './JourneyMap'
+import RecommendedDeals from './RecommendedDeals'
 import { Loading, Logo, StatusTag, alumLabel, fmtDate, roleOf, useApi, usePreview, useSchool } from './ui'
 
 function when(i: { date: string; date_note: string }) {
@@ -271,6 +272,7 @@ const OVERVIEW_FIELDS: [string, string, boolean][] = [
 export default function BankView({ bank, initial = '' }: { bank: string; initial?: string }) {
   const { data, error, reload } = useApi<BankDetail>(`/api/banks/${encodeURIComponent(bank)}`)
   const school = useSchool()
+  const preview = usePreview()
   const [selected, setSelected] = useState('')
   // Arriving from a dot on the recruiting map opens that person or event and scrolls to it.
   useEffect(() => {
@@ -329,6 +331,8 @@ export default function BankView({ bank, initial = '' }: { bank: string; initial
           )
         })}
       </div>
+
+      {preview && app.status !== 'out' && <RecommendedDeals bank={data.bank} />}
 
       <h2>How it has gone</h2>
       <p className="muted">Each step in date order. Click a card for the details.</p>

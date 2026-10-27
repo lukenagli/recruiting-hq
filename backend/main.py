@@ -12,7 +12,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from pydantic_ai import Agent
 
-from . import accounts, assistant, attachments, auth, budget, catch_up, config, cover_letters, deal_docs, deal_sources, deals, importer, legal, llm, network, onboarding, practice, profile, schools, reference, research, stars, sync, templates, thank_you, transfer, user_keys
+from . import accounts, assistant, attachments, auth, budget, catch_up, config, cover_letters, deal_docs, deal_recs, deal_sources, deals, importer, legal, llm, network, onboarding, practice, profile, schools, reference, research, stars, sync, templates, thank_you, transfer, user_keys
 from .auth import admin_user, current_user
 from .db import connect, init_db
 from .llm import get_model, usage_dict
@@ -259,7 +259,8 @@ def my_deals(user: dict = Depends(current_user)):
         for d in out["deals"]:
             d["reading"] = reading.get(d["id"], [])
             for doc in d["documents"]:
-                doc["source_url"] = urls.get(doc["id"], "")
+                found = urls.get(doc["id"], {})
+                doc["source_url"], doc["source_page"] = found.get("url", ""), found.get("page", "")
     return out
 
 
@@ -284,6 +285,21 @@ def remove_deal_reading(item_id: int, user: dict = Depends(current_user)):
     if not accounts.in_preview(user):
         raise HTTPException(status_code=404, detail="Not found")
     return deal_sources.remove_reading(user["id"], item_id)
+
+
+@app.get("/api/deals/recommended")
+def recommended_deals(bank: str = "", user: dict = Depends(current_user)):
+    """Preview: the last deals recommended for the student (or for one bank), by the Finance Club's criteria."""
+    if not accounts.in_preview(user):
+        raise HTTPException(status_code=404, detail="Not found")
+    return deal_recs.saved(user["id"], bank)
+
+
+@app.post("/api/deals/recommended")
+async def find_recommended_deals(bank: str = "", user: dict = Depends(current_user)):
+    if not accounts.in_preview(user):
+        raise HTTPException(status_code=404, detail="Not found")
+    return await deal_recs.recommend(user["id"], ai_for(user), bank)
 
 
 class NewDeal(BaseModel):

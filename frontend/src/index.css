@@ -1205,6 +1205,11 @@ main h1 { text-shadow: 0 2px 16px rgba(4, 10, 26, 0.5); }
 .reading-list .danger-link { align-self: flex-start; font-size: 13px; }
 .reading-angle { font-size: 11.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; color: var(--blue); }
 
+.deal-recs { margin-bottom: 16px; }
+.rec-reasons { margin: 4px 0; padding-left: 18px; font-size: 13.5px; }
+.reading-list .rec-reasons li { border: 0; padding: 0; display: list-item; }
+.rec-actions { display: flex; flex-wrap: wrap; gap: 14px; align-items: baseline; font-size: 13px; margin-top: 4px; }
+
 /* ---- Preview home: dashboard ---- */
 .home-hero.compact { height: 360px; }
 .home-hero.compact .home-hero-text { padding-top: 40px; max-width: 1180px; }

@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { API_URL, del, post, uploadWith } from './api'
 import type { Deal, DealDocument, DealPoint, DealsData } from './api'
+import RecommendedDeals from './RecommendedDeals'
 import { Loading, Logo, useApi, usePreview } from './ui'
 
 const DOMAINS: Record<string, string> = {
@@ -44,17 +45,19 @@ function Source({ p, deal }: { p: DealPoint; deal: Deal }) {
   return p.source ? <span className="src">{p.source}</span> : null
 }
 
-/** Preview: save a document to your computer, and open the original filing where it came from. */
+/** Preview: save a document to your computer, and open the page it was found on (the filing on EDGAR, or the
+ *  company's investor relations page). Shown only once that page is known, never the raw file link. */
 function DocLinks({ d }: { d: DealDocument }) {
   if (!usePreview()) return null
+  const page = d.source_page
   return (
     <>
       <a className="link" href={`${API_URL}/api/deals/documents/${d.id}/file?download=1`}>
         {d.filename.toLowerCase().endsWith('.pdf') ? 'Download PDF' : 'Download'}
       </a>
-      {d.source_url && (
-        <a className="link" href={d.source_url} target="_blank" rel="noreferrer">
-          {d.source_url.includes('sec.gov') ? 'Source: SEC.gov' : `Source: ${new URL(d.source_url).hostname.replace(/^www\./, '')}`}
+      {page && (
+        <a className="link" href={page} target="_blank" rel="noreferrer">
+          {page.includes('sec.gov') ? 'Source: SEC EDGAR filing' : `Source: ${new URL(page).hostname.replace(/^www\./, '')}`}
         </a>
       )}
     </>
@@ -296,6 +299,8 @@ export default function Deals() {
     <div className="deals">
       <h1>My Deals</h1>
       <p className="lede">Each deal laid out as a 90-second pitch: background, the deal, market reaction, your take. Every number shows where it came from.</p>
+
+      {preview && <RecommendedDeals mine={data.deals.map((d) => d.title)} onAdded={() => { setOpen(data.deals.length); reload() }} />}
 
       <div className="deal-tabs">
         {data.deals.map((d, i) => (

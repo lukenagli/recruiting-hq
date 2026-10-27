@@ -55,6 +55,9 @@ def ensure() -> None:
         conn.execute(READING_TABLE)
         if "source_url" not in {r[1] for r in conn.execute("PRAGMA table_info(deal_documents)")}:
             conn.execute("ALTER TABLE deal_documents ADD COLUMN source_url TEXT DEFAULT ''")
+        if "source_page" not in {r[1] for r in conn.execute("PRAGMA table_info(deal_documents)")}:
+            # the page the document was found on: the filing's index on EDGAR, or the investor relations page
+            conn.execute("ALTER TABLE deal_documents ADD COLUMN source_page TEXT DEFAULT ''")
 
 
 def _user_agent() -> str:
@@ -102,6 +105,7 @@ def _edgar_hits(names: list[str]) -> list[dict]:
                     "type": src.get("file_type", ""), "description": src.get("file_description", ""), "date": src.get("file_date", ""),
                     "file": filename,
                     "url": f"https://www.sec.gov/Archives/edgar/data/{int(src['ciks'][0])}/{adsh.replace('-', '')}/{filename}",
+                    "index": f"https://www.sec.gov/Archives/edgar/data/{int(src['ciks'][0])}/{adsh.replace('-', '')}/{adsh}-index.htm",
                 })
             if len(batch) < 100:
                 break
@@ -162,6 +166,7 @@ class Found(BaseModel):
     kind: str
     title: str
     url: str
+    page: str = Field("", description="The investor relations or press page where the link to this document is listed.")
 
 
 class FoundList(BaseModel):
@@ -223,7 +228,7 @@ def _download(url: str, tokens: list[str], linked: bool = False) -> tuple[bytes,
     return None
 
 
-def _fetch_document(url: str, title: str, tokens: list[str], hubs: list | None = None) -> tuple[bytes, str, str] | None:
+def _fetch_document(url: str, title: str, tokens: list[str], hubs: list | None = None) -> tuple[bytes, str, str, str] | None:
     """(bytes, extension, final url). A company web page that only links to the document (an "offer page" or a
     "presentation details" page) is followed to the PDF on it that best matches the title; a page with neither
     the PDF nor much text of its own is skipped. Pages with links to PDFs are added to `hubs` for later slots."""
@@ -232,7 +237,7 @@ def _fetch_document(url: str, title: str, tokens: list[str], hubs: list | None =
         return None
     data, ext = got
     if ext == "pdf" or (urlparse(url).hostname or "").endswith("sec.gov"):
-        return data, ext, url
+        return data, ext, url, ""
     html = data.decode("utf-8", errors="replace")
     if hubs is not None and ".pdf" in html.lower():
         hubs.append((url, html))
@@ -240,9 +245,9 @@ def _fetch_document(url: str, title: str, tokens: list[str], hubs: list | None =
     if best:
         pdf = _download(best, tokens, linked=True)
         if pdf and pdf[1] == "pdf":
-            return pdf[0], "pdf", best
+            return pdf[0], "pdf", best, url  # found on the company page `url`
     text = re.sub(r"\s+", " ", re.sub(r"(?s)<[^>]+>", " ", re.sub(r"(?is)<(script|style).*?</\1>", " ", html)))
-    return (data, ext, url) if len(text) > 6000 else None
+    return (data, ext, url, url) if len(text) > 6000 else None
 
 
 def _best_pdf(html: str, url: str, title: str, tokens: list[str]) -> str | None:
@@ -312,11 +317,11 @@ async def _gather(uid: int, chosen: Chosen, deal_id: int) -> dict:
         for k, v in usage_dict(result.usage).items():
             total[k] += v
 
-    async def save(kind: str, label: str, data: bytes, ext: str, url: str) -> None:
+    async def save(kind: str, label: str, data: bytes, ext: str, url: str, page: str = "") -> None:
         out = await asyncio.to_thread(deal_docs.upload, uid, deal_id, _filename(label, ext), data, kind)
         if out.get("ok"):
             with connect() as conn:
-                conn.execute("UPDATE deal_documents SET source_url = ? WHERE id = ? AND user_id = ?", (url, out["id"], uid))
+                conn.execute("UPDATE deal_documents SET source_url = ?, source_page = ? WHERE id = ? AND user_id = ?", (url, page, out["id"], uid))
             added.append(kind)
             have.add(url)
             if ext == "pdf" and "sec.gov" not in url:
@@ -324,16 +329,23 @@ async def _gather(uid: int, chosen: Chosen, deal_id: int) -> dict:
         else:
             skipped.append(f"{label} ({out.get('reason', 'could not read it')})")
 
-    # 1. The companies' own PDFs.
+    # 1. The companies' own PDFs (also run when company files gathered earlier are missing the page they came from).
     wanted = [k for k in slots if k not in company_pdf]
-    if wanted:
+    with connect(read_only=True) as conn:
+        no_page = {r["source_url"]: r["id"] for r in conn.execute(
+            "SELECT id, source_url FROM deal_documents WHERE user_id = ? AND deal_id = ? AND COALESCE(source_url, '') != '' "
+            "AND source_url NOT LIKE '%sec.gov%' AND COALESCE(source_page, '') = ''", (uid, deal_id))}
+    if wanted or no_page:
         try:
             output = NativeOutput(FoundList) if chosen.provider == "anthropic" else None
-            result = await official_finder.run(f"Deal: {deal['title']}\nBuyer: {buyer}\nTarget: {target}\nDocuments needed: {', '.join(wanted)}",
+            result = await official_finder.run(f"Deal: {deal['title']}\nBuyer: {buyer}\nTarget: {target}\nDocuments needed: {', '.join(wanted or slots)}",
                                                model=chosen.model, model_settings=chosen.settings, usage_limits=WEB_LIMITS, output_type=output)
             count(result)
             for f in result.output.documents:
                 url = f.url.strip()
+                if url in no_page and f.page.strip().startswith("https://"):  # a file gathered earlier: record where it is listed
+                    with connect() as conn:
+                        conn.execute("UPDATE deal_documents SET source_page = ? WHERE id = ? AND user_id = ?", (f.page.strip(), no_page[url], uid))
                 if f.kind not in wanted or f.kind in company_pdf or not url.startswith("https://") or url in have:
                     continue
                 try:
@@ -341,7 +353,7 @@ async def _gather(uid: int, chosen: Chosen, deal_id: int) -> dict:
                 except httpx.HTTPError:
                     got = None
                 if got and got[1] == "pdf" and got[2] not in have:
-                    await save(f.kind, f.title, got[0], "pdf", got[2])
+                    await save(f.kind, f.title, got[0], "pdf", got[2], got[3] or f.page.strip())
         except Exception as exc:
             notes.append(f"The search of the companies' sites failed ({type(exc).__name__}).")
         # A slot still empty may be listed on a company page already found (a UK offer page lists every deal document).
@@ -356,7 +368,7 @@ async def _gather(uid: int, chosen: Chosen, deal_id: int) -> dict:
                     except httpx.HTTPError:
                         pdf = None
                     if pdf and pdf[1] == "pdf":
-                        await save(kind, f"{target or buyer} {title}", pdf[0], "pdf", link)
+                        await save(kind, f"{target or buyer} {title}", pdf[0], "pdf", link, hub_url)
                         break
 
     # 2. SEC EDGAR for anything the companies' sites didn't have.
@@ -394,8 +406,20 @@ async def _gather(uid: int, chosen: Chosen, deal_id: int) -> dict:
                 data, ext = got
                 if ext == "htm":
                     data, ext = await asyncio.to_thread(filing_pdf.to_pdf, data, label, h["url"]), "pdf"
-                await save(p.kind, label, data, ext, h["url"])
+                await save(p.kind, label, data, ext, h["url"], h["index"])
                 covered.add(p.kind)
+
+    # Documents gathered before pages were recorded: an SEC filing's index page follows from its address; a company
+    # file gets the page it is linked from, when one of the pages read this run links to it.
+    with connect(read_only=True) as conn:
+        pageless = [dict(r) for r in conn.execute(
+            "SELECT id, source_url FROM deal_documents WHERE user_id = ? AND deal_id = ? AND COALESCE(source_url, '') != '' "
+            "AND COALESCE(source_page, '') = ''", (uid, deal_id))]
+    for d in pageless:
+        page = _sec_index(d["source_url"]) or next((u for u, html in hubs if d["source_url"].split("//", 1)[-1] in html), "")
+        if page:
+            with connect() as conn:
+                conn.execute("UPDATE deal_documents SET source_page = ? WHERE id = ? AND user_id = ?", (page, d["id"], uid))
 
     # 3. Earlier SEC web-page copies: replaced where a company PDF now covers the slot, otherwise turned into PDFs.
     replaced = converted = 0
@@ -421,6 +445,12 @@ async def _gather(uid: int, chosen: Chosen, deal_id: int) -> dict:
     with connect() as conn:
         deal_docs._log(conn, uid, started, "deal_document_gatherer", f"Gather documents for {deal['title']}", message, "ok", total)
     return {"ok": True, "added": len(added), "message": message}
+
+
+def _sec_index(url: str) -> str:
+    """The EDGAR index page of the filing a document belongs to, from the document's own address."""
+    m = re.match(r"https://www\.sec\.gov/Archives/edgar/data/(\d+)/(\d{10})(\d{2})(\d{6})/", url)
+    return f"https://www.sec.gov/Archives/edgar/data/{m[1]}/{m[2]}{m[3]}{m[4]}/{m[2]}-{m[3]}-{m[4]}-index.htm" if m else ""
 
 
 def _convert_stored(uid: int, doc_id: int, filename: str, source: str) -> bool:
@@ -523,9 +553,10 @@ def remove_reading(uid: int, item_id: int) -> dict:
     return {"ok": bool(n)}
 
 
-def source_urls(uid: int) -> dict[int, str]:
+def source_urls(uid: int) -> dict[int, dict]:
+    """{document id: {url: the file itself, page: where it was found}} for gathered documents."""
     ensure()
     with connect(read_only=True) as conn:
-        return {r["id"]: r["source_url"] for r in conn.execute(
-            "SELECT id, source_url FROM deal_documents WHERE user_id = ? AND COALESCE(source_url, '') != ''", (uid,))}
+        return {r["id"]: {"url": r["source_url"], "page": r["source_page"] or _sec_index(r["source_url"])} for r in conn.execute(
+            "SELECT id, source_url, source_page FROM deal_documents WHERE user_id = ? AND COALESCE(source_url, '') != ''", (uid,))}
 
