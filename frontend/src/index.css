@@ -51,7 +51,7 @@ main {
 main :is(.card, .choice, .btn, .bubble, .table-wrap, .facts > div, .journey, .panel, .timeline, .round-card, .chip, .questions,
   .tracks, .deal-tab, .mic, .modal, .draft, .ov-item, .process, .flow-card, .msg-summary, .ghost, .practice-setup, .dd-button,
   .dd-panel, .choice-pill, .bank-tile, .home-assistant, .tour-window, .tour-pillar, .tour-email-tabs button, .tour-start-list a,
-  .notice, .fork-choice, .start-step, .cu-results li, input, textarea, select),
+  .notice, .fork-choice, .start-step, .cu-results li, .dash-card, input, textarea, select),
 .modal, .assistant-panel {
   --ink: #101a2e; --muted: #5d6880; --line: #e1e5ee; --gray-soft: #eef0f5; --link: #2563eb;
   color: var(--ink);
@@ -1204,3 +1204,85 @@ main h1 { text-shadow: 0 2px 16px rgba(4, 10, 26, 0.5); }
 .reading-list li p { margin: 4px 0 0; }
 .reading-list .danger-link { align-self: flex-start; font-size: 13px; }
 .reading-angle { font-size: 11.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; color: var(--blue); }
+
+/* ---- Preview home: dashboard ---- */
+.home-hero.compact { height: 360px; }
+.home-hero.compact .home-hero-text { padding-top: 40px; max-width: 1180px; }
+.hero-date { margin: 0 0 2px !important; font-size: 13px !important; letter-spacing: 0.08em; text-transform: uppercase; opacity: 0.75 !important; }
+.hero-summary { margin: 4px 0 18px !important; }
+.update-bar {
+  display: flex; align-items: center; gap: 4px; max-width: 640px; padding: 6px 6px 6px 18px; border-radius: 999px;
+  background: rgba(255, 255, 255, 0.96); box-shadow: 0 12px 34px rgba(4, 10, 30, 0.35);
+}
+.update-bar:focus-within { box-shadow: 0 0 0 3px rgba(156, 194, 255, 0.55), 0 12px 34px rgba(4, 10, 30, 0.35); }
+.update-bar input { flex: 1; min-width: 0; border: 0; outline: none; background: transparent; font: inherit; font-size: 16px; color: #101a2e; padding: 8px 0; }
+.update-bar input::placeholder { color: #7a849a; }
+.bar-icon, .bar-send { width: 38px; height: 38px; border-radius: 50%; border: 0; display: grid; place-items: center; flex: none; }
+.bar-icon { background: transparent; color: #5d6880; }
+.bar-icon:hover { background: #eef0f5; }
+.bar-icon.listening { background: var(--red); color: #fff; animation: mic-pulse 1.4s ease-in-out infinite; }
+.bar-send { background: var(--blue); color: #fff; }
+.bar-icon svg, .bar-send svg { width: 19px; height: 19px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.update-links { display: flex; gap: 18px; margin: 10px 0 0 18px; }
+.update-links button { background: none; border: 0; padding: 0; color: rgba(255, 255, 255, 0.85); font-size: 13.5px; text-shadow: 0 1px 8px rgba(10, 20, 50, 0.6); }
+.update-links button:hover { color: #fff; text-decoration: underline; }
+.update-links span { color: #ff7a70; font-size: 10px; margin-right: 2px; }
+
+.dash { position: relative; margin-top: -40px; display: flex; flex-direction: column; gap: 26px; }
+.dash > .key-callout { margin: 0; }
+.dash-grid { display: grid; grid-template-columns: 1.5fr 1fr; gap: 18px; align-items: start; }
+.dash-card { background: var(--card); color: var(--ink); border-radius: 18px; padding: 20px 22px; box-shadow: 0 14px 40px rgba(4, 10, 30, 0.28); }
+.dash-card h2 { margin: 0 0 12px; font-size: 18px; display: flex; align-items: center; gap: 8px; }
+.dash-card .count { font-size: 12px; font-weight: 700; background: var(--blue-soft); color: var(--blue); border-radius: 99px; padding: 1px 9px; }
+.dash-card ul { list-style: none; margin: 0; padding: 0; }
+.dash-card a { color: var(--ink); }
+.dash-card a:hover { text-decoration: none; }
+
+.agenda-day + .agenda-day { margin-top: 14px; }
+.agenda-day h3 { font-size: 11.5px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); margin: 0 0 6px; }
+.agenda-day li a { display: flex; gap: 14px; align-items: stretch; padding: 8px 10px; border-radius: 12px; }
+.agenda-day li a:hover { background: var(--gray-soft); }
+.agenda-time { flex: 0 0 74px; font-size: 13px; font-weight: 600; color: var(--muted); padding-top: 1px; }
+.agenda-what { display: flex; flex-direction: column; border-left: 3px solid var(--blue); padding-left: 12px; min-width: 0; }
+.agenda-what small { font-size: 13px; }
+.k-event .agenda-what { border-color: #d39b2a; }
+.k-interview .agenda-what { border-color: var(--red); }
+.k-deadline .agenda-what { border-color: var(--amber); }
+.k-step .agenda-what { border-color: var(--gray); }
+
+.todos li a { display: flex; gap: 12px; align-items: flex-start; padding: 8px 6px; border-radius: 10px; }
+.todos li a:hover { background: var(--gray-soft); }
+.todo-dot { flex: none; width: 16px; height: 16px; margin-top: 2px; border-radius: 50%; border: 2px solid #c3cad8; }
+.todos li a.urgent .todo-dot { border-color: var(--amber); background: var(--amber-soft); }
+.todo-what { display: flex; flex-direction: column; min-width: 0; }
+.todo-what small { font-size: 13px; }
+.todos .link { margin-top: 6px; }
+
+.section-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+.section-head h2 { margin: 0 0 12px; }
+.section-head a { font-size: 14px; }
+.pipe-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 12px; }
+.pipe-tile {
+  display: flex; flex-direction: column; gap: 7px; padding: 14px 16px; border-radius: 16px; color: var(--ink);
+  background: rgba(255, 255, 255, 0.07); border: 1px solid rgba(255, 255, 255, 0.12); transition: background 0.12s, transform 0.12s;
+}
+.pipe-tile:hover { text-decoration: none; background: rgba(255, 255, 255, 0.13); transform: translateY(-2px); }
+.pipe-top { display: flex; align-items: center; gap: 10px; }
+.pipe-top strong { font-size: 15px; }
+.pipe-tile .pips .pip { background: rgba(255, 255, 255, 0.18); }
+.pipe-tile .pips .pip.done { background: #6fd3a4; }
+.pipe-stage { font-size: 12px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: #9cc2ff; }
+.pipe-tile small { font-size: 12.5px; color: var(--muted); }
+.pipe-out { margin: 10px 0 0; font-size: 13px; color: var(--muted); }
+.home.next .season h2 { margin-top: 0; }
+
+@media (max-width: 760px) {
+  .home-hero.compact { height: 340px; }
+  .home-hero.compact .home-hero-text { padding-top: 26px; }
+  .dash { margin-top: -30px; }
+  .dash-grid { grid-template-columns: 1fr; }
+  .pipe-grid { grid-template-columns: 1fr 1fr; }
+  .update-bar input { font-size: 16px; }
+  .agenda-time { flex-basis: 58px; }
+}
+.home.next .season-strip { scrollbar-width: thin; scrollbar-color: rgba(255, 255, 255, 0.22) transparent; }

@@ -1,12 +1,17 @@
 import { useEffect, useRef, useState } from 'react'
-import type { ReactNode } from 'react'
-import type { AiSettings, CalendarItem, HomeData } from './api'
-import { Loading, daysUntil, fmtDate, useApi, useSchool } from './ui'
+import { ASK_EVENT } from './Assistant'
+import type { AiSettings, BankSummary, CalendarItem, HomeData } from './api'
+import { useDictation } from './dictation'
+import { Loading, Logo, StagePips, daysUntil, fmtDate, useApi, useSchool } from './ui'
 
 /**
- * Preview home: one place that says what to do next. A new account is asked where it is in recruiting
- * (just starting, or already networking); everyone else sees the update box, a single to-do list and the season.
+ * Preview home: a dashboard. The header holds a one-line update bar that hands what you type to the assistant
+ * panel; below it, the week ahead by day, one to-do list, every bank as a pipeline, and the club's season.
+ * A new account is first asked where it is in recruiting (just starting, or already networking).
  */
+
+const DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
+const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December']
 
 function greeting() {
   const h = new Date().getHours()
@@ -17,46 +22,169 @@ function inDays(n: number) {
   return n === 0 ? 'today' : n === 1 ? 'tomorrow' : n < 0 ? `${-n} days ago` : `in ${n} days`
 }
 
-type Todo = { key: string; title: string; sub: string; href: string; when: string; urgent?: boolean; order: string }
-
-function todos(d: HomeData): Todo[] {
-  const out: Todo[] = []
-  for (const t of d.thank_yous_due)
-    out.push({
-      key: `ty-${t.who}-${t.bank}`, title: `Send ${t.who} a thank-you`, sub: t.bank, href: `#/bank/${encodeURIComponent(t.bank)}`,
-      when: !t.date ? '' : t.date === d.today ? 'spoke today' : `spoke ${fmtDate(t.date)}`, urgent: true, order: '0',
-    })
-  for (const u of d.upcoming) {
-    const n = daysUntil(u.date, d.today)
-    out.push({
-      key: `up-${u.title}-${u.date}`, title: u.title, sub: `${u.bank} · get ready`, href: `#/prep?bank=${encodeURIComponent(u.bank)}`,
-      when: `${fmtDate(u.date, true)} · ${inDays(n)}`, urgent: n <= 2, order: `1${u.date}`,
-    })
-  }
-  for (const a of d.deadlines) {
-    const n = daysUntil(a.date, d.today)
-    out.push({
-      key: `ap-${a.bank}`, title: `Apply to ${a.bank}`, sub: 'Application not marked as sent', href: `#/bank/${encodeURIComponent(a.bank)}`,
-      when: `due ${fmtDate(a.date)} · ${inDays(n)}`, urgent: n <= 7, order: `1${a.date}`,
-    })
-  }
-  return out.sort((a, b) => a.order.localeCompare(b.order))
+function dayLabel(iso: string, today: string) {
+  const n = daysUntil(iso, today)
+  if (n === 0) return 'Today'
+  if (n === 1) return 'Tomorrow'
+  const [y, m, d] = iso.split('-').map(Number)
+  return `${DAYS[new Date(y, m - 1, d).getDay()]}, ${MONTHS[m - 1].slice(0, 3)} ${d}`
 }
 
-/** The club's season as a strip: what's done, what's next, and how far away it is. */
+function ask(detail: { text?: string; record?: 'recap' | 'conversation' }) {
+  window.dispatchEvent(new CustomEvent(ASK_EVENT, { detail }))
+}
+
+/** One line in the header: tell the assistant what happened. It opens in the side panel. */
+function UpdateBar() {
+  const [text, setText] = useState('')
+  const dictation = useDictation((phrase) => setText((t) => `${t}${t && !/\s$/.test(t) ? ' ' : ''}${phrase}`))
+  function go(e?: React.FormEvent) {
+    e?.preventDefault()
+    dictation.stop()
+    if (!text.trim()) return ask({})
+    ask({ text })
+    setText('')
+  }
+  return (
+    <>
+      <form className="update-bar" onSubmit={go}>
+        <input
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          placeholder={dictation.listening ? 'Listening…' : 'What happened? A chat, an email, an invite…'}
+          aria-label="Tell the assistant what happened"
+        />
+        {dictation.supported && (
+          <button type="button" className={`bar-icon ${dictation.listening ? 'listening' : ''}`} onClick={dictation.toggle}
+            aria-label={dictation.listening ? 'Stop dictating' : 'Dictate'} title={dictation.listening ? 'Stop dictating' : 'Dictate'}>
+            <svg viewBox="0 0 24 24" aria-hidden><path d="M12 3a3 3 0 0 0-3 3v5a3 3 0 0 0 6 0V6a3 3 0 0 0-3-3Z" /><path d="M5 11a7 7 0 0 0 14 0M12 18v3" /></svg>
+          </button>
+        )}
+        <button type="submit" className="bar-send" aria-label="Send to the assistant" title="Send">
+          <svg viewBox="0 0 24 24" aria-hidden><path d="M12 19V5M5 12l7-7 7 7" /></svg>
+        </button>
+      </form>
+      <div className="update-links">
+        <button type="button" onClick={() => ask({ record: 'conversation' })}><span aria-hidden>●</span> Record a coffee chat</button>
+        <button type="button" onClick={() => ask({})}>Open the assistant</button>
+      </div>
+    </>
+  )
+}
+
+function Agenda({ d, out }: { d: HomeData; out: Set<string> }) {
+  const items = [
+    ...d.upcoming.map((u) => ({ date: u.date, time: (u.date_note ?? '').split(',')[0], title: u.title, bank: u.bank, kind: u.kind })),
+    ...d.deadlines.filter((a) => !out.has(a.bank)).map((a) => ({ date: a.date, time: '', title: 'Application due', bank: a.bank, kind: 'deadline' })),
+  ].filter((i) => daysUntil(i.date, d.today) <= 7).sort((a, b) => a.date.localeCompare(b.date))
+  const days = [...new Set(items.map((i) => i.date))]
+  return (
+    <section className="dash-card agenda">
+      <h2>This week</h2>
+      {days.length === 0 && <p className="muted">Nothing scheduled in the next seven days.</p>}
+      {days.map((day) => (
+        <div className="agenda-day" key={day}>
+          <h3>{dayLabel(day, d.today)}</h3>
+          <ul>
+            {items.filter((i) => i.date === day).map((i) => (
+              <li key={`${i.bank}-${i.title}`} className={`k-${i.kind}`}>
+                <a href={i.kind === 'deadline' ? `#/bank/${encodeURIComponent(i.bank)}` : `#/prep?bank=${encodeURIComponent(i.bank)}`}>
+                  <span className="agenda-time">{i.time || (i.kind === 'deadline' ? 'Due' : '')}</span>
+                  <span className="agenda-what">
+                    <strong>{i.title}</strong>
+                    <small>{i.bank}</small>
+                  </span>
+                </a>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ))}
+    </section>
+  )
+}
+
+function Todos({ d, out }: { d: HomeData; out: Set<string> }) {
+  const [all, setAll] = useState(false)
+  const items = [
+    ...d.thank_yous_due.map((t) => ({ key: `ty${t.who}`, title: `Thank-you to ${t.who}`, bank: t.bank, when: t.date ? `spoke ${fmtDate(t.date)}` : '', urgent: true })),
+    ...(d.todos ?? []).map((t) => ({ key: `td${t.bank}${t.title}`, title: t.title, bank: t.bank, when: t.date ? fmtDate(t.date) : '', urgent: !!t.date && daysUntil(t.date, d.today) <= 1 })),
+    ...d.deadlines.filter((a) => !out.has(a.bank) && daysUntil(a.date, d.today) > 7).map((a) => ({ key: `ap${a.bank}`, title: `Apply to ${a.bank}`, bank: a.bank, when: `due ${fmtDate(a.date)}`, urgent: false })),
+  ]
+  const shown = all ? items : items.slice(0, 7)
+  return (
+    <section className="dash-card todos">
+      <h2>
+        To do <span className="count">{items.length}</span>
+      </h2>
+      {items.length === 0 && <p className="muted">All caught up.</p>}
+      <ul>
+        {shown.map((t) => (
+          <li key={t.key}>
+            <a href={`#/bank/${encodeURIComponent(t.bank)}`} className={t.urgent ? 'urgent' : ''}>
+              <span className="todo-dot" aria-hidden />
+              <span className="todo-what">
+                <strong>{t.title}</strong>
+                <small>{[t.bank, t.when].filter(Boolean).join(' · ')}</small>
+              </span>
+            </a>
+          </li>
+        ))}
+      </ul>
+      {items.length > 7 && (
+        <button className="link" onClick={() => setAll(!all)}>{all ? 'Show less' : `Show all ${items.length}`}</button>
+      )}
+    </section>
+  )
+}
+
+function Pipeline({ banks, today }: { banks: BankSummary[]; today: string }) {
+  const live = banks.filter((b) => b.application.status !== 'out')
+  const out = banks.filter((b) => b.application.status === 'out')
+  return (
+    <section className="pipeline">
+      <div className="section-head">
+        <h2>Your banks</h2>
+        <a href="#/map">Recruiting Map →</a>
+      </div>
+      <div className="pipe-grid">
+        {live.map((b) => {
+          const stage = [...b.stage].reverse().find((s) => s.done)?.label ?? 'Not started'
+          return (
+            <a key={b.bank} className="pipe-tile" href={`#/bank/${encodeURIComponent(b.bank)}`}>
+              <span className="pipe-top">
+                <Logo bank={b.bank} domain={b.domain} size={30} />
+                <strong>{b.bank}</strong>
+              </span>
+              <StagePips stage={b.stage} />
+              <span className="pipe-stage">{stage}</span>
+              <small>
+                {b.next_up ? `Next: ${b.next_up.title}, ${inDays(daysUntil(b.next_up.date, today))}` : b.last_touch ? `Last contact ${fmtDate(b.last_touch)}` : `${b.people} people`}
+              </small>
+            </a>
+          )
+        })}
+      </div>
+      {out.length > 0 && <p className="pipe-out">No longer in process: {out.map((b) => b.bank).join(', ')}</p>}
+    </section>
+  )
+}
+
+/** The club's fixed milestones (weekly club meetings move around, so they are left out). */
 function Season({ items, today }: { items: CalendarItem[]; today: string }) {
-  const next = items.findIndex((i) => (i.end || i.date) >= today)
+  const marks = items.filter((i) => !/^club meeting/i.test(i.title))
+  const next = marks.findIndex((i) => (i.end || i.date) >= today)
   const strip = useRef<HTMLOListElement>(null)
-  // Start the strip at the last finished step, so what's next is in view.
   useEffect(() => {
     const el = strip.current?.children[Math.max(0, next - 1)] as HTMLElement | undefined
     if (strip.current && el) strip.current.scrollLeft = el.offsetLeft - strip.current.offsetLeft
   }, [next])
+  if (!marks.length) return null
   return (
     <section className="season">
       <h2>The season</h2>
       <ol className="season-strip" ref={strip}>
-        {items.map((i, n) => {
+        {marks.map((i, n) => {
           const past = next === -1 || n < next
           const now = i.date <= today && (i.end || i.date) >= today
           return (
@@ -96,102 +224,66 @@ function StartFork() {
   )
 }
 
-export default function HomeNext({ name, assistant }: { name: string; assistant: ReactNode }) {
+function summary(d: HomeData) {
+  const today = d.upcoming.filter((u) => u.date === d.today).length
+  const tomorrow = d.upcoming.filter((u) => daysUntil(u.date, d.today) === 1).length
+  const todo = d.thank_yous_due.length + (d.todos?.length ?? 0)
+  return [
+    today ? `${today} on today` : tomorrow ? `${tomorrow} on tomorrow` : 'Nothing on tomorrow',
+    todo ? `${todo} to do` : 'all caught up',
+  ].join(' · ')
+}
+
+export default function HomeNext({ name }: { name: string }) {
   const { data, error } = useApi<HomeData>('/api/home')
+  const banks = useApi<BankSummary[]>('/api/banks')
   const ai = useApi<AiSettings>('/api/settings/ai')
   const cal = useApi<CalendarItem[]>('/api/calendar')
   const school = useSchool()
-  const [all, setAll] = useState(false)
   const first = name.split(' ')[0]
-  const list = data ? todos(data) : []
-  const shown = all ? list : list.slice(0, 5)
   const newcomer = data?.totals.people === 0
+  // banks the student is no longer in the process with: their deadlines no longer matter
+  const out = new Set((banks.data ?? []).filter((b) => b.application.status === 'out').map((b) => b.bank))
+  const now = new Date()
 
   return (
     <div className="home next">
-      <header className="home-hero">
+      <header className="home-hero compact">
         <div className="home-hero-text">
+          <p className="hero-date">
+            {DAYS[now.getDay()]}, {MONTHS[now.getMonth()]} {now.getDate()}
+          </p>
           <h1>
             {greeting()}
             {first ? `, ${first}` : ''}.
           </h1>
-          {data && !newcomer && (
-            <p>{list.length === 0 ? "You're all caught up." : `${list.length} ${list.length === 1 ? 'thing' : 'things'} to do.`}</p>
-          )}
-          {newcomer && <p>Let's get your recruiting in one place.</p>}
+          <p className="hero-summary">{data ? (newcomer ? "Let's get your recruiting in one place." : summary(data)) : ' '}</p>
+          <UpdateBar />
         </div>
         <a className="photo-credit" href="https://commons.wikimedia.org/wiki/File:Manhattan_Skyline_2016.jpg" target="_blank" rel="noreferrer">
           Photo: Mike Sinko, CC BY 2.0
         </a>
       </header>
 
-      <div className="home-body">
+      <div className="dash">
         {ai.data && !ai.data.ready && (
           <a className="notice key-callout" href="#/settings">
             <strong>One thing first:</strong> paste your Yale class (Portkey) key in Settings to turn on the assistant.
           </a>
         )}
         {newcomer && <StartFork />}
-        {assistant}
-
         {!data ? (
           <Loading error={error} />
         ) : (
           !newcomer && (
-            <section className="todo card">
-              <div className="todo-head">
-                <h2>Up next</h2>
-                <a href="#/catch-up" className="todo-catchup">
-                  Haven't logged everyone yet? Catch up →
-                </a>
-              </div>
-              {list.length === 0 && <p className="muted">Nothing due. Log a chat above when you have one.</p>}
-              <ul>
-                {shown.map((t) => (
-                  <li key={t.key}>
-                    <a href={t.href} className={t.urgent ? 'urgent' : ''}>
-                      <span>
-                        <strong>{t.title}</strong>
-                        <small>{t.sub}</small>
-                      </span>
-                      <em>{t.when}</em>
-                    </a>
-                  </li>
-                ))}
-              </ul>
-              {list.length > 5 && (
-                <button className="link" onClick={() => setAll(!all)}>
-                  {all ? 'Show less' : `Show all ${list.length}`}
-                </button>
-              )}
-            </section>
+            <div className="dash-grid">
+              <Agenda d={data} out={out} />
+              <Todos d={data} out={out} />
+            </div>
           )
         )}
-
-        {data && cal.data && cal.data.length > 0 && school.club && <Season items={cal.data} today={data.today} />}
-
-        <nav className="places">
-          <a href="#/map">
-            <strong>Recruiting Map</strong>
-            <span>{data ? `${data.totals.people} people · ${data.totals.banks} banks` : 'Everyone you’ve met, by bank'}</span>
-          </a>
-          <a href="#/prep">
-            <strong>Interview Prep</strong>
-            <span>Real questions, graded answers</span>
-          </a>
-          <a href="#/deals">
-            <strong>My Deals</strong>
-            <span>Your 90-second deal pitch</span>
-          </a>
-          <a href="#/letters">
-            <strong>Cover Letters</strong>
-            <span>Written from your chats</span>
-          </a>
-          <a href="#/start">
-            <strong>How recruiting works</strong>
-            <span>The whole process, step by step</span>
-          </a>
-        </nav>
+        {data && banks.data && banks.data.length > 0 && <Pipeline banks={banks.data} today={data.today} />}
+        {data && cal.data && school.club && <Season items={cal.data} today={data.today} />}
       </div>
     </div>
   )

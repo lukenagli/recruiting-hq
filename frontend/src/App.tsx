@@ -96,7 +96,7 @@ export default function App() {
   const backdrop = ({ prep: 'harkness', map: 'yale-night', bank: 'yale-night', deals: 'nyse', letters: 'sterling', settings: 'yale-night' } as Record<string, string>)[section ?? '']
   const inlineAssistant = <Assistant key={`inline-${user.id}-${version}`} inline userId={user.id} onChanged={() => setVersion((v) => v + 1)} />
   const preview = !!user.preview
-  let page = preview ? <HomeNext name={user.name} assistant={inlineAssistant} /> : <Home name={user.name} assistant={inlineAssistant} />
+  let page = preview ? <HomeNext name={user.name} /> : <Home name={user.name} assistant={inlineAssistant} />
   if (section === 'prep') page = <Prep bank={query.get('bank') ?? ''} round={query.get('round') ?? ''} who={query.get('who') ?? ''} tab={query.get('tab') ?? ''} />
   if (section === 'map') page = <MapView />
   if (section === 'deals') page = <Deals />
@@ -151,7 +151,7 @@ export default function App() {
       {backdrop && <div className="page-backdrop" style={{ backgroundImage: `url(/bg-${backdrop}.jpg)` }} aria-hidden />}
       {/* Re-keying the page after the assistant changes something makes it reload its data. */}
       <main key={version}>{page}</main>
-      {!isHome && section !== 'tour' && section !== 'catch-up' && <Assistant key={user.id} userId={user.id} onChanged={() => setVersion((v) => v + 1)} />}
+      {(!isHome || preview) && section !== 'tour' && section !== 'catch-up' && <Assistant key={user.id} userId={user.id} onChanged={() => setVersion((v) => v + 1)} />}
     </SchoolContext.Provider>
     </PreviewContext.Provider>
   )

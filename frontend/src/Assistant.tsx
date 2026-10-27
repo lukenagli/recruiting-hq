@@ -9,6 +9,8 @@ import { usePreview } from './ui'
 type Message = { role: 'user' | 'assistant'; text: string; undone?: boolean } & Partial<AssistantReply>
 
 const STORE = 'assistant-thread'
+/** Window event that opens the floating assistant: detail { text?: string to send, record?: 'recap' | 'conversation' }. */
+export const ASK_EVENT = 'rhq-ask-assistant'
 // Files the assistant can read: team cards and rosters, saved emails, screenshots.
 const ACCEPT = '.pdf,.docx,.txt,.eml,.png,.jpg,.jpeg,.webp'
 const ACCEPT_PREVIEW = `${ACCEPT},.msg` // preview: emails dragged straight out of desktop Outlook
@@ -132,9 +134,24 @@ export default function Assistant({ userId, onChanged, inline = false }: { userI
     if (open) input.current?.focus()
   }, [open])
 
-  async function send() {
+  // Another part of the page (the home page's update bar) can open this panel, optionally sending a message.
+  const sendRef = useRef(send)
+  sendRef.current = send
+  useEffect(() => {
+    if (inline) return
+    const onAsk = (e: Event) => {
+      const { text = '', record = '' } = (e as CustomEvent<{ text?: string; record?: 'recap' | 'conversation' }>).detail ?? {}
+      setOpen(true)
+      if (record) setRecording(record)
+      else if (text.trim()) sendRef.current(text)
+    }
+    window.addEventListener(ASK_EVENT, onAsk)
+    return () => window.removeEventListener(ASK_EVENT, onAsk)
+  }, [inline])
+
+  async function send(given?: string) {
     // Read the box itself: some dictation tools put text in without telling the page it changed.
-    const text = (input.current?.value ?? draft).trim()
+    const text = (given ?? input.current?.value ?? draft).trim()
     if (busy || (!text && !file)) return
     dictation.stop()
     const history = messages.map((m) => ({ role: m.role, text: m.text }))

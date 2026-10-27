@@ -278,9 +278,13 @@ def home(uid: int) -> dict:
             for i in chats if i["status"] == "done" and not i["thank_you"]
         ],
         "upcoming": [
-            {"bank": i["bank"], "title": i["title"], "date": i["date"], "kind": i["kind"]}
+            {"bank": i["bank"], "title": i["title"], "date": i["date"], "kind": i["kind"], "date_note": i["date_note"] or ""}
             for i in data["interactions"] if i["status"] == "upcoming" and i["date"] >= today
         ],
+        # open to-dos (steps still to be done), soonest first, undated last
+        "todos": sorted(
+            ({"bank": i["bank"], "title": i["title"], "date": i["date"] or ""} for i in data["interactions"] if i["status"] == "todo"),
+            key=lambda t: t["date"] or "9999"),
         "deadlines": sorted(deadlines, key=lambda d: d["date"]),
         "totals": {
             "banks": len(_bank_names(data)),
