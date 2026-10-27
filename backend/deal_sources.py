@@ -312,6 +312,7 @@ async def _gather(uid: int, chosen: Chosen, deal_id: int) -> dict:
     slots = deal_docs.KINDS[:6]
     company_pdf = {d["kind"] for d in docs if d["filename"].lower().endswith(".pdf") and "sec.gov" not in d["source_url"]}
     added, skipped, notes, hubs = [], [], [], []
+    pages: set[str] = set()  # company pages the search says list the deal's documents
 
     def count(result) -> None:
         for k, v in usage_dict(result.usage).items():
@@ -343,6 +344,8 @@ async def _gather(uid: int, chosen: Chosen, deal_id: int) -> dict:
             count(result)
             for f in result.output.documents:
                 url = f.url.strip()
+                if f.page.strip().startswith("https://"):
+                    pages.add(f.page.strip())
                 if url in no_page and f.page.strip().startswith("https://"):  # a file gathered earlier: record where it is listed
                     with connect() as conn:
                         conn.execute("UPDATE deal_documents SET source_page = ? WHERE id = ? AND user_id = ?", (f.page.strip(), no_page[url], uid))
@@ -415,8 +418,23 @@ async def _gather(uid: int, chosen: Chosen, deal_id: int) -> dict:
         pageless = [dict(r) for r in conn.execute(
             "SELECT id, source_url FROM deal_documents WHERE user_id = ? AND deal_id = ? AND COALESCE(source_url, '') != '' "
             "AND COALESCE(source_page, '') = ''", (uid, deal_id))]
+    if any(not _sec_index(d["source_url"]) for d in pageless):  # read the pages the search named, to find the files on them
+        for page in sorted(pages - {u for u, _ in hubs})[:6]:
+            try:
+                got = await asyncio.to_thread(_download, page, tokens)
+            except httpx.HTTPError:
+                got = None
+            if got and got[1] == "htm":
+                hubs.append((page, got[0].decode("utf-8", errors="replace")))
+
+    def listed_on(url: str) -> str:
+        """The page that links to this file: by its full address, or by its file name when the link is relative."""
+        name = url.rsplit("/", 1)[-1].split("?")[0]
+        return next((u for u, html in hubs if url.split("//", 1)[-1] in html), "") or \
+            next((u for u, html in hubs if len(name) > 8 and name in html), "")
+
     for d in pageless:
-        page = _sec_index(d["source_url"]) or next((u for u, html in hubs if d["source_url"].split("//", 1)[-1] in html), "")
+        page = _sec_index(d["source_url"]) or listed_on(d["source_url"])
         if page:
             with connect() as conn:
                 conn.execute("UPDATE deal_documents SET source_page = ? WHERE id = ? AND user_id = ?", (page, d["id"], uid))
