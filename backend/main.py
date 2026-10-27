@@ -13,7 +13,7 @@ from pydantic import BaseModel
 from pydantic_ai import Agent
 
 from . import banks as banks_info
-from . import accounts, assistant, attachments, auth, budget, catch_up, config, cover_letters, deal_docs, deal_recs, deal_sources, deals, importer, legal, llm, network, onboarding, practice, profile, schools, reference, research, shared, stars, sync, templates, thank_you, transfer, user_keys
+from . import accounts, assistant, attachments, auth, budget, capiq, catch_up, config, cover_letters, deal_docs, deal_recs, deal_sources, deals, importer, legal, llm, network, onboarding, practice, profile, schools, reference, research, shared, stars, sync, templates, thank_you, transfer, user_keys
 from .auth import admin_user, current_user
 from .db import connect, init_db
 from .llm import get_model, usage_dict
@@ -269,6 +269,8 @@ def practice_progress(user: dict = Depends(current_user)):
 
 @app.get("/api/deals")
 def my_deals(user: dict = Depends(current_user)):
+    if accounts.in_preview(user):
+        capiq.ensure()  # each deal's Capital IQ link
     out = deals.all_deals(user["id"])
     if accounts.in_preview(user):  # preview: each deal's reading list, and where each gathered document came from
         reading, urls = deal_sources.reading(user["id"]), deal_sources.source_urls(user["id"])
@@ -309,6 +311,13 @@ def remove_deal_reading(item_id: int, user: dict = Depends(current_user)):
     return deal_sources.remove_reading(user["id"], item_id)
 
 
+# Preview routes 404 for everyone else.
+def preview_user(user: dict = Depends(current_user)) -> dict:
+    if not accounts.in_preview(user):
+        raise HTTPException(status_code=404, detail="Not found")
+    return user
+
+
 @app.get("/api/deals/recommended")
 def recommended_deals(bank: str = "", user: dict = Depends(current_user)):
     """Preview: the last deals recommended for the student (or for one bank), by the Finance Club's criteria."""
@@ -333,6 +342,42 @@ def capiq_queue(user: dict = Depends(current_user)):
 @app.post("/api/deals/capiq")
 def capiq_result(got: deal_recs.CapIQDeal, user: dict = Depends(current_user)):
     return deal_recs.capiq_save(user["id"], got)
+
+
+class CapIQLink(BaseModel):
+    url: str
+
+
+@app.post("/api/deals/{deal_id}/capiq-link")
+def set_capiq_link(deal_id: int, req: CapIQLink, user: dict = Depends(preview_user)):
+    """Preview: the deal's Capital IQ transaction page, which the reader reads from the student's Chrome."""
+    return capiq.set_link(user["id"], deal_id, req.url)
+
+
+@app.post("/api/deals/{deal_id}/capiq-want")
+def want_capiq(deal_id: int, user: dict = Depends(preview_user)):
+    return capiq.want(user["id"], deal_id)
+
+
+@app.get("/api/capiq/jobs")
+def capiq_jobs(user: dict = Depends(preview_user)):
+    """For the reader: the deals whose Capital IQ pages to fetch."""
+    return capiq.jobs(user["id"])
+
+
+class CapIQPages(BaseModel):
+    deal_id: int
+    url: str
+    overview_html: str
+    comps_html: str = ""
+
+
+@app.post("/api/capiq/pages")
+def capiq_pages(req: CapIQPages, user: dict = Depends(preview_user)):
+    """For the reader: the transaction summary (and comps) pages it fetched, saved as a PDF and read into the pitch."""
+    if len(req.overview_html) + len(req.comps_html) > 6_000_000 or not capiq.clean_link(req.url):
+        raise HTTPException(status_code=400, detail="Not a Capital IQ transaction page.")
+    return capiq.save(user["id"], req.deal_id, capiq.clean_link(req.url), req.overview_html, req.comps_html)
 
 
 class NewDeal(BaseModel):
@@ -612,12 +657,6 @@ async def catch_up_sheet(file: UploadFile, user: dict = Depends(current_user)):
 
 
 # ---- Preview: the Recruiting HQ Reader (read-only sync from email, Slack and WhatsApp) ----
-
-def preview_user(user: dict = Depends(current_user)) -> dict:
-    if not accounts.in_preview(user):
-        raise HTTPException(status_code=404, detail="Not found")
-    return user
-
 
 @app.get("/api/sync/state")
 def sync_state(user: dict = Depends(preview_user)):

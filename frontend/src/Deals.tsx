@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { API_URL, del, post, uploadWith } from './api'
 import type { Deal, DealDocument, DealPoint, DealsData } from './api'
+import CapIQ from './CapIQ'
 import RecommendedDeals from './RecommendedDeals'
 import { Loading, Logo, useApi, usePreview } from './ui'
 
@@ -256,6 +257,7 @@ function Documents({ deal, data, onChanged }: { deal: Deal; data: DealsData; onC
           )
         })()}
       </ul>
+      {preview && <CapIQ deal={deal} onChanged={onChanged} />}
       <div className="doc-actions">
         <button className="primary" disabled={busy !== '' || deal.documents.length === 0} onClick={() => run(`/api/deals/${deal.id}/fill-from-documents`, 'fill')}>
           {busy === 'fill' ? 'Reading your documents…' : 'Fill from my documents'}

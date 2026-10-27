@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Recruiting HQ Reader",
-  "version": "1.3.0",
+  "version": "1.4.0",
   "description": "Reads (never sends) what's new in your recruiting email, Slack and WhatsApp and files it in Recruiting HQ.",
   "permissions": ["storage", "declarativeNetRequest"],
   "host_permissions": [
@@ -9,7 +9,8 @@
     "https://outlook.cloud.microsoft/*",
     "https://outlook.office.com/*",
     "https://app.slack.com/*",
-    "https://web.whatsapp.com/*"
+    "https://web.whatsapp.com/*",
+    "https://www.capitaliq.com/*"
   ],
   "background": { "service_worker": "background.js" },
   "action": { "default_popup": "popup.html", "default_title": "Recruiting HQ Reader" },

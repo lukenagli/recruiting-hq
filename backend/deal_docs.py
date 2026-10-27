@@ -31,6 +31,7 @@ MAX_SCANNED_PAGES = 30
 MAX_PER_USER = 150_000_000
 KINDS = ["Announcement press release", "Merger agreement", "Proxy / S-4 / tender offer", "Investor presentation",
          "Buyer 10-K or annual report", "Target 10-K or annual report", "Earnings release", "Other"]
+CAPIQ_KIND = "Capital IQ transaction summary"  # preview: saved by capiq.py from the student's Capital IQ
 
 # What to ask the user for: the documents that answer most of the pitch checklist.
 WANTED = [
@@ -124,7 +125,7 @@ def upload(uid: int, deal_id: int, filename: str, data: bytes, kind: str) -> dic
         doc_id = conn.execute(
             """INSERT INTO deal_documents (user_id, deal_id, filename, kind, pages, data, size, uploaded_at, scanned)
                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-            (uid, deal_id, filename[:200], kind if kind in KINDS else "Other", json.dumps(pages), data, len(data),
+            (uid, deal_id, filename[:200], kind if kind in KINDS or kind == CAPIQ_KIND else "Other", json.dumps(pages), data, len(data),
              datetime.now().isoformat(timespec="seconds"), "yes" if scanned else "")).lastrowid
     return {"ok": True, "id": doc_id, "pages": len(pages), "scanned": scanned}
 

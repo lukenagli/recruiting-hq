@@ -56,8 +56,13 @@ def main() -> int:
         problems.append(f"manifest.json: page scripts not covered by this check: {sorted(scripts - set(PAGE_SCRIPTS))}")
     background = re.sub(r"//[^\n]*", "", (ROOT / "background.js").read_text(encoding="utf-8"))
     for url in re.findall(r"https://[^\s'\"`/]+", background):
-        if url not in ("https://recruiting-hq.onrender.com", "https://outlook.cloud.microsoft", "https://app.slack.com", "https://web.whatsapp.com"):
+        if url not in ("https://recruiting-hq.onrender.com", "https://outlook.cloud.microsoft", "https://app.slack.com", "https://web.whatsapp.com",
+                       "https://www.capitaliq.com"):
             problems.append(f"background.js: unexpected address {url}")
+    # Capital IQ is only ever read: its one fetch helper sends GET requests and nothing else.
+    capiq = re.search(r"async function capiqGet\(.*?\n}\n", background, re.S)
+    if "capitaliq" in background and not (capiq and "method: 'GET'" in capiq.group(0) and background.count("capiqGet(") >= 2):
+        problems.append("background.js: Capital IQ is reached other than through the GET-only capiqGet")
     if re.search(r"executeScript|chrome\.debugger|chrome\.scripting", background):
         problems.append("background.js: runs code in pages")
     # The network lock may only block requests: never allow, redirect, rewrite headers or upgrade them.

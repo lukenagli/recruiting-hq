@@ -1338,3 +1338,10 @@ main h1 { text-shadow: 0 2px 16px rgba(4, 10, 26, 0.5); }
 .admin-card .field small { font-weight: 400; color: var(--muted); }
 .admin-chat { border-top: 1px solid var(--line); padding: 10px 0; display: flex; flex-direction: column; gap: 6px; }
 .admin-chat .danger-link { align-self: flex-start; font-size: 13px; }
+
+/* Preview: Capital IQ on a deal */
+.capiq { border-top: 1px solid var(--line); margin-top: 14px; padding-top: 12px; display: flex; flex-direction: column; gap: 8px; align-items: flex-start; }
+.capiq h4 { margin: 0; }
+.capiq-link { display: flex; gap: 8px; width: 100%; }
+.capiq-link input { flex: 1; min-width: 0; font: inherit; border: 1.5px solid var(--line); border-radius: 8px; padding: 7px 9px; background: var(--card); color: var(--ink); }
+.capiq .primary, .capiq .btn { margin: 0; }

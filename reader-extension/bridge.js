@@ -1,5 +1,5 @@
 // Recruiting HQ Reader, on the Recruiting HQ site only. It lets the site's Refresh button start a read and show its
-// progress: the page posts { source: 'rhq-page', type: 'ping' | 'sync' | 'status' } and gets back
+// progress: the page posts { source: 'rhq-page', type: 'ping' | 'sync' | 'capiq' | 'status' } and gets back
 // { source: 'rhq-reader', ... }. It reads nothing from the page and changes nothing on it.
 
 function answer(body) {
@@ -15,8 +15,8 @@ window.addEventListener('message', async (e) => {
   if (e.source !== window || e.origin !== window.origin || !e.data || e.data.source !== 'rhq-page') return
   const { type } = e.data
   if (type === 'ping' || type === 'status') answer({ type: 'status', version: chrome.runtime.getManifest().version, ...(await status()) })
-  if (type === 'sync') {
-    chrome.runtime.sendMessage({ type: 'sync-now' })
+  if (type === 'sync' || type === 'capiq') {
+    chrome.runtime.sendMessage({ type: type === 'capiq' ? 'capiq-now' : 'sync-now' })
     answer({ type: 'status', version: chrome.runtime.getManifest().version, ...(await status()), busy: true })
   }
 })

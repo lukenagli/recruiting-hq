@@ -84,6 +84,8 @@ export type DealReading = { id: number; title: string; outlet: string; url: stri
 export type Deal = {
   id: number
   title: string
+  capiq_url?: string // preview
+  capiq_at?: string
   banks: string[]
   status: string
   notes: string

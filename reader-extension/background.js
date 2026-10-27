@@ -46,8 +46,8 @@ async function lockedTab(url, filters) {
 // Earlier versions synced every 30 minutes; clear that timer if it is still set.
 chrome.runtime.onInstalled.addListener(() => chrome.alarms?.clearAll())
 chrome.runtime.onMessage.addListener((msg, sender, reply) => {
-  if (sender.id !== chrome.runtime.id || msg.type !== 'sync-now') return
-  syncAll().then(() => reply({ ok: true }))
+  if (sender.id !== chrome.runtime.id || !['sync-now', 'capiq-now'].includes(msg.type)) return
+  ;(msg.type === 'capiq-now' ? capiqAll() : syncAll()).then(() => reply({ ok: true }))
   return true
 })
 
@@ -162,6 +162,47 @@ async function syncWhatsApp(state, lines) {
       continue
     }
     await file({ source: 'whatsapp', conversation: chat, group_chat: true, items: out.items }, lines)
+  }
+}
+
+/** A Capital IQ page, read with the student's own Capital IQ sign-in. Plain GET requests only: nothing is opened,
+ *  clicked or changed in Capital IQ. CapIQ only answers on the Yale network. */
+async function capiqGet(url) {
+  const res = await fetch(url, { method: 'GET', credentials: 'include' }) // follows CapIQ's own hops to the page
+  return { url: res.url, html: await res.text() }
+}
+
+async function syncCapIQ(lines) {
+  const jobs = await api('/api/capiq/jobs')
+  if (!jobs.length) return lines.push('Capital IQ: no deals waiting. Add a deal\'s Capital IQ link on My Deals first.')
+  for (const job of jobs) {
+    const page = await capiqGet(job.url)
+    if (/login|okta/i.test(page.url) || !/Deal Summary/i.test(page.html)) {
+      return lines.push('Capital IQ: not signed in. Be on Yale Wi-Fi and signed in to Capital IQ in Chrome, then try again.')
+    }
+    // The "Transaction Quick Comps" tab, when it is a plain link on the page.
+    const tab = /href="([^"]+)"[^>]*>(?:\s|<[^>]+>)*Transaction Quick Comps/i.exec(page.html)
+    let comps = ''
+    if (tab && /^(https:\/\/www\.capitaliq\.com)?\//i.test(tab[1].replace(/&amp;/g, '&'))) {
+      comps = (await capiqGet(new URL(tab[1].replace(/&amp;/g, '&'), page.url).href)).html
+    }
+    const out = await api('/api/capiq/pages', { deal_id: job.deal_id, url: job.url, overview_html: page.html, comps_html: comps })
+    lines.push(`Capital IQ · ${job.title}: ` + (out.ok ? `saved the summary as a PDF, filled ${out.points} points, ${out.comps} comparable deals` : out.reason))
+    await sleep(1500)
+  }
+}
+
+async function capiqAll() {
+  const { running } = await chrome.storage.local.get('running')
+  if (running && Date.now() - running < 20 * 60 * 1000) return
+  await chrome.storage.local.set({ running: Date.now() })
+  const lines = []
+  try {
+    await syncCapIQ(lines)
+  } catch (e) {
+    lines.push(`Capital IQ: ${e.message || e}`)
+  } finally {
+    await chrome.storage.local.set({ running: 0, last: { at: new Date().toLocaleString(), lines: lines.length ? lines : ['Nothing new.'] } })
   }
 }
 

@@ -7,7 +7,7 @@ import { useEffect, useState } from 'react'
 
 export type ReaderStatus = { version: string; busy: boolean; has_key: boolean; last: { at: string; lines: string[] } | null }
 
-function send(type: 'ping' | 'sync') {
+function send(type: 'ping' | 'sync' | 'capiq') {
   window.postMessage({ source: 'rhq-page', type }, window.origin)
 }
 
@@ -27,7 +27,7 @@ export function useReader() {
       clearTimeout(t)
     }
   }, [])
-  return { status, installed: !!status, checked, sync: () => send('sync') }
+  return { status, installed: !!status, checked, sync: () => send('sync'), capiq: () => send('capiq') }
 }
 
 export default function Refresh({ onDone }: { onDone?: () => void }) {
