@@ -113,15 +113,26 @@ async function syncOutlook(state, lines) {
 }
 
 async function syncSlack(state, lines) {
-  const { slack_team: team, slack_channels: channels = [] } = state.config || {}
-  if (!team || !channels.length) return lines.push('Slack: no channels set up yet.')
-  const tab = await lockedTab(`https://app.slack.com/client/${team}/${channels[0].id}`, SLACK_LOCK)
+  const { slack_team: team, slack_channels: picked = [] } = state.config || {}
+  // Opened by address: the club's workspace when it is known, otherwise the one Slack opens by default.
+  const tab = await lockedTab(team ? `https://app.slack.com/client/${team}` : 'https://app.slack.com/client', SLACK_LOCK)
   try {
     await loaded(tab.id)
+    const at = /\/client\/([A-Z0-9]+)/.exec((await chrome.tabs.get(tab.id)).url || '')
+    const workspace = team || (at && at[1])
+    if (!workspace) return lines.push('Slack: not signed in to Slack in Chrome.')
+    // Channels picked by name are matched to the sidebar; one the student hasn't joined can't be read.
+    const listed = picked.some((c) => !c.id) ? await ask(tab.id, { type: 'slack-channels' }) : { ok: true, channels: [] }
+    const channels = []
+    for (const c of picked) {
+      const found = c.id ? c : ((listed.ok && listed.channels) || []).find((s) => s.name.toLowerCase() === c.name.toLowerCase())
+      if (found) channels.push({ ...c, id: found.id })
+      else lines.push(`Slack #${c.name}: not in your sidebar (join the channel in Slack to include it).`)
+    }
     const dms = await ask(tab.id, { type: 'slack-dms' })
     const convos = [...channels, ...((dms.ok && dms.dms) || []).map((d) => ({ id: d.id, name: `DM with ${d.name}`, group: false }))]
     for (const c of convos) {
-      await chrome.tabs.update(tab.id, { url: `https://app.slack.com/client/${team}/${c.id}` }) // opened by address, no clicks
+      await chrome.tabs.update(tab.id, { url: `https://app.slack.com/client/${workspace}/${c.id}` }) // opened by address, no clicks
       await loaded(tab.id)
       const since = (state.checkpoints.slack || {})[c.name] || state.baseline
       const out = await ask(tab.id, { type: 'slack-collect', since })

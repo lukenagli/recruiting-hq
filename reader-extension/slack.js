@@ -46,7 +46,19 @@ function directMessages() {
   }))
 }
 
+/** The channels listed in the sidebar, read from the page, so channels picked by name can be opened by address. */
+function channels() {
+  return [...document.querySelectorAll('[data-qa-channel-sidebar-channel-id^="C"], [data-qa-channel-sidebar-channel-id^="G"]')].map((e) => ({
+    id: e.getAttribute('data-qa-channel-sidebar-channel-id'),
+    name: e.innerText.trim().split('\n')[0].replace(/^#\s*/, ''),
+  }))
+}
+
 chrome.runtime.onMessage.addListener((msg, _sender, reply) => {
+  if (msg.type === 'slack-channels') {
+    rhqWaitFor(() => document.querySelector('[data-qa-channel-sidebar-channel-id]'), 30000).then(() => reply({ ok: true, channels: channels() }))
+    return true
+  }
   if (msg.type === 'slack-dms') {
     rhqWaitFor(() => document.querySelector('[data-qa-channel-sidebar-channel-id]'), 30000).then(() => reply({ ok: true, dms: directMessages() }))
     return true

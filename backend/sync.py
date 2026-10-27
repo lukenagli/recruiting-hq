@@ -160,27 +160,37 @@ def state(uid: int) -> dict:
     out: dict[str, dict[str, str]] = {}
     for r in rows:
         out.setdefault(r["source"], {})[r["conversation"]] = r["last_at"]
-    return {"checkpoints": out, "season_start": SEASON_START, "log": log, "has_key": has_key,
-            "config": json.loads(row["config"]) if row else {}}
+    config = json.loads(row["config"]) if row else {}
+    config["slack_team"] = config.get("slack_team") or shared.slack_team()  # the club's workspace unless the student set one
+    return {"checkpoints": out, "season_start": SEASON_START, "log": log, "has_key": has_key, "config": config}
 
 
 class ReaderConfig(BaseModel):
     """What the reader reads. Kept in the account, not in the extension's (public) code."""
     slack_team: str = ""
-    slack_channels: list[dict] = Field(default_factory=list)  # {id, name, group}
+    slack_channels: list[dict] = Field(default_factory=list)  # {id, name, group}; no id: the reader finds it by name
     whatsapp_chats: list[str] = Field(default_factory=list)
 
 
 def set_config(uid: int, config: ReaderConfig) -> dict:
     ensure()
-    channels = [{"id": str(c.get("id", ""))[:20], "name": str(c.get("name", ""))[:80], "group": bool(c.get("group"))}
-                for c in config.slack_channels if re.fullmatch(r"[CDG][A-Z0-9]{6,15}", str(c.get("id", "")))]
+    channels = [{"id": str(c.get("id", ""))[:20], "name": str(c.get("name", "")).lstrip("#")[:80], "group": bool(c.get("group"))}
+                for c in config.slack_channels
+                if re.fullmatch(r"[CDG][A-Z0-9]{6,15}", str(c.get("id", ""))) or (not c.get("id") and str(c.get("name", "")).strip())]
     clean = {"slack_team": config.slack_team if re.fullmatch(r"[A-Z0-9]{6,15}", config.slack_team) else "",
              "slack_channels": channels[:30], "whatsapp_chats": [c[:100] for c in config.whatsapp_chats][:10]}
     with connect() as conn:
         conn.execute("INSERT INTO reader_config (user_id, config) VALUES (?, ?) ON CONFLICT(user_id) DO UPDATE SET config = excluded.config",
                      (uid, json.dumps(clean)))
     return clean
+
+
+def set_chats(uid: int, slack: list[str], whatsapp: list[str]) -> dict:
+    """The group chats a student picked in setup, by name. Channels already set up with their id are kept."""
+    current = state(uid)["config"]
+    known = {c["name"].lower(): c for c in current.get("slack_channels", [])}
+    channels = [known.get(n.lstrip("#").lower(), {"id": "", "name": n.lstrip("#"), "group": True}) for n in slack]
+    return set_config(uid, ReaderConfig(slack_team=current.get("slack_team", ""), slack_channels=channels, whatsapp_chats=whatsapp))
 
 
 def _key(item: Item) -> str:

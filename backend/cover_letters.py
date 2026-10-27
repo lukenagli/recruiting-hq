@@ -21,7 +21,7 @@ from pydantic_ai.usage import UsageLimits
 
 from . import banks as bank_info
 from . import profile as profiles
-from . import schools, templates
+from . import schools, shared, templates
 from .db import connect, init_db
 from .llm import Chosen, usage_dict
 
@@ -227,7 +227,7 @@ async def write(uid: int, chosen: Chosen, bank: str) -> dict:
         issues.append(f"needs your input: {need.strip()}")
     if not ctx["spoken"]:
         issues.append(f"you have not logged anyone you spoke with at {bank}, so the letter names no one; the guidance says to list the people you have spoken to")
-    if not ctx["mine"].get("recruiter_name"):
+    if not shared.bank_detail(bank, ctx["mine"])["recruiter_name"]:
         issues.append("no recruiter name yet, so it is addressed to Hiring Manager; the guidance says to address it to the firm's recruiter")
     now = datetime.now().isoformat(timespec="seconds")
     with connect() as conn:
@@ -247,11 +247,12 @@ async def write(uid: int, chosen: Chosen, bank: str) -> dict:
 
 
 def _recipient(uid: int, bank: str, mine: dict) -> list[str]:
-    lines = [mine.get("recruiter_name") or "Hiring Manager"]
-    if mine.get("recruiter_title"):
-        lines.append(mine["recruiter_title"])
-    lines.append(bank_info.LETTER_NAMES.get(bank, bank))
-    lines += (mine.get("address") or bank_info.ADDRESSES.get(bank, "")).splitlines() or ["[Office address]"]
+    info = shared.bank_detail(bank, mine)
+    lines = [info["recruiter_name"] or "Hiring Manager"]
+    if info["recruiter_title"]:
+        lines.append(info["recruiter_title"])
+    lines.append(info["letter_name"] or bank)
+    lines += info["address"].splitlines() or ["[Office address]"]
     return lines
 
 
@@ -262,6 +263,7 @@ def get(uid: int, bank: str) -> dict:
         mine = conn.execute("SELECT * FROM my_banks WHERE user_id = ? AND bank = ?", (uid, bank)).fetchone()
         user = conn.execute("SELECT name FROM users WHERE id = ?", (uid,)).fetchone()
     mine = dict(mine) if mine else {}
+    info = shared.bank_detail(bank, mine)  # the student's own details, else the ones the admin pushed to everyone
     return {
         "bank": bank,
         "exists": row is not None,
@@ -271,11 +273,11 @@ def get(uid: int, bank: str) -> dict:
         "updated_at": row["updated_at"] if row else "",
         "date": f"{date.today():%B} {date.today().day}, {date.today().year}",
         "recipient": _recipient(uid, bank, mine),
-        "salutation": _salutation(mine.get("recruiter_name", "")),
+        "salutation": _salutation(info["recruiter_name"]),
         "signature": user["name"] if user else "",
-        "recruiter_name": mine.get("recruiter_name", ""),
-        "recruiter_title": mine.get("recruiter_title", ""),
-        "address": mine.get("address") or bank_info.ADDRESSES.get(bank, ""),
+        "recruiter_name": info["recruiter_name"],
+        "recruiter_title": info["recruiter_title"],
+        "address": info["address"],
         "office": mine.get("office", ""),
     }
 
@@ -306,7 +308,7 @@ def overview(uid: int) -> list[dict]:
     return [{"bank": b, "domain": bank_info.domain(b), "exists": b in letters,
              "warnings": len(json.loads(letters[b]["warnings"])) if b in letters else 0,
              "updated_at": letters[b]["updated_at"] if b in letters else "", "edited": bool(letters[b]["edited"]) if b in letters else False,
-             "recruiter": recruiters.get(b) or ""} for b in banks]
+             "recruiter": shared.bank_detail(b, {"recruiter_name": recruiters.get(b) or ""})["recruiter_name"]} for b in banks]
 
 
 def _set_text(paragraph, text: str) -> None:

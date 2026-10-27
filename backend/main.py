@@ -12,7 +12,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from pydantic_ai import Agent
 
-from . import accounts, assistant, attachments, auth, budget, catch_up, config, cover_letters, deal_docs, deal_recs, deal_sources, deals, importer, legal, llm, network, onboarding, practice, profile, schools, reference, research, stars, sync, templates, thank_you, transfer, user_keys
+from . import accounts, assistant, attachments, auth, budget, catch_up, config, cover_letters, deal_docs, deal_recs, deal_sources, deals, importer, legal, llm, network, onboarding, practice, profile, schools, reference, research, shared, stars, sync, templates, thank_you, transfer, user_keys
 from .auth import admin_user, current_user
 from .db import connect, init_db
 from .llm import get_model, usage_dict
@@ -899,6 +899,49 @@ async def model_check(user: dict = Depends(admin_user)):
     except Exception as exc:
         raise HTTPException(status_code=502, detail=f"{type(exc).__name__}: {exc}")
     return {"reply": result.output, "usage": usage_dict(result.usage)}
+
+
+# ---- The admin panel: what goes to everyone ----
+
+@app.get("/api/admin/overview")
+def admin_overview(user: dict = Depends(admin_user)):
+    return {"users": shared.users(), "bank_defaults": shared.bank_defaults(), "club_chats": shared.club_chats(),
+            "chat_directory": shared.chat_directory(), "slack_team": shared.slack_team(), "feed": shared.feed(limit=80),
+            "groups": schools.options()}
+
+
+class BankDefaults(BaseModel):
+    banks: dict[str, dict]
+
+
+@app.post("/api/admin/bank-defaults")
+def push_bank_defaults(req: BankDefaults, user: dict = Depends(admin_user)):
+    """Push recruiter names, titles, formal names and addresses to every account (students' own entries win)."""
+    return shared.push_bank_defaults(req.banks)
+
+
+class ChatSettings(BaseModel):
+    club_chats: list[str]
+    chat_directory: list[dict]
+    slack_team: str = ""
+
+
+@app.post("/api/admin/chats")
+def push_chat_settings(req: ChatSettings, user: dict = Depends(admin_user)):
+    return {"club_chats": shared.set_club_chats(req.club_chats), "chat_directory": shared.set_chat_directory(req.chat_directory),
+            "slack_team": shared.set_slack_team(req.slack_team)}
+
+
+@app.post("/api/admin/feed/{update_id}/hide")
+def hide_feed_update(update_id: int, user: dict = Depends(admin_user)):
+    shared.hide_update(update_id)
+    return {"ok": True}
+
+
+@app.get("/api/club-feed")
+def club_feed(bank: str = "", user: dict = Depends(current_user)):
+    """What the club chats said that matters to everyone (read once by the admin's reader)."""
+    return shared.feed(bank)
 
 
 @app.get("/privacy", include_in_schema=False)
