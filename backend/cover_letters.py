@@ -373,13 +373,16 @@ def overview(uid: int) -> list[dict]:
              "recruiter": shared.bank_detail(b, {"recruiter_name": recruiters.get(b) or ""}, pushed)["recruiter_name"]} for b in banks]
 
 
-def _set_text(paragraph, text: str) -> None:
-    """Replace a paragraph's text, keeping the formatting of its first run; [[NEED: ...]] markers are highlighted."""
+def _set_text(paragraph, text: str, keep_shapes: bool = False) -> None:
+    """Replace a paragraph's text, keeping the formatting of its first run; [[NEED: ...]] markers are highlighted.
+    keep_shapes (preview): a picture or text box anchored to the paragraph (the Yale template's contact footer sits
+    in a text box on the signature line) is kept rather than removed with the text."""
     from copy import deepcopy
 
     from docx.enum.text import WD_COLOR_INDEX
 
-    runs = paragraph.runs
+    shape = './/*[local-name()="drawing" or local-name()="pict" or local-name()="AlternateContent"]'
+    runs = [r for r in paragraph.runs if not (keep_shapes and r._r.xpath(shape))]
     rpr = deepcopy(runs[0]._r.rPr) if runs and runs[0]._r.rPr is not None else None
     for r in runs:
         r._r.getparent().remove(r._r)
@@ -403,6 +406,7 @@ def docx_bytes(uid: int, bank: str) -> bytes:
     from docx.text.paragraph import Paragraph
 
     letter = get(uid, bank)
+    keep = accounts.in_preview_uid(uid)  # preview: keep the text boxes (the contact footer) the template anchors to lines
     doc = docx.Document(io.BytesIO(templates.cover_template_bytes(uid)))
     spots = templates.layout(doc)
     if spots is None:  # an unusable upload slipped through: fall back to the Yale SOM template
@@ -412,24 +416,24 @@ def docx_bytes(uid: int, bank: str) -> bytes:
 
     if spots["date"] is not None:
         date_p = paras[spots["date"]]
-        _set_text(date_p, templates.DATE.sub(letter["date"], date_p.text, count=1))
+        _set_text(date_p, templates.DATE.sub(letter["date"], date_p.text, count=1), keep)
 
     # Recipient block: reuse the template's lines, adding or dropping lines to match.
     slots = [paras[i] for i in spots["recipient"]]
     lines = letter["recipient"]
     if slots:
         for slot, text in zip(slots, lines):
-            _set_text(slot, text)
+            _set_text(slot, text, keep)
         last = slots[min(len(slots), len(lines)) - 1]
         for text in lines[len(slots):]:
             el = deepcopy(last._p)
             last._p.addnext(el)
             last = Paragraph(el, last._parent)
-            _set_text(last, text)
+            _set_text(last, text, keep)
         for extra in slots[len(lines):]:
             extra._p.getparent().remove(extra._p)
 
-    _set_text(paras[spots["salutation"]], letter["salutation"])
+    _set_text(paras[spots["salutation"]], letter["salutation"], keep)
 
     # Body: rebuild everything between the salutation and the closing in the template's own paragraph style,
     # keeping its blank-line spacing between paragraphs.
@@ -447,7 +451,7 @@ def docx_bytes(uid: int, bank: str) -> bytes:
     def add(el, text=None):
         close_p._p.addprevious(el)
         if text is not None:
-            _set_text(Paragraph(el, close_p._parent), text)
+            _set_text(Paragraph(el, close_p._parent), text, keep)
 
     if blank_after_sal:
         add(deepcopy(blank_model))
@@ -459,7 +463,7 @@ def docx_bytes(uid: int, bank: str) -> bytes:
         add(deepcopy(blank_model))
 
     if spots["signature"] is not None and letter["signature"]:
-        _set_text(paras[spots["signature"]], letter["signature"])
+        _set_text(paras[spots["signature"]], letter["signature"], keep)
     out = io.BytesIO()
     doc.save(out)
     return out.getvalue()
