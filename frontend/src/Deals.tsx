@@ -49,10 +49,12 @@ function DocLinks({ d }: { d: DealDocument }) {
   if (!usePreview()) return null
   return (
     <>
-      <a className="link" href={`${API_URL}/api/deals/documents/${d.id}/file?download=1`}>Download</a>
+      <a className="link" href={`${API_URL}/api/deals/documents/${d.id}/file?download=1`}>
+        {d.filename.toLowerCase().endsWith('.pdf') ? 'Download PDF' : 'Download'}
+      </a>
       {d.source_url && (
         <a className="link" href={d.source_url} target="_blank" rel="noreferrer">
-          {d.source_url.includes('sec.gov') ? 'On SEC.gov' : 'Original'}
+          {d.source_url.includes('sec.gov') ? 'Source: SEC.gov' : `Source: ${new URL(d.source_url).hostname.replace(/^www\./, '')}`}
         </a>
       )}
     </>
@@ -164,7 +166,7 @@ function Documents({ deal, data, onChanged }: { deal: Deal; data: DealsData; onC
           <button className="primary" disabled={busy !== ''} onClick={() => run(`/api/deals/${deal.id}/gather`, 'gather')}>
             {busy === 'gather' ? 'Gathering from SEC EDGAR and the companies’ sites…' : 'Gather the documents for me'}
           </button>
-          <p className="fine">Pulls the announcement, agreement, presentation, proxy and annual reports from SEC EDGAR, or from the companies' own sites and the London Stock Exchange for companies outside the US. Takes up to a minute. You can still upload your own below.</p>
+          <p className="fine">Pulls the announcement, agreement, presentation, proxy and annual reports as PDFs from the companies' own investor relations pages, and from SEC EDGAR for anything they don't post. Run it again to replace older SEC web-page copies with PDFs. Takes up to a minute.</p>
         </div>
       ) : (
         <p className="fine">

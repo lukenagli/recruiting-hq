@@ -12,6 +12,7 @@ upload, so "Fill from my documents" then works on it with page-level sources.
 """
 import asyncio
 import ipaddress
+import json
 import os
 import re
 import socket
@@ -24,7 +25,7 @@ from pydantic_ai import Agent, NativeOutput
 from pydantic_ai.capabilities import WebSearch
 from pydantic_ai.usage import UsageLimits
 
-from . import deal_docs
+from . import deal_docs, filing_pdf
 from .db import connect, init_db
 from .llm import Chosen, usage_dict
 
@@ -141,12 +142,14 @@ PICK_LIMITS = UsageLimits(request_limit=2, total_tokens_limit=60_000)
 # ---------------- Documents outside EDGAR ----------------
 
 OFFICIAL = """\
-Find official documents for one M&A deal that are NOT on SEC EDGAR, for a student's deal file: the Rule 2.7 \
-announcement, the scheme document or offer document, the deal's investor presentation, and the latest annual \
-report of a company that does not file with the SEC.
+Find the official PDF documents for one M&A deal on the companies' own investor relations websites, for a \
+student's deal file: the announcement press release (for a UK target, the Rule 2.7 announcement), the deal's \
+investor presentation, the merger, cooperation or implementation agreement, the proxy, scheme document or offer \
+document, and each company's latest annual report or 10-K.
 
 Rules:
-- Only links on the companies' own websites (their investor relations or press pages) or londonstockexchange.com.
+- Only links on the companies' own websites (their investor relations or press pages) or londonstockexchange.com. \
+A deal or offer page that lists the documents is also fine.
 - Prefer direct links to PDF files. Give the exact URL you found; never build or guess one.
 - kind must be one of: "Announcement press release", "Investor presentation", "Merger agreement", \
 "Proxy / S-4 / tender offer", "Buyer 10-K or annual report", "Target 10-K or annual report".
@@ -286,98 +289,130 @@ async def gather(uid: int, chosen: Chosen, deal_id: int) -> dict:
 
 
 async def _gather(uid: int, chosen: Chosen, deal_id: int) -> dict:
-    # Downloads and PDF reading run in a worker thread so the site keeps answering (and passing health checks).
+    """Company PDFs first (their investor relations pages, or a UK offer page), then SEC EDGAR for any slot still
+    empty, with SEC filings turned into PDFs. Earlier SEC web-page copies become PDFs too, and one that a company
+    PDF now covers is replaced. Downloads and PDF work run in a worker thread so the site keeps answering."""
     ensure()
     with connect(read_only=True) as conn:
         deal = conn.execute("SELECT * FROM deals WHERE id = ? AND user_id = ?", (deal_id, uid)).fetchone()
-        have = {r["source_url"] for r in conn.execute("SELECT source_url FROM deal_documents WHERE user_id = ? AND deal_id = ?", (uid, deal_id))}
+        docs = [dict(r) for r in conn.execute(
+            "SELECT id, kind, filename, source_url FROM deal_documents WHERE user_id = ? AND deal_id = ?", (uid, deal_id))]
     if deal is None:
         return {"ok": False, "reason": "Deal not found."}
+    have = {d["source_url"] for d in docs if d["source_url"]}
     buyer, target = parties(deal["title"])
     tokens = _name_tokens(buyer, target)
     started = datetime.now().isoformat(timespec="seconds")
     total = {"input_tokens": 0, "cached_input_tokens": 0, "output_tokens": 0, "requests": 0}
-    chosen_docs: list[tuple[str, str, str]] = []  # (kind, label, url)
-    notes = []
+    slots = deal_docs.KINDS[:6]
+    company_pdf = {d["kind"] for d in docs if d["filename"].lower().endswith(".pdf") and "sec.gov" not in d["source_url"]}
+    added, skipped, notes, hubs = [], [], [], []
 
-    try:
-        hits = await asyncio.to_thread(_edgar_hits, [buyer, target])
-    except httpx.HTTPError:
-        hits = []
-        notes.append("SEC EDGAR didn't answer, so no SEC filings were added.")
-    names = [n.lower() for n in (buyer, target) if n]
-    hits = [h for h in hits if any(n.split()[0] in h["company"].lower() for n in names)] or hits
-    if hits:
-        listing = "\n".join(f"{h['id']}. {h['company']} | {h['form']} | {h['type']} {h['description']} | {h['date']} | {h['file']}" for h in hits[:150])
-        output = NativeOutput(Picks) if chosen.provider == "anthropic" else None
-        result = await picker.run(f"Deal: {deal['title']}\n\nEDGAR hits:\n{listing}", model=chosen.model, model_settings=chosen.settings,
-                                  usage_limits=PICK_LIMITS, output_type=output)
+    def count(result) -> None:
         for k, v in usage_dict(result.usage).items():
             total[k] += v
-        used = set()
-        for p in result.output.picks:
-            if p.kind in deal_docs.KINDS and 0 <= p.hit < len(hits) and p.hit not in used:
-                used.add(p.hit)
-                h = hits[p.hit]
-                chosen_docs.append((p.kind, f"{h['company'].split('(')[0].strip()} {h['form']} {h['date']} {h['type']} {p.kind}", h["url"]))
 
-    missing = [k for k in deal_docs.KINDS[:6] if k not in {c[0] for c in chosen_docs}]
-    if missing:
-        try:
-            output = NativeOutput(FoundList) if chosen.provider == "anthropic" else None
-            result = await official_finder.run(
-                f"Deal: {deal['title']}\nBuyer: {buyer}\nTarget: {target}\nStill missing: {', '.join(missing)}",
-                model=chosen.model, model_settings=chosen.settings, usage_limits=WEB_LIMITS, output_type=output)
-            for k, v in usage_dict(result.usage).items():
-                total[k] += v
-            for f in result.output.documents:
-                if f.kind in missing and f.url.startswith("https://"):
-                    chosen_docs.append((f.kind, f.title, f.url.strip()))
-        except Exception as exc:
-            notes.append(f"The search for documents outside EDGAR failed ({type(exc).__name__}).")
-
-    added, skipped, hubs = [], [], []
-
-    async def save(kind: str, label: str, got: tuple[bytes, str, str]) -> None:
-        data, ext, url = got
+    async def save(kind: str, label: str, data: bytes, ext: str, url: str) -> None:
         out = await asyncio.to_thread(deal_docs.upload, uid, deal_id, _filename(label, ext), data, kind)
         if out.get("ok"):
             with connect() as conn:
                 conn.execute("UPDATE deal_documents SET source_url = ? WHERE id = ? AND user_id = ?", (url, out["id"], uid))
             added.append(kind)
             have.add(url)
+            if ext == "pdf" and "sec.gov" not in url:
+                company_pdf.add(kind)
         else:
             skipped.append(f"{label} ({out.get('reason', 'could not read it')})")
 
-    for kind, label, url in chosen_docs:
-        if url in have:
-            continue
+    # 1. The companies' own PDFs.
+    wanted = [k for k in slots if k not in company_pdf]
+    if wanted:
         try:
-            got = await asyncio.to_thread(_fetch_document, url, label, tokens, hubs)
-        except httpx.HTTPError:
-            got = None
-        if got is None:
-            skipped.append(label)
-        elif got[2] not in have:
-            await save(kind, label, got)
-
-    # A slot still empty may be listed on a company page already found (a UK offer page lists every deal document).
-    for kind, title in HUB_TITLES.items():
-        if kind in added:
-            continue
-        for hub_url, html in hubs:
-            link = _best_pdf(html, hub_url, title, tokens)
-            if link and link not in have:
+            output = NativeOutput(FoundList) if chosen.provider == "anthropic" else None
+            result = await official_finder.run(f"Deal: {deal['title']}\nBuyer: {buyer}\nTarget: {target}\nDocuments needed: {', '.join(wanted)}",
+                                               model=chosen.model, model_settings=chosen.settings, usage_limits=WEB_LIMITS, output_type=output)
+            count(result)
+            for f in result.output.documents:
+                url = f.url.strip()
+                if f.kind not in wanted or f.kind in company_pdf or not url.startswith("https://") or url in have:
+                    continue
                 try:
-                    pdf = await asyncio.to_thread(_download, link, tokens, True)
+                    got = await asyncio.to_thread(_fetch_document, url, f.title, tokens, hubs)
                 except httpx.HTTPError:
-                    pdf = None
-                if pdf and pdf[1] == "pdf":
-                    await save(kind, f"{target or buyer} {title}", (pdf[0], "pdf", link))
-                    skipped = [s for s in skipped if not s.lower().startswith(title.lower().split()[0])]
-                    break
+                    got = None
+                if got and got[1] == "pdf" and got[2] not in have:
+                    await save(f.kind, f.title, got[0], "pdf", got[2])
+        except Exception as exc:
+            notes.append(f"The search of the companies' sites failed ({type(exc).__name__}).")
+        # A slot still empty may be listed on a company page already found (a UK offer page lists every deal document).
+        for kind, title in HUB_TITLES.items():
+            if kind in company_pdf:
+                continue
+            for hub_url, html in hubs:
+                link = _best_pdf(html, hub_url, title, tokens)
+                if link and link not in have:
+                    try:
+                        pdf = await asyncio.to_thread(_download, link, tokens, True)
+                    except httpx.HTTPError:
+                        pdf = None
+                    if pdf and pdf[1] == "pdf":
+                        await save(kind, f"{target or buyer} {title}", pdf[0], "pdf", link)
+                        break
+
+    # 2. SEC EDGAR for anything the companies' sites didn't have.
+    covered = company_pdf | {d["kind"] for d in docs if "sec.gov" in d["source_url"]}
+    if any(k not in covered for k in slots):
+        try:
+            hits = await asyncio.to_thread(_edgar_hits, [buyer, target])
+        except httpx.HTTPError:
+            hits = []
+            notes.append("SEC EDGAR didn't answer, so no SEC filings were added.")
+        names = [n.lower() for n in (buyer, target) if n]
+        hits = [h for h in hits if any(n.split()[0] in h["company"].lower() for n in names)] or hits
+        if hits:
+            listing = "\n".join(f"{h['id']}. {h['company']} | {h['form']} | {h['type']} {h['description']} | {h['date']} | {h['file']}" for h in hits[:150])
+            output = NativeOutput(Picks) if chosen.provider == "anthropic" else None
+            result = await picker.run(f"Deal: {deal['title']}\n\nEDGAR hits:\n{listing}", model=chosen.model, model_settings=chosen.settings,
+                                      usage_limits=PICK_LIMITS, output_type=output)
+            count(result)
+            used = set()
+            for p in result.output.picks:
+                if p.kind not in slots or p.kind in covered or not 0 <= p.hit < len(hits) or p.hit in used:
+                    continue
+                used.add(p.hit)
+                h = hits[p.hit]
+                if h["url"] in have:
+                    continue
+                label = f"{h['company'].split('(')[0].strip()} {h['form']} {h['date']} {h['type']} {p.kind}"
+                try:
+                    got = await asyncio.to_thread(_download, h["url"], tokens)
+                except httpx.HTTPError:
+                    got = None
+                if got is None:
+                    skipped.append(label)
+                    continue
+                data, ext = got
+                if ext == "htm":
+                    data, ext = await asyncio.to_thread(filing_pdf.to_pdf, data, label, h["url"]), "pdf"
+                await save(p.kind, label, data, ext, h["url"])
+                covered.add(p.kind)
+
+    # 3. Earlier SEC web-page copies: replaced where a company PDF now covers the slot, otherwise turned into PDFs.
+    replaced = converted = 0
+    for d in docs:
+        if not d["filename"].lower().endswith((".htm", ".html")) or "sec.gov" not in d["source_url"]:
+            continue
+        with connect(read_only=True) as conn:
+            cited = conn.execute("SELECT 1 FROM deal_points WHERE deal_id = ? AND doc_id = ?", (deal_id, str(d["id"]))).fetchone()
+        if d["kind"] in company_pdf and not cited:
+            deal_docs.delete(uid, d["id"])
+            replaced += 1
+        elif await asyncio.to_thread(_convert_stored, uid, d["id"], d["filename"], d["source_url"]):
+            converted += 1
 
     message = (f"Added {len(added)} document{'s' if len(added) != 1 else ''}: {', '.join(added)}." if added else "No new documents were added.")
+    if replaced or converted:
+        message += f" Switched {replaced + converted} earlier SEC web-page cop{'y' if replaced + converted == 1 else 'ies'} to PDF."
     if skipped:
         message += f" Couldn't download {len(skipped)} (the site blocked it or it wasn't a PDF or filing)."
     if added:
@@ -386,6 +421,21 @@ async def _gather(uid: int, chosen: Chosen, deal_id: int) -> dict:
     with connect() as conn:
         deal_docs._log(conn, uid, started, "deal_document_gatherer", f"Gather documents for {deal['title']}", message, "ok", total)
     return {"ok": True, "added": len(added), "message": message}
+
+
+def _convert_stored(uid: int, doc_id: int, filename: str, source: str) -> bool:
+    """Turn a stored SEC web-page copy into a PDF in place, keeping the document's id and source link."""
+    with connect(read_only=True) as conn:
+        row = conn.execute("SELECT data FROM deal_documents WHERE id = ? AND user_id = ?", (doc_id, uid)).fetchone()
+    if row is None:
+        return False
+    title = re.sub(r"\.html?$", "", filename, flags=re.I)
+    pdf = filing_pdf.to_pdf(row["data"], title, source)
+    pages = deal_docs._pages(title + ".pdf", pdf)
+    with connect() as conn:
+        conn.execute("UPDATE deal_documents SET filename = ?, data = ?, size = ?, pages = ? WHERE id = ? AND user_id = ?",
+                     (title + ".pdf", pdf, len(pdf), json.dumps(pages), doc_id, uid))
+    return True
 
 
 # ---------------- Reading list ----------------
