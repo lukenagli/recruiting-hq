@@ -464,6 +464,17 @@ def docx_bytes(uid: int, bank: str) -> bytes:
 
     if spots["signature"] is not None and letter["signature"]:
         _set_text(paras[spots["signature"]], letter["signature"], keep)
+    if keep:  # preview: the Yale template's sample contact footer ("jane.student@yale.edu") becomes the student's own
+        from docx.oxml.ns import qn
+
+        contact = profiles.get(uid)["contact_line"]
+        for box in doc.element.body.iter(qn("w:txbxContent")):
+            for p in box.iter(qn("w:p")):
+                runs = list(p.iter(qn("w:t")))
+                if contact and "jane.student" in "".join(t.text or "" for t in runs):
+                    runs[0].text = contact
+                    for t in runs[1:]:
+                        t.text = ""
     out = io.BytesIO()
     doc.save(out)
     return out.getvalue()
