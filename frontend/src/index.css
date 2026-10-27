@@ -1362,3 +1362,4 @@ main h1 { text-shadow: 0 2px 16px rgba(4, 10, 26, 0.5); }
 /* Home agenda: something that already happened stays listed, grayed out */
 .agenda li.past { opacity: 0.5; }
 .agenda li.past strong { font-weight: 600; }
+.brand-mark.brand-icon { padding: 0; background: none; object-fit: cover; box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.18); }

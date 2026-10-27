@@ -18,6 +18,11 @@ import Start from './Start'
 import Tour from './Tour'
 import { PreviewContext, SchoolContext, useSchool } from './ui'
 
+/** The logo in the top bar: the app icon for preview accounts, the plain "R" for everyone else until it ships. */
+function BrandMark({ preview }: { preview: boolean }) {
+  return preview ? <img className="brand-mark brand-icon" src="/app-192.png" alt="" width={26} height={26} /> : <span className="brand-mark">R</span>
+}
+
 /** Tiny hash router: #/, #/prep?bank=Citi&round=Superday, #/map, #/bank/Citi */
 function useRoute() {
   const [hash, setHash] = useState(window.location.hash)
@@ -95,7 +100,7 @@ export default function App() {
       <SchoolContext.Provider value={school ?? fallback}>
         <header className="topbar">
           <span className="brand">
-            <span className="brand-mark">R</span> Recruiting HQ
+            <BrandMark preview={!!user.preview} /> Recruiting HQ
           </span>
           <nav>
             <button className="signout" onClick={signOut}>Sign out</button>
@@ -133,7 +138,7 @@ export default function App() {
     <SchoolContext.Provider value={school ?? fallback}>
       <header className="topbar">
         <a className="brand" href="#/">
-          <span className="brand-mark">R</span> Recruiting HQ
+          <BrandMark preview={!!user.preview} /> Recruiting HQ
         </a>
         {user.preview && (
           <span className="preview-badge" title="Your account sees changes being tried out before they go to everyone">
