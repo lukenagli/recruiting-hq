@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useApi } from './ui'
 
 /**
  * The Refresh button: asks the Recruiting HQ Reader (Chrome extension) to read what's new in the student's Outlook,
@@ -54,6 +55,7 @@ export function useReader() {
 
 export default function Refresh({ onDone }: { onDone?: () => void }) {
   const { status, installed, checked, sync } = useReader()
+  const allowance = useApi<{ ai_left: number }>('/api/sync/state') // the reader can't file anything once it's used up
   const [confirming, setConfirming] = useState(false)
   const [wasBusy, setWasBusy] = useState(false)
   const busy = !!status?.busy
@@ -97,7 +99,12 @@ export default function Refresh({ onDone }: { onDone?: () => void }) {
             instead. Leave them alone while it works (a few minutes); the window closes itself when it's done. It only reads: it never
             sends, replies or reacts.
           </p>
-          <button className="primary" onClick={() => { setConfirming(false); sync() }}>Refresh now</button>
+          {allowance.data?.ai_left === 0 && (
+            <p className="refresh-out">
+              You've used today's AI allowance, so a refresh now couldn't file anything. It resets at midnight; refresh after that.
+            </p>
+          )}
+          <button className="primary" disabled={allowance.data?.ai_left === 0} onClick={() => { setConfirming(false); sync() }}>Refresh now</button>
           <button className="ghost" onClick={() => setConfirming(false)}>Cancel</button>
         </div>
       ) : (

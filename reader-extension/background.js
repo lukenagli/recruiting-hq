@@ -189,7 +189,9 @@ async function syncWhatsApp(state, lines) {
       const since = (state.checkpoints.whatsapp || {})[chat] || state.baseline
       const out = await ask(tab.id, { type: 'whatsapp-collect', chat, since })
       if (!out.ok) {
-        lines.push(`WhatsApp ${chat}: ${out.error}` + (own ? ' (If WhatsApp isn\'t linked in this Chrome, open web.whatsapp.com once and link your phone.)' : ''))
+        lines.push(`WhatsApp ${chat}: ${out.error}` + (own
+          ? ' (If WhatsApp isn\'t linked in this Chrome, open web.whatsapp.com once and link your phone.)'
+          : ' (Your WhatsApp tab was open before the Reader was updated: reload that tab once, then refresh again.)'))
         continue
       }
       await file({ source: 'whatsapp', conversation: chat, group_chat: true, items: out.items }, lines)
@@ -252,12 +254,19 @@ async function syncAll() {
   const lines = []
   try {
     const state = await api('/api/sync/state')
+    if (state.ai_left === 0) {
+      return lines.push("Not started: today's AI allowance is used up, so nothing could be filed. Refresh again after midnight.")
+    }
     state.baseline = (await chrome.storage.local.get('baseline')).baseline // set when the key was first saved
     for (const [name, step, start] of [['Outlook', syncOutlook, 0], ['Slack', syncSlack, 50], ['WhatsApp', syncWhatsApp, 75]]) {
       try {
         await progress(start, `Opening ${name}`)
         await step(state, lines)
       } catch (e) {
+        if (/ 429 /.test(String(e.message))) { // the AI allowance ran out partway: reading more can't be filed
+          lines.push(`Stopped at ${name}: today's AI allowance is used up. What was read after that point is picked up next time.`)
+          break
+        }
         lines.push(`${name}: ${e.message || e}`)
       }
     }
