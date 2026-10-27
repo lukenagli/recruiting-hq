@@ -1308,8 +1308,9 @@ main h1 { text-shadow: 0 2px 16px rgba(4, 10, 26, 0.5); }
 
 /* The Refresh button and its warning (Recruiting HQ Reader) */
 .refresh { margin: 0 0 16px; display: flex; flex-direction: column; align-items: flex-start; gap: 6px; }
-.refresh-warning { background: var(--card); border: 1.5px solid #f2b84b; border-radius: 12px; padding: 12px 14px; max-width: 760px; margin: 0; }
-.refresh-warning p { margin: 0 0 10px; }
+.refresh-warning { background: var(--card); color: var(--ink); border: 1.5px solid #f2b84b; border-radius: 12px; padding: 12px 14px; max-width: 760px; margin: 0; }
+.refresh-warning p, .refresh-warning strong { margin: 0 0 10px; color: var(--ink); }
+.refresh-warning strong { margin: 0; }
 .refresh-warning .primary, .refresh-warning .ghost { margin: 0 8px 0 0; }
 .refresh-warning.working { border-color: var(--blue); }
 .refresh-last { font-size: 12.5px; }
@@ -1347,3 +1348,6 @@ main h1 { text-shadow: 0 2px 16px rgba(4, 10, 26, 0.5); }
 .capiq .primary, .capiq .btn { margin: 0; }
 .capiq-upload input { display: none; }
 .capiq-upload { cursor: pointer; font-size: 13px; }
+.capiq-manual { width: 100%; font-size: 13px; }
+.capiq-manual summary { cursor: pointer; color: var(--muted); }
+.capiq-manual .capiq-link { margin-top: 6px; }

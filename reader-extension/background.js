@@ -168,27 +168,29 @@ async function syncWhatsApp(state, lines) {
 /** A Capital IQ page, read with the student's own Capital IQ sign-in. Plain GET requests only: nothing is opened,
  *  clicked or changed in Capital IQ. CapIQ only answers on the Yale network. */
 async function capiqGet(url) {
+  if (!url.startsWith('https://www.capitaliq.com/')) throw new Error('not a Capital IQ address')
   const res = await fetch(url, { method: 'GET', credentials: 'include' }) // follows CapIQ's own hops to the page
-  return { url: res.url, html: await res.text() }
+  return { final_url: res.url, html: await res.text() }
 }
 
+/** For each deal waiting on Capital IQ: fetch the pages Recruiting HQ asks for (its search, the deal's overview,
+ *  then its tabs), handing back everything fetched so far each round, until it says it's done. */
 async function syncCapIQ(lines) {
   const jobs = await api('/api/capiq/jobs')
-  if (!jobs.length) return lines.push('Capital IQ: no deals waiting. Add a deal\'s Capital IQ link on My Deals first.')
+  if (!jobs.length) return lines.push('Capital IQ: nothing waiting. Press "Pull from Capital IQ" on a deal first.')
   for (const job of jobs) {
-    const page = await capiqGet(job.url)
-    if (/login|okta/i.test(page.url) || !/Deal Summary/i.test(page.html)) {
-      return lines.push('Capital IQ: not signed in. Be on Yale Wi-Fi and signed in to Capital IQ in Chrome, then try again.')
+    const pages = []
+    let next = job.fetch
+    let out = null
+    for (let round = 0; round < 5 && next && next.length; round++) {
+      for (const url of next.slice(0, 4)) {
+        pages.push({ url, ...(await capiqGet(url)) })
+        await sleep(1000)
+      }
+      out = await api('/api/capiq/pages', { deal_id: job.deal_id, pages })
+      next = out.done ? [] : out.fetch
     }
-    // The "Transaction Quick Comps" tab, when it is a plain link on the page.
-    const tab = /href="([^"]+)"[^>]*>(?:\s|<[^>]+>)*Transaction Quick Comps/i.exec(page.html)
-    let comps = ''
-    if (tab && /^(https:\/\/www\.capitaliq\.com)?\//i.test(tab[1].replace(/&amp;/g, '&'))) {
-      comps = (await capiqGet(new URL(tab[1].replace(/&amp;/g, '&'), page.url).href)).html
-    }
-    const out = await api('/api/capiq/pages', { deal_id: job.deal_id, url: job.url, overview_html: page.html, comps_html: comps })
-    lines.push(`Capital IQ · ${job.title}: ` + (out.ok ? `saved the summary as a PDF, filled ${out.points} points, ${out.comps} comparable deals` : out.reason))
-    await sleep(1500)
+    lines.push(`Capital IQ · ${job.title}: ${(out && out.message) || 'stopped before finishing; try again.'}`)
   }
 }
 

@@ -125,7 +125,7 @@ def upload(uid: int, deal_id: int, filename: str, data: bytes, kind: str) -> dic
         doc_id = conn.execute(
             """INSERT INTO deal_documents (user_id, deal_id, filename, kind, pages, data, size, uploaded_at, scanned)
                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-            (uid, deal_id, filename[:200], kind if kind in KINDS or kind == CAPIQ_KIND else "Other", json.dumps(pages), data, len(data),
+            (uid, deal_id, filename[:200], kind if kind in KINDS or kind.startswith("Capital IQ ") else "Other", json.dumps(pages), data, len(data),
              datetime.now().isoformat(timespec="seconds"), "yes" if scanned else "")).lastrowid
     return {"ok": True, "id": doc_id, "pages": len(pages), "scanned": scanned}
 

@@ -1,12 +1,16 @@
 """Preview: S&P Capital IQ for a deal, through the student's own Capital IQ login.
 
-Capital IQ only opens on the Yale network for a signed-in student, so the site never reaches it itself. The
-student pastes the deal's CapIQ transaction link (or the reader finds it), confirms they are on Yale Wi-Fi and signed
-in, and the Recruiting HQ Reader fetches the transaction summary and its "Transaction Quick Comps" page from their
-Chrome and sends the pages here. This module then:
-- saves the transaction summary as a PDF among the deal's documents, linked back to the CapIQ page;
-- fills the pitch points CapIQ is the best source for (enterprise value, multiples, premiums, advisors, status,
-  precedent transactions), replacing what the filings or a web search gave, since CapIQ's figures are standardised.
+Capital IQ only opens on the Yale network for a signed-in student, so the site never reaches it itself. After the
+student confirms they are on Yale Wi-Fi and signed in, the Recruiting HQ Reader fetches Capital IQ pages from their
+Chrome in the background (plain GET requests, no tabs) and sends them here, a few at a time. This module decides
+what to fetch next (`step`):
+1. no link yet: Capital IQ's search for the deal, and the transaction whose row best matches the buyer and target;
+2. the transaction's Deal Overview page;
+3. its Consideration Details, Deal Timeline and Transaction Quick Comps tabs.
+Then it saves each page as a PDF among the deal's documents, linked back to its Capital IQ page, and fills the pitch
+points Capital IQ is the best source for (enterprise value, multiples, premiums, advisors, consideration, timeline,
+precedent transactions), replacing what the filings or a web search gave, since its figures are standardised.
+Keeping these steps here, not in the extension, means they can change without students reinstalling it.
 """
 import html as html_lib
 import io
@@ -14,6 +18,7 @@ import re
 import statistics
 from datetime import datetime
 from html.parser import HTMLParser
+from urllib.parse import quote, urljoin
 
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import LETTER
@@ -21,11 +26,17 @@ from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import inch
 from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 
-from . import deal_docs
+from . import deal_docs, deal_sources
 from .db import connect, init_db
 
 KIND = deal_docs.CAPIQ_KIND
-LINK = re.compile(r"https://(www\.)?capitaliq\.com/CIQDotNet/Transactions/transactionDetail\.aspx\?[^\s\"']*transactionId=(\d+)", re.I)
+# The deal's pages besides the overview: the tab's name on the page -> the document it becomes.
+TABS = {"Consideration Details": "Capital IQ consideration details", "Deal Timeline": "Capital IQ deal timeline",
+        "Transaction Quick Comps": "Capital IQ quick comps"}
+BASE = "https://www.capitaliq.com"
+# Capital IQ's search, where the reader looks a deal up by the target's name (checked against the live site on campus).
+SEARCH = [BASE + "/CIQDotNet/Search/Search.aspx?searchString={q}&searchType=Transactions"]
+LINK =re.compile(r"https://(www\.)?capitaliq\.com/CIQDotNet/Transactions/transactionDetail\.aspx\?[^\s\"']*transactionId=(\d+)", re.I)
 SECTIONS = {"Deal Summary", "Sell-side Participants", "Buy-side Participants", "Deal Values", "Synopsis", "Advisors",
             "Transaction Details", "Consideration Summary", "Transaction Values", "Target Stock Information 1 Day Before Announcement",
             "Buyer Stock Information 1 Day Before Announcement", "Premium Analysis", "Spread Analysis", "Target Company Details",
@@ -74,7 +85,7 @@ def want(uid: int, deal_id: int) -> dict:
     """Ask the reader to fetch (again) on the next Capital IQ run."""
     ensure()
     with connect() as conn:
-        conn.execute("UPDATE deals SET capiq_wanted = 1 WHERE id = ? AND user_id = ? AND capiq_url != ''", (deal_id, uid))
+        conn.execute("UPDATE deals SET capiq_wanted = 1 WHERE id = ? AND user_id = ?", (deal_id, uid))
     return {"ok": True}
 
 
@@ -98,8 +109,94 @@ def jobs(uid: int) -> list[dict]:
     """For the reader: the CapIQ pages to fetch."""
     ensure()
     with connect(read_only=True) as conn:
-        return [{"deal_id": r["id"], "title": r["title"], "url": r["capiq_url"]} for r in conn.execute(
-            "SELECT id, title, capiq_url FROM deals WHERE user_id = ? AND capiq_url != '' AND capiq_wanted = 1", (uid,))]
+        rows = conn.execute("SELECT id, title, capiq_url FROM deals WHERE user_id = ? AND capiq_wanted = 1", (uid,)).fetchall()
+    return [{"deal_id": r["id"], "title": r["title"], "fetch": [r["capiq_url"]] if r["capiq_url"] else _search_urls(r["title"])}
+            for r in rows]
+
+
+def _search_urls(title: str) -> list[str]:
+    buyer, target = deal_sources.parties(title)
+    return [u.format(q=quote(target or buyer or title)) for u in SEARCH]
+
+
+def _anchors(html: str, base: str) -> list[tuple[str, str, str]]:
+    """(absolute url, link text, the text around it) for every Capital IQ link on a page."""
+    out = []
+    for m in re.finditer(r'<a\b[^>]*href="([^"]+)"[^>]*>(.*?)</a>', html, re.I | re.S):
+        href = html_lib.unescape(m[1])
+        if href.lower().startswith(("javascript:", "#", "mailto:")):
+            continue
+        url = urljoin(base, href)
+        if not url.startswith(BASE + "/"):
+            continue
+        # the link's own table row (a results list puts one deal per row), else the text close to it
+        start, end = html.rfind("<tr", 0, m.start()), html.find("</tr>", m.end())
+        if start < 0 or end < 0 or end - start > 6000:
+            start, end = max(0, m.start() - 300), m.end() + 300
+        around = re.sub(r"<[^>]+>", " ", html[start:end])
+        out.append((url, " ".join(re.sub(r"<[^>]+>", " ", m[2]).split()), " ".join(html_lib.unescape(around).split())))
+    return out
+
+
+def _pick(pages: list[dict], title: str) -> str:
+    """The transaction in the search results whose row best matches this deal's buyer and target."""
+    buyer, target = deal_sources.parties(title)
+    words = lambda name: {w for w in re.findall(r"[a-z]{3,}", name.lower()) if w not in ("inc", "plc", "the", "corp", "group", "and")}  # noqa: E731
+    best, score = "", 0.0
+    for page in pages:
+        for url, text, around in _anchors(page["html"], page["final_url"]):
+            if not LINK.search(url):
+                continue
+            seen = set(re.findall(r"[a-z]{3,}", around.lower()))
+            s = 2 * len(words(target) & seen) + len(words(buyer) & seen) + ("merger" in around.lower() or "acquisition" in around.lower())
+            if s > score:
+                best, score = url, s
+    return clean_link(best) if score >= 2 else ""
+
+
+def _tab_links(html: str, base: str) -> dict[str, str]:
+    """The overview page's tabs that are plain links (a tab that only posts the page back can't be fetched)."""
+    return {text: url for url, text, _ in _anchors(html, base) if text in TABS}
+
+
+def _signed_out(page: dict) -> bool:
+    return bool(re.search(r"login|okta", page["final_url"], re.I)) or ("Login-okta" in page["html"] and "Deal Summary" not in page["html"])
+
+
+def step(uid: int, deal_id: int, pages: list[dict]) -> dict:
+    """What the reader fetched so far for one deal -> the next pages to fetch, or the finished result."""
+    ensure()
+    with connect(read_only=True) as conn:
+        deal = conn.execute("SELECT title, capiq_url FROM deals WHERE id = ? AND user_id = ?", (deal_id, uid)).fetchone()
+    if deal is None:
+        return {"done": True, "ok": False, "message": "Deal not found."}
+    if any(_signed_out(p) for p in pages):
+        return {"done": True, "ok": False, "message": "Capital IQ showed its sign-in page. Be on Yale Wi-Fi and signed in to Capital IQ "
+                                                      "in Chrome, then try again."}
+    link = deal["capiq_url"]
+    if not link:
+        link = _pick(pages, deal["title"])
+        if not link:
+            return {"done": True, "ok": False, "message": "Couldn't find this deal in Capital IQ's search. Paste the deal's Capital IQ "
+                                                          "link in the box, then pull again."}
+        set_link(uid, deal_id, link)
+    overview = next((p for p in pages if clean_link(p["url"]) == link and "Deal Summary" in p["html"]), None)
+    if overview is None:
+        return {"done": False, "fetch": [link]}
+    tabs = _tab_links(overview["html"], overview["final_url"])
+    missing = [u for u in tabs.values() if u not in {p["url"] for p in pages}]
+    if missing:
+        return {"done": False, "fetch": missing}
+    got = {name: next(p for p in pages if p["url"] == url) for name, url in tabs.items()}
+    out = save(uid, deal_id, link, overview["html"], {name: (page["url"], page["html"]) for name, page in got.items()})
+    if not out["ok"]:
+        return {"done": True, **out, "message": out.get("reason", "")}
+    names = ["the transaction summary"] + [n.lower() for n in got]
+    skipped = [n for n in TABS if n not in got]
+    message = (f"Saved {', '.join(names)} as PDFs and filled {out['points']} points"
+               + (f", with {out['comps']} comparable deals" if out["comps"] else "") + "."
+               + (f" Couldn't open {', '.join(skipped)} (not a plain link on the page)." if skipped else ""))
+    return {"done": True, "ok": True, "message": message}
 
 
 # ---- Reading a CapIQ page ----
@@ -217,7 +314,7 @@ def _num(text: str) -> float | None:
 
 # ---- The PDF ----
 
-def to_pdf(rows: list, title: str, url: str, comp_rows: list[dict]) -> bytes:
+def to_pdf(rows: list, title: str, url: str, comp_rows: list[dict], what: str = "transaction summary") -> bytes:
     styles = getSampleStyleSheet()
     base = ParagraphStyle("b", parent=styles["Normal"], fontSize=8, leading=10)
     bold = ParagraphStyle("bb", parent=base, fontName="Helvetica-Bold")
@@ -226,7 +323,7 @@ def to_pdf(rows: list, title: str, url: str, comp_rows: list[dict]) -> bytes:
     cover = ParagraphStyle("c", parent=base, fontName="Helvetica-Bold", fontSize=14, leading=18)
     note = ParagraphStyle("n", parent=base, textColor=colors.HexColor("#5d6880"), spaceAfter=8)
     story = [Paragraph(html_lib.escape(title), cover),
-             Paragraph("S&amp;P Capital IQ transaction summary, US$. Saved " + datetime.now().strftime("%b %d, %Y") + ". Original: "
+             Paragraph(f"S&amp;P Capital IQ {html_lib.escape(what)}, US$. Saved " + datetime.now().strftime("%b %d, %Y") + ". Original: "
                        + html_lib.escape(url), note)]
     group: list[list] = []
 
@@ -323,36 +420,66 @@ def _points(f: dict, adv: list, prem: dict, comp_rows: list[dict]) -> dict[str, 
     return out
 
 
-def save(uid: int, deal_id: int, url: str, overview_html: str, comps_html: str = "") -> dict:
-    """File what the reader fetched: the summary as a PDF document, and the pitch points it answers."""
+def _timeline(html: str) -> list[str]:
+    """"date: event" lines from the Deal Timeline page, oldest first."""
+    date = re.compile(r"[A-Z][a-z]{2}-\d{2}-\d{4}")
+    out = []
+    for kind, row in items(html):
+        if kind == "row" and len(row) >= 2 and date.fullmatch(row[0].strip()) and row[1].strip():
+            out.append(f"{row[0].strip()}: {' '.join(row[1:3]).strip()}")
+    return sorted(set(out), key=lambda line: datetime.strptime(line[:11], "%b-%d-%Y"))
+
+
+def _store(uid: int, deal_id: int, kind: str, title: str, pdf: bytes, url: str) -> int | None:
+    """One CapIQ page as a document that replaces the last one of its kind, linked to the page it came from."""
+    with connect(read_only=True) as conn:
+        old = [r["id"] for r in conn.execute("SELECT id FROM deal_documents WHERE user_id = ? AND deal_id = ? AND kind = ?", (uid, deal_id, kind))]
+    for doc in old:
+        deal_docs.delete(uid, doc)
+    out = deal_docs.upload(uid, deal_id, f"{title}.pdf", pdf, kind)
+    if not out.get("ok"):
+        return None
+    with connect() as conn:
+        conn.execute("UPDATE deal_documents SET source_url = ?, source_page = ? WHERE id = ? AND user_id = ?", (url, url, out["id"], uid))
+    return out["id"]
+
+
+def save(uid: int, deal_id: int, url: str, overview_html: str, tabs: dict[str, tuple[str, str]] | None = None) -> dict:
+    """File what the reader fetched: the overview and each tab as a PDF document, and the pitch points they answer.
+    `tabs` is {tab name: (its url, its html)}."""
     ensure()
+    tabs = tabs or {}
     with connect(read_only=True) as conn:
         deal = conn.execute("SELECT title FROM deals WHERE id = ? AND user_id = ?", (deal_id, uid)).fetchone()
     if deal is None:
         return {"ok": False, "reason": "Deal not found."}
-    if re.search(r"login|okta|sign in", overview_html[:20000], re.I) and "Deal Summary" not in overview_html:
-        return {"ok": False, "reason": "Capital IQ showed its sign-in page. Be on Yale Wi-Fi and signed in to Capital IQ in Chrome, then try again."}
     rows = items(overview_html)
     f = fields(rows)
     if not any(k in f for k in ("Status", "Announced Date", "Implied Enterprise Value ($ mm)")):
         return {"ok": False, "reason": "That page didn't look like a Capital IQ transaction summary."}
-    comp_rows = comps(comps_html) if comps_html else []
-    title = f"Capital IQ transaction summary - {deal['title']}"
-    pdf = to_pdf(rows, title, url, comp_rows)
-    with connect(read_only=True) as conn:
-        old = [r["id"] for r in conn.execute("SELECT id FROM deal_documents WHERE user_id = ? AND deal_id = ? AND kind = ?", (uid, deal_id, KIND))]
-    for doc in old:  # the newest summary replaces the last one
-        deal_docs.delete(uid, doc)
-    out = deal_docs.upload(uid, deal_id, f"{title}.pdf", pdf, KIND)
-    if not out.get("ok"):
-        return out
-    points = _points(f, advisors(rows), premiums(rows), comp_rows)
+    docs = {"summary": _store(uid, deal_id, KIND, f"Capital IQ transaction summary - {deal['title']}",
+                              to_pdf(rows, f"Capital IQ transaction summary - {deal['title']}", url, []), url)}
+    if docs["summary"] is None:
+        return {"ok": False, "reason": "Couldn't save the transaction summary."}
+    for name, (tab_url, html) in tabs.items():
+        what = name[0].lower() + name[1:] if name != "Transaction Quick Comps" else "transaction quick comps"
+        title = f"Capital IQ {what} - {deal['title']}"
+        docs[name] = _store(uid, deal_id, TABS[name], title, to_pdf(items(html), title, tab_url, [], what), tab_url)
+        f = {**fields(items(html)), **f}  # the overview's figures win; the consideration page adds its own
+    comp_rows = comps(tabs["Transaction Quick Comps"][1]) if "Transaction Quick Comps" in tabs else []
+    points = {label: (value, quote, docs["summary"]) for label, (value, quote) in _points(f, advisors(rows), premiums(rows), []).items()}
+    if comp_rows and docs.get("Transaction Quick Comps"):
+        precedent = _points({**f}, [], {}, comp_rows).get("Versus precedent transactions")
+        if precedent:
+            points["Versus precedent transactions"] = (*precedent, docs["Transaction Quick Comps"])
+    events = _timeline(tabs["Deal Timeline"][1]) if "Deal Timeline" in tabs else []
+    if events and docs.get("Deal Timeline"):
+        points["Timeline and status"] = (f"{f.get('Status', '')}. " + "; ".join(events[:8]), events[0], docs["Deal Timeline"])
     now = datetime.now().isoformat(timespec="seconds")
     with connect() as conn:
-        conn.execute("UPDATE deal_documents SET source_url = ?, source_page = ? WHERE id = ? AND user_id = ?", (url, url, out["id"], uid))
-        for label, (value, quote) in points.items():
+        for label, (value, quote_text, doc_id) in points.items():
             conn.execute("""UPDATE deal_points SET value = ?, source = 'Capital IQ', source_kind = 'document', doc_id = ?, page = '1',
-                            quote = ? WHERE deal_id = ? AND label = ?""", (value, str(out["id"]), quote[:600], deal_id, label))
+                            quote = ? WHERE deal_id = ? AND label = ?""", (value.strip(" ."), str(doc_id), quote_text[:600], deal_id, label))
         conn.execute("UPDATE deals SET capiq_wanted = 0, capiq_at = ? WHERE id = ? AND user_id = ?", (now, deal_id, uid))
-    return {"ok": True, "points": len(points), "comps": len(comp_rows), "document": out["id"]}
+    return {"ok": True, "points": len(points), "comps": len(comp_rows), "document": docs["summary"]}
 

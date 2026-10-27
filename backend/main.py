@@ -365,19 +365,25 @@ def capiq_jobs(user: dict = Depends(preview_user)):
     return capiq.jobs(user["id"])
 
 
+class CapIQPage(BaseModel):
+    url: str          # what the reader was asked to fetch
+    final_url: str    # where Capital IQ ended up (its sign-in page when the student isn't signed in)
+    html: str
+
+
 class CapIQPages(BaseModel):
     deal_id: int
-    url: str
-    overview_html: str
-    comps_html: str = ""
+    pages: list[CapIQPage]
 
 
 @app.post("/api/capiq/pages")
 def capiq_pages(req: CapIQPages, user: dict = Depends(preview_user)):
-    """For the reader: the transaction summary (and comps) pages it fetched, saved as a PDF and read into the pitch."""
-    if len(req.overview_html) + len(req.comps_html) > 6_000_000 or not capiq.clean_link(req.url):
-        raise HTTPException(status_code=400, detail="Not a Capital IQ transaction page.")
-    return capiq.save(user["id"], req.deal_id, capiq.clean_link(req.url), req.overview_html, req.comps_html)
+    """For the reader: the Capital IQ pages fetched so far for one deal. Answers with the next pages to fetch, or, once it
+    has them all, saves each as a PDF and reads them into the pitch."""
+    if len(req.pages) > 12 or sum(len(p.html) for p in req.pages) > 15_000_000 or \
+            any(not p.url.startswith(capiq.BASE + "/") for p in req.pages):
+        raise HTTPException(status_code=400, detail="Not Capital IQ pages.")
+    return capiq.step(user["id"], req.deal_id, [p.model_dump() for p in req.pages])
 
 
 class NewDeal(BaseModel):
