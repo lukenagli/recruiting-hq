@@ -17,7 +17,7 @@ const SKIP_FOLDERS = new Set(['Drafts', 'Deleted Items', 'Junk Email', 'Archive'
 async function expandAll() {
   for (let pass = 0; pass < 4; pass++) {
     const closed = [...document.querySelectorAll('[role="tree"] [role="treeitem"][aria-expanded="false"]')]
-      .filter((t) => !SKIP_FOLDERS.has((t.getAttribute('title') || '').replace(/ - \d+ items?.*$/, '').trim()))
+      .filter((t) => !SKIP_FOLDERS.has((t.getAttribute('title') || '').replace(/ - [\d,]+ items?.*$/, '').trim()))
     if (!closed.length) return
     for (const t of closed) {
       if (rhqSafeExpand(t)) await rhqSleep(700)
@@ -29,7 +29,7 @@ async function expandAll() {
  *  What isn't about banking recruiting or the finance club is dropped later, before anything is filed. */
 function folders() {
   const names = [...document.querySelectorAll('[role="tree"] [role="treeitem"]')]
-    .map((t) => (t.getAttribute('title') || '').replace(/ - \d+ items?.*$/, '').trim())
+    .map((t) => (t.getAttribute('title') || '').replace(/ - [\d,]+ items?.*$/, '').trim())
     .filter((n) => n && !SKIP_FOLDERS.has(n))
   return [...new Set(['Inbox', 'Sent Items', ...names])]
 }
@@ -95,7 +95,7 @@ async function readFolder(name, since, patience = 10000, screen = null) {
   const title = document.title
   const prev = firstId()
   const open = node.getAttribute('aria-selected') === 'true' // already showing (Inbox, when Outlook opens)
-  const count = Number((/ - (\d+) items?/.exec(node.getAttribute('title') || '') || [])[1] || 0) // as the folder list says
+  const count = Number(((/ - ([\d,]+) items?/.exec(node.getAttribute('title') || '') || [])[1] || '0').replace(/,/g, '')) // as the folder list says
   if (!rhqSafeClick(node, 'outlook-folders')) return { items: [], more: 0, note: 'refused by the click guard' }
   // As long as Outlook takes to show the folder, and no longer: the tab title changes, then the list empties and
   // loads (about 1.5 s; much longer for the first folders while Outlook is still starting up).
@@ -250,6 +250,12 @@ chrome.runtime.onMessage.addListener((msg, _sender, reply) => {
     if (!(await rhqWaitFor(() => document.querySelector('[role="tree"] [role="treeitem"]'), 30000))) {
       throw new Error(`Outlook's folder list didn't show (window ${window.innerWidth}×${window.innerHeight}, ${document.visibilityState}), so nothing was read.`)
     }
+    // While Outlook starts in a minimized window it is slow to draw its lists: wait until the folder it opened on
+    // shows its emails (when it has any), so the first folders aren't read before Outlook is ready.
+    const current = document.querySelector('[role="tree"] [role="treeitem"][aria-selected="true"]')
+    if (/ - [1-9][\d,]* items?/.test((current && current.getAttribute('title')) || '')) {
+      await rhqWaitFor(() => document.querySelector('[role="listbox"] [role="option"]'), 60000)
+    }
     await expandAll()
     const batches = []
     const list = folders()
@@ -263,14 +269,15 @@ chrome.runtime.onMessage.addListener((msg, _sender, reply) => {
     }
     const full = (name) => !screen || ['Inbox', 'Sent Items'].includes(name) || (msg.watch || []).includes(name) || screen.test(name)
     const screenFor = (name) => (full(name) ? null : screen)
-    for (const [i, name] of list.entries()) {
-      chrome.runtime.sendMessage({ type: 'outlook-progress', i, n: list.length, name }).catch(() => undefined)
+    for (const name of list) {
+      // Several Outlook tabs read side by side; each folder is read by whichever claims it first.
+      // (With no answer from the background, as when this is the only tab, every folder is read here.)
+      if (!(await chrome.runtime.sendMessage({ type: 'outlook-claim', name, n: list.length }).catch(() => true))) continue
       const since = msg.checkpoints[name] || msg.baseline
       const r = await readFolder(name, since, 10000, screenFor(name))
       batches.push({ source: 'outlook', conversation: name, group_chat: false, ...r })
     }
-    // While Outlook is still starting up in a minimized window, the first folders' lists often don't show; by the
-    // end of the pass it has, so those folders get a second, more patient try.
+    // A folder whose list still didn't show gets one second, more patient try at the end.
     for (const b of batches.filter((b) => /didn't load/.test(b.note || ''))) {
       const again = await readFolder(b.conversation, msg.checkpoints[b.conversation] || msg.baseline, 45000, screenFor(b.conversation))
       b.items = again.items
