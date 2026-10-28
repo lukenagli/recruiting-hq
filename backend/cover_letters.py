@@ -74,10 +74,13 @@ qualities>, <the breadth of its platform>, and the growth trajectory and competi
 group." Sentence 4: "These factors, in addition to the opportunity to advise leading <the group's kind of companies> \
 on their most important transactions, cemented my interest in joining the <group> group at <bank>." Keep it a box \
 checker: no statistics, anecdotes or personal specifics.
-- In each experience paragraph, add at most one short sentence (or clause) that connects experience already in the \
-letter to the kind of companies or work the group covers, using only facts already in the letter or the resume. \
-Never add a new claim, figure or responsibility. Leave the rest of each paragraph as written, trimming a few words \
-elsewhere if needed so the letter keeps its length.
+- In the experience paragraphs, connect the student's experience to the group the way the sample letters do: a few \
+words woven into an existing factual sentence, not a new sentence explaining what interested them. For example \
+"covering companies across industries including Consumer & Retail", "supporting the firm's consumer-facing portfolio \
+companies", or a closing line ending "required to succeed in the <group> group". At most one such touch per \
+paragraph, using only facts already in the letter or the resume; never a new claim, figure or responsibility, never \
+a colon, never "what held my attention" or other inner reflection. Leave the rest of each paragraph as written and \
+keep the letter's length.
 - In the closing, name the group alongside the bank.
 
 Rules:
