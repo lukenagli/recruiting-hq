@@ -124,7 +124,9 @@ async function syncOutlook(state, lines) {
     const out = await ask(tab.id, { type: 'outlook-collect', checkpoints: state.checkpoints.outlook || {}, baseline: state.baseline })
     outlookShare = null
     if (!out.ok) return lines.push(`Outlook: ${out.error}`)
-    const batches = out.batches.filter((b) => b.items.length)
+    // Newest mail first, so today's news is filed even if the day's allowance runs out partway.
+    const newest = (b) => b.items.reduce((m, i) => (i.at > m ? i.at : m), '')
+    const batches = out.batches.filter((b) => b.items.length).sort((a, b) => newest(b).localeCompare(newest(a)))
     for (const [i, b] of batches.entries()) {
       await progress(30 + (20 * i) / batches.length, `Filing what's new in ${b.conversation} (${i + 1} of ${batches.length})`)
       await file(b, lines)

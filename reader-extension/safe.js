@@ -37,9 +37,18 @@ function rhqSafeClick(el, listName) {
   if (!list) return false
   if (el.closest('[contenteditable="true"], textarea, input, footer, [role="textbox"], [role="toolbar"], [role="dialog"], form')) return false
   if (el.matches('button, a[href], input, textarea, [role="button"], [role="textbox"], [contenteditable="true"]')) return false
-  if (el.querySelector('input, textarea, [contenteditable="true"], [role="textbox"]')) return false
   const label = `${el.getAttribute('aria-label') || ''} ${el.getAttribute('title') || ''} ${el.getAttribute('data-testid') || ''}`
-  if (listName === 'whatsapp-chats' ? /\bsend\b|\breply\b/i.test(label) : RHQ_FORBIDDEN.test(label.replace(/Collapsed|Expanded/g, ''))) return false
+  if (listName === 'outlook-messages') {
+    // A message row is the whole list item (Outlook gives it a conversation id). Its label is the email's own sender,
+    // subject and preview, so words like "call" or "send" in it say nothing about the row; the only input a row
+    // holds is Outlook's selection checkbox, which the click on the row itself doesn't touch. Drafts are never opened.
+    if (!el.matches('[role="option"][data-convid]')) return false
+    if (el.querySelector('textarea, [contenteditable="true"], [role="textbox"], input:not([type="checkbox"])')) return false
+    if (/\[draft\]|^(?:(?:collapsed|expanded|unread|replied|forwarded|pinned|flagged|has attachments|important)\s+)*draft\b/i.test(label.trim())) return false
+  } else {
+    if (el.querySelector('input, textarea, [contenteditable="true"], [role="textbox"]')) return false
+    if (listName === 'whatsapp-chats' ? /\bsend\b|\breply\b/i.test(label) : RHQ_FORBIDDEN.test(label.replace(/Collapsed|Expanded/g, ''))) return false
+  }
   el.click()
   return true
 }

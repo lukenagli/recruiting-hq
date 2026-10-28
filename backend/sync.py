@@ -235,7 +235,12 @@ def _message(batch: Batch, items: list[Item], school: str) -> str:
     if batch.source == "outlook":
         head += ("When an email I sent or scheduled thanks someone for a coffee chat, a call or meeting them at an event, find that "
                  "chat or event with lookup and record it with record_thank_you (scheduled=True for a scheduled email), passing "
-                 "the email's own text from the greeting to the closing line as body. ")
+                 "the email's own text from the greeting to the closing line as body. "
+                 "When an email cancels, postpones or reschedules a chat, call or interview, find that entry with lookup and "
+                 "update the same entry with save_entry (never log a second one, never mark it done): with the new date and time "
+                 "and status upcoming once a new time is agreed (a calendar invite or an accepted time), otherwise status todo "
+                 "with date_note saying it is being rescheduled and the times I offered, if I offered any. The latest email in a "
+                 "thread decides. ")
     head += "Do not draft emails. If nothing is worth saving, save nothing and say so.\n\n"
     lines = [f"[{i.at}] {i.author}: {i.text.strip()}" for i in items]
     return head + "\n".join(lines)

@@ -41,13 +41,24 @@ async function readFolder(name, since) {
   const sinceDay = since ? new Date(since.slice(0, 10) + 'T00:00:00') : null
   const out = []
   const rows = [...document.querySelectorAll('[role="listbox"] [role="option"]')].slice(0, MAX_PER_FOLDER)
+  let old = 0
   for (const row of rows) {
-    if (sinceDay && rowDay(row) < sinceDay) break // newest first: everything below is older
-    if (/\bdraft\b/i.test(row.getAttribute('aria-label') || '')) continue // never open a draft: Outlook opens it for editing
+    const label = row.getAttribute('aria-label') || ''
+    if (sinceDay && rowDay(row) < sinceDay) {
+      if (/^(?:\S+\s+)*?Pinned\b/.test(label)) continue // a pinned email sits on top whatever its date
+      if (++old >= 3) break // newest first: everything below is older
+      continue
+    }
+    old = 0
+    if (/\[draft\]/i.test(label)) continue // never open a draft: Outlook opens it for editing
+    const before = paneText()
     if (!rhqSafeClick(row, 'outlook-messages')) continue
-    await rhqSleep(1800)
-    const pane = document.querySelector('[aria-label="Reading Pane"], #ReadingPaneContainerId, [data-app-section="ReadingPane"]') || document.querySelector('[role="main"]')
-    const text = (pane ? pane.innerText : '').trim()
+    for (let w = 0; w < 15; w++) { // until the reading pane shows this email, not the last one
+      await rhqSleep(300)
+      if (paneText() !== before && paneText().length > 40) break
+    }
+    await rhqSleep(700)
+    const text = paneText().trim()
     const dates = [...text.matchAll(PANE_DATE)].map((d) => rhqIso(rhqParse(d[1], d[2])))
     if (!dates.length) continue
     const latest = dates.sort().slice(-1)[0]
