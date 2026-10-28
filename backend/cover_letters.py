@@ -68,9 +68,10 @@ it general and gracious, the way every sample letter is.
 
 Group placement (the role is in one named group, not a generalist program): bankers want the letter to show why this \
 group and why this student for it. So:
-- In the opening, say plainly that the student is interested in that group specifically, and add one sentence with \
-the student's own reason for it, taken from their notes. If their notes give no reason, write [[NEED: why <group>, in \
-your own words]] there; never invent one.
+- In the opening, say plainly that the student is interested in that group specifically, with one polished, general \
+sentence on why, in the same gracious tone as the rest of the opening (for example, a longstanding interest in the \
+kind of companies the group advises and what shapes how they grow and compete). Keep it a box checker: no statistics, \
+anecdotes or personal specifics.
 - In each experience paragraph, add at most one short sentence (or clause) that connects experience already in the \
 letter to the kind of companies or work the group covers, using only facts already in the letter or the resume. \
 Never add a new claim, figure or responsibility. Leave the rest of each paragraph as written, trimming a few words \
