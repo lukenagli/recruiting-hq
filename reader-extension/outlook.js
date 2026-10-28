@@ -57,8 +57,10 @@ function rowTime(row) {
 async function newRows(since, sinceDay) {
   const found = new Map()
   const sc = listScroller()
-  if (sc) sc.scrollTop = 0
-  await rhqSleep(500)
+  if (sc && sc.scrollTop) {
+    sc.scrollTop = 0
+    await rhqSleep(300)
+  }
   for (let k = 0, stale = 0; k < 200 && stale < 3; k++) {
     let old = 0
     for (const row of document.querySelectorAll('[role="listbox"] [role="option"]')) {
@@ -73,6 +75,7 @@ async function newRows(since, sinceDay) {
       found.set(id, at)
     }
     if (old >= 3 || !sc) break // newest first: everything further down is older
+    if (sc.scrollTop + sc.clientHeight >= sc.scrollHeight - 5) break // the whole folder is on screen
     const before = sc.scrollTop
     sc.scrollTop += sc.clientHeight * 0.8
     await rhqSleep(450)
@@ -86,11 +89,15 @@ async function newRows(since, sinceDay) {
 async function readFolder(name, since) {
   const node = folderNode(name)
   if (!node) return { items: [], more: 0, note: 'not in the folder list' }
+  const firstId = () => document.querySelector('[role="listbox"] [role="option"]')?.getAttribute('data-convid') || ''
+  const title = document.title
+  const prev = firstId()
   if (!rhqSafeClick(node, 'outlook-folders')) return { items: [], more: 0, note: 'refused by the click guard' }
-  await rhqSleep(2500)
-  if (!(await rhqWaitFor(() => document.querySelector('[role="listbox"] [role="option"]')))) {
-    return { items: [], more: 0, note: `no emails showed (${document.visibilityState} window)` }
-  }
+  // As long as Outlook takes to show the folder, and no longer: the tab title changes, then the list follows.
+  await rhqWaitFor(() => document.title !== title || firstId() !== prev, 5000)
+  await rhqWaitFor(() => firstId() && firstId() !== prev, 4000) // the list empties, then loads (about 1.5 s)
+  await rhqSleep(250)
+  if (!firstId()) return { items: [], more: 0, note: 'empty' }
   since = since || rhqIso(new Date(Date.now() - 14 * 864e5)) // no starting line: the last two weeks
   const rows = await newRows(since, new Date(since.slice(0, 10) + 'T00:00:00'))
   const out = []
