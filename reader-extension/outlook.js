@@ -86,7 +86,7 @@ async function newRows(since, sinceDay) {
 
 /** New mail in one folder, oldest first. At most MAX_OPEN conversations are opened per refresh; the rest are newer
  *  than everything filed this time, so the next refresh starts with them and nothing is skipped. */
-async function readFolder(name, since) {
+async function readFolder(name, since, patience = 10000) {
   const node = folderNode(name)
   if (!node) return { items: [], more: 0, note: 'not in the folder list' }
   const firstId = () => document.querySelector('[role="listbox"] [role="option"]')?.getAttribute('data-convid') || ''
@@ -98,7 +98,7 @@ async function readFolder(name, since) {
   // As long as Outlook takes to show the folder, and no longer: the tab title changes, then the list empties and
   // loads (about 1.5 s; much longer for the first folders while Outlook is still starting up).
   if (!open) await rhqWaitFor(() => document.title !== title || firstId() !== prev, 5000)
-  await rhqWaitFor(() => firstId() && (open || firstId() !== prev), count ? 30000 : 2500)
+  await rhqWaitFor(() => firstId() && (open || firstId() !== prev), count ? patience : 2500)
   await rhqSleep(250)
   if (!firstId()) return { items: [], more: 0, note: count ? `its ${count} emails didn't load` : 'empty' }
   since = since || rhqIso(new Date(Date.now() - 14 * 864e5)) // no starting line: the last two weeks
@@ -251,6 +251,14 @@ chrome.runtime.onMessage.addListener((msg, _sender, reply) => {
       const since = msg.checkpoints[name] || msg.baseline
       const { items, more, note } = await readFolder(name, since)
       batches.push({ source: 'outlook', conversation: name, group_chat: false, items, more, note })
+    }
+    // While Outlook is still starting up in a minimized window, the first folders' lists often don't show; by the
+    // end of the pass it has, so those folders get a second, more patient try.
+    for (const b of batches.filter((b) => /didn't load/.test(b.note || ''))) {
+      const again = await readFolder(b.conversation, msg.checkpoints[b.conversation] || msg.baseline, 45000)
+      b.items = again.items
+      b.more = again.more
+      b.note = `${again.note} (second try)`
     }
     reply({ ok: true, batches })
   })().catch((e) => reply({ ok: false, error: String(e) }))

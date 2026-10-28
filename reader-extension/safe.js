@@ -75,12 +75,17 @@ async function rhqWaitFor(test, ms = 15000) {
   while (Date.now() < end) {
     const v = test()
     if (v) return v
-    await new Promise((r) => setTimeout(r, 250))
+    await rhqSleep(250)
   }
   return null
 }
 
-const rhqSleep = (ms) => new Promise((r) => setTimeout(r, ms))
+/** Pause for `ms`. The reader's tabs sit in a minimized window, where Chrome slows a page's own timers to once a
+ *  second (and later once a minute), so the pause is timed by the extension's background instead, which Chrome
+ *  doesn't slow. Falls back to an ordinary timer if the background doesn't answer. */
+function rhqSleep(ms) {
+  return chrome.runtime.sendMessage({ type: 'rhq-sleep', ms }).catch(() => new Promise((r) => setTimeout(r, ms)))
+}
 
 /** "2026-10-19T15:17:00" (local time) from a Date. */
 function rhqIso(d) {

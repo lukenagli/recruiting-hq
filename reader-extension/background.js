@@ -59,6 +59,13 @@ chrome.runtime.onMessage.addListener((msg, sender, reply) => {
   return true
 })
 
+// Pauses for the page scripts (see rhqSleep in safe.js): timed here, where Chrome doesn't slow timers down.
+chrome.runtime.onMessage.addListener((msg, sender, reply) => {
+  if (sender.id !== chrome.runtime.id || msg.type !== 'rhq-sleep') return
+  setTimeout(() => reply(true), Math.max(0, Math.min(Number(msg.ms) || 0, 60000)))
+  return true
+})
+
 async function api(path, body) {
   const { key } = await chrome.storage.local.get('key')
   if (!key) throw new Error('No reader key yet. Paste it in the extension window.')
