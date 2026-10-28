@@ -82,11 +82,15 @@ function minutes(note: string) {
   return ((Number(t[1]) % 12) + (/p/i.test(t[3]) ? 12 : 0)) * 60 + Number(t[2] ?? 0)
 }
 
-/** Just the time from a note like "6:00 PM ET at Ammos Estiatorio" ("6:00 PM"), or "Noon". */
+/** The start time from a note, always written the same way: "6:00 PM ET at Ammos Estiatorio", "6pm" and
+ *  "6:00–6:30 PM" all give "6:00 PM"; "Noon" gives "12:00 PM". */
 function clock(note: string) {
-  if (/\bnoon\b/i.test(note)) return 'Noon'
-  const t = /\d{1,2}(?::\d{2})?\s*[ap]\.?m\.?/i.exec(note)
-  return t ? t[0].toUpperCase().replace(/\./g, '') : ''
+  if (/\bnoon\b/i.test(note)) return '12:00 PM'
+  // a range takes its AM/PM from the end when the start has none ("5:00–5:30 PM")
+  const range = /\b(\d{1,2})(?::(\d{2}))?\s*(?:([ap])\.?m\.?)?\s*(?:[–—-]|to)\s*\d{1,2}(?::\d{2})?\s*([ap])\.?m\b/i.exec(note)
+  const one = /\b(\d{1,2})(?::(\d{2}))?\s*([ap])\.?m\b/i.exec(note)
+  const [h, m, ap] = range ? [range[1], range[2], range[3] || range[4]] : one ? [one[1], one[2], one[3]] : []
+  return h ? `${Number(h)}:${m ?? '00'} ${ap.toUpperCase()}M` : ''
 }
 
 /** True once a timed item started more than an hour ago (it has happened); untimed items stay until the day is over. */

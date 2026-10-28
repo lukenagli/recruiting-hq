@@ -92,12 +92,15 @@ async function readFolder(name, since) {
   const firstId = () => document.querySelector('[role="listbox"] [role="option"]')?.getAttribute('data-convid') || ''
   const title = document.title
   const prev = firstId()
+  const open = node.getAttribute('aria-selected') === 'true' // already showing (Inbox, when Outlook opens)
+  const count = Number((/ - (\d+) items?/.exec(node.getAttribute('title') || '') || [])[1] || 0) // as the folder list says
   if (!rhqSafeClick(node, 'outlook-folders')) return { items: [], more: 0, note: 'refused by the click guard' }
-  // As long as Outlook takes to show the folder, and no longer: the tab title changes, then the list follows.
-  await rhqWaitFor(() => document.title !== title || firstId() !== prev, 5000)
-  await rhqWaitFor(() => firstId() && firstId() !== prev, 4000) // the list empties, then loads (about 1.5 s)
+  // As long as Outlook takes to show the folder, and no longer: the tab title changes, then the list empties and
+  // loads (about 1.5 s; much longer for the first folders while Outlook is still starting up).
+  if (!open) await rhqWaitFor(() => document.title !== title || firstId() !== prev, 5000)
+  await rhqWaitFor(() => firstId() && (open || firstId() !== prev), count ? 30000 : 2500)
   await rhqSleep(250)
-  if (!firstId()) return { items: [], more: 0, note: 'empty' }
+  if (!firstId()) return { items: [], more: 0, note: count ? `its ${count} emails didn't load` : 'empty' }
   since = since || rhqIso(new Date(Date.now() - 14 * 864e5)) // no starting line: the last two weeks
   const rows = await newRows(since, new Date(since.slice(0, 10) + 'T00:00:00'))
   const out = []
