@@ -14,11 +14,22 @@ async function status() {
 window.addEventListener('message', async (e) => {
   if (e.source !== window || e.origin !== window.origin || !e.data || e.data.source !== 'rhq-page') return
   const { type } = e.data
-  if (type === 'ping' || type === 'status') answer({ type: 'status', version: chrome.runtime.getManifest().version, ...(await status()) })
-  if (type === 'sync' || type === 'capiq' || type === 'thanks') {
-    chrome.runtime.sendMessage({ type: { capiq: 'capiq-now', thanks: 'thanks-now' }[type] || 'sync-now' })
-    answer({ type: 'status', version: chrome.runtime.getManifest().version, ...(await status()), busy: true })
+  try {
+    if (type === 'ping' || type === 'status') answer({ type: 'status', version: chrome.runtime.getManifest().version, ...(await status()) })
+    if (type === 'sync' || type === 'capiq' || type === 'thanks') {
+      chrome.runtime.sendMessage({ type: { capiq: 'capiq-now', thanks: 'thanks-now' }[type] || 'sync-now' }).catch(() => answer({ type: 'stale' }))
+      answer({ type: 'status', version: chrome.runtime.getManifest().version, ...(await status()), busy: true })
+    }
+  } catch {
+    // The reader was updated or reloaded after this page opened: this copy is cut off until the page is reloaded.
+    answer({ type: 'stale' })
   }
 })
 
-chrome.storage.onChanged.addListener(async () => answer({ type: 'status', version: chrome.runtime.getManifest().version, ...(await status()) }))
+chrome.storage.onChanged.addListener(async () => {
+  try {
+    answer({ type: 'status', version: chrome.runtime.getManifest().version, ...(await status()) })
+  } catch {
+    answer({ type: 'stale' })
+  }
+})

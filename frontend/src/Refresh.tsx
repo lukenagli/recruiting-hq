@@ -12,6 +12,7 @@ export type ReaderStatus = {
   has_key: boolean
   last: { at: string; lines: string[] } | null
   progress?: { pct: number; label: string } | null // from Reader 1.4
+  type?: 'status' | 'stale' // stale: the reader was updated after this page opened (from Reader 1.5.3)
 }
 
 /** How far along the reader is, while it works. */
@@ -37,10 +38,12 @@ function send(type: 'ping' | 'sync' | 'capiq' | 'thanks') {
 export function useReader() {
   const [status, setStatus] = useState<ReaderStatus | null>(null)
   const [checked, setChecked] = useState(false)
+  const [stale, setStale] = useState(false)
   useEffect(() => {
     function onMessage(e: MessageEvent) {
       if (e.source !== window || e.data?.source !== 'rhq-reader') return
-      setStatus(e.data as ReaderStatus)
+      if (e.data.type === 'stale') setStale(true)
+      else setStatus(e.data as ReaderStatus)
     }
     window.addEventListener('message', onMessage)
     send('ping')
@@ -50,7 +53,7 @@ export function useReader() {
       clearTimeout(t)
     }
   }, [])
-  return { status, installed: !!status, checked, sync: () => send('sync'), capiq: () => send('capiq'), thanks: () => send('thanks') }
+  return { status, installed: !!status || stale, stale, checked, sync: () => send('sync'), capiq: () => send('capiq'), thanks: () => send('thanks') }
 }
 
 /** The one-time catch-up for someone already recruiting: the thank-you emails they already sent, each filed on the
@@ -100,7 +103,7 @@ export function ThanksCatchUp({ onDone }: { onDone?: () => void }) {
 }
 
 export default function Refresh({ onDone }: { onDone?: () => void }) {
-  const { status, installed, checked, sync } = useReader()
+  const { status, installed, stale, checked, sync } = useReader()
   const allowance = useApi<{ ai_left: number }>('/api/sync/state') // the reader can't file anything once it's used up
   const [confirming, setConfirming] = useState(false)
   const [wasBusy, setWasBusy] = useState(false)
@@ -113,6 +116,12 @@ export default function Refresh({ onDone }: { onDone?: () => void }) {
     }
   }, [busy, wasBusy, onDone])
 
+  if (stale)
+    return (
+      <div className="refresh">
+        <button className="btn" onClick={() => window.location.reload()}>The reader was just updated: reload this page to refresh</button>
+      </div>
+    )
   if (!checked && !installed) return null
   if (!installed)
     return (

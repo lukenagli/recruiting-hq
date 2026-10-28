@@ -3,7 +3,7 @@
 // presses keys, never opens a reply or compose box, and never clicks anything in an email.
 
 const PANE_DATE = /(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun) (\d{1,2}\/\d{1,2}\/\d{4}) (\d{1,2}:\d{2} [AP]M)/g
-const MAX_PER_FOLDER = 25
+const MAX_OPEN = 60 // conversations opened per folder per refresh
 
 function folderNode(name) {
   return [...document.querySelectorAll('[role="tree"] [role="treeitem"]')].find((t) => (t.getAttribute('title') || '').startsWith(`${name} - `))
@@ -40,41 +40,57 @@ function rowTime(row) {
   return stamp ? rhqIso(rhqParse(stamp[1], stamp[2])) : ''
 }
 
+/** The conversations in the open folder with mail newer than `since`, oldest first: the list (newest first) is
+ *  scrolled down until it reaches mail from before the last refresh. Scrolling only; nothing is opened. */
+async function newRows(since, sinceDay) {
+  const found = new Map()
+  const sc = listScroller()
+  if (sc) sc.scrollTop = 0
+  await rhqSleep(500)
+  for (let k = 0, stale = 0; k < 200 && stale < 3; k++) {
+    let old = 0
+    for (const row of document.querySelectorAll('[role="listbox"] [role="option"]')) {
+      const id = row.getAttribute('data-convid')
+      const label = row.getAttribute('aria-label') || ''
+      const at = rowTime(row)
+      if (!id || /\[draft\]/i.test(label)) continue // never open a draft: Outlook opens it for editing
+      if (at ? at <= since : rowDay(row) < sinceDay) {
+        if (!/^(?:\S+\s+)*?Pinned\b/.test(label)) old++ // a pinned email sits on top whatever its date
+        continue
+      }
+      found.set(id, at)
+    }
+    if (old >= 3 || !sc) break // newest first: everything further down is older
+    const before = sc.scrollTop
+    sc.scrollTop += sc.clientHeight * 0.8
+    await rhqSleep(450)
+    stale = sc.scrollTop === before ? stale + 1 : 0
+  }
+  return [...found].sort((a, b) => a[1].localeCompare(b[1]))
+}
+
+/** New mail in one folder, oldest first. At most MAX_OPEN conversations are opened per refresh; the rest are newer
+ *  than everything filed this time, so the next refresh starts with them and nothing is skipped. */
 async function readFolder(name, since) {
   const node = folderNode(name)
-  if (!node || !rhqSafeClick(node, 'outlook-folders')) return []
+  if (!node || !rhqSafeClick(node, 'outlook-folders')) return { items: [], more: 0 }
   await rhqSleep(2500)
   await rhqWaitFor(() => document.querySelector('[role="listbox"] [role="option"]'))
-  const sinceDay = since ? new Date(since.slice(0, 10) + 'T00:00:00') : null
+  since = since || rhqIso(new Date(Date.now() - 14 * 864e5)) // no starting line: the last two weeks
+  const rows = await newRows(since, new Date(since.slice(0, 10) + 'T00:00:00'))
   const out = []
-  const rows = [...document.querySelectorAll('[role="listbox"] [role="option"]')].slice(0, MAX_PER_FOLDER)
-  let old = 0
-  for (const row of rows) {
-    const label = row.getAttribute('aria-label') || ''
-    const at = rowTime(row)
-    if (since && (at ? at <= since : rowDay(row) < sinceDay)) { // nothing newer than the last refresh: not opened
-      if (/^(?:\S+\s+)*?Pinned\b/.test(label)) continue // a pinned email sits on top whatever its date
-      if (++old >= 3) break // newest first: everything below is older
-      continue
+  for (const [id, at] of rows.slice(0, MAX_OPEN)) {
+    const text = ((await openConversation(id)) || '').trim()
+    if (!document.querySelector('[role="listbox"] [role="option"]')) {
+      throw new Error("Outlook's reading pane is turned off, so emails open over the list. In Outlook, choose View > Layout > " +
+                      'Reading pane > Show on the right, then refresh again.')
     }
-    old = 0
-    if (/\[draft\]/i.test(label)) continue // never open a draft: Outlook opens it for editing
-    const before = paneText()
-    if (!rhqSafeClick(row, 'outlook-messages')) continue
-    for (let w = 0; w < 15; w++) { // until the reading pane shows this email, not the last one
-      await rhqSleep(300)
-      if (paneText() !== before && paneText().length > 40) break
-    }
-    await rhqSleep(700)
-    const text = paneText().trim()
     const dates = [...text.matchAll(PANE_DATE)].map((d) => rhqIso(rhqParse(d[1], d[2])))
-    if (!dates.length) continue
-    const latest = dates.sort().slice(-1)[0]
-    if (since && latest <= since) continue
-    const subject = (text.split('\n').find((l) => l.trim()) || '').slice(0, 200)
-    out.push({ key: `${row.getAttribute('data-convid') || subject}|${latest}`, at: latest, author: '', text: text.slice(0, 8000) })
+    const when = at || dates.sort().slice(-1)[0]
+    if (!when || when <= since) continue
+    out.push({ key: `${id}|${when}`, at: when, author: '', text: text.slice(0, 8000) })
   }
-  return out
+  return { items: out, more: Math.max(0, rows.length - MAX_OPEN) }
 }
 
 /** Emails scheduled to send, read from the Drafts list WITHOUT opening them (Outlook opens a draft for editing).
@@ -205,8 +221,8 @@ chrome.runtime.onMessage.addListener((msg, _sender, reply) => {
     for (const [i, name] of list.entries()) {
       chrome.runtime.sendMessage({ type: 'outlook-progress', i, n: list.length, name }).catch(() => undefined)
       const since = msg.checkpoints[name] || msg.baseline
-      const items = await readFolder(name, since)
-      batches.push({ source: 'outlook', conversation: name, group_chat: false, items })
+      const { items, more } = await readFolder(name, since)
+      batches.push({ source: 'outlook', conversation: name, group_chat: false, items, more })
     }
     reply({ ok: true, batches })
   })().catch((e) => reply({ ok: false, error: String(e) }))
