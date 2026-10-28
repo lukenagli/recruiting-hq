@@ -33,6 +33,13 @@ function rowDay(row) {
   return new Date(now.getFullYear(), now.getMonth(), now.getDate() - 7) // today or this week: always open it
 }
 
+/** Exact time of a row's newest email, from the stamp Outlook puts on it ("Wed 10/28/2026 8:53 AM"), or '' (pinned rows). */
+function rowTime(row) {
+  const stamp = [...row.querySelectorAll('[title]')].map((t) => t.getAttribute('title') || '')
+    .map((t) => /(\d{1,2}\/\d{1,2}\/\d{4}) (\d{1,2}:\d{2}\s*[AP]M)/i.exec(t)).find(Boolean)
+  return stamp ? rhqIso(rhqParse(stamp[1], stamp[2])) : ''
+}
+
 async function readFolder(name, since) {
   const node = folderNode(name)
   if (!node || !rhqSafeClick(node, 'outlook-folders')) return []
@@ -44,7 +51,8 @@ async function readFolder(name, since) {
   let old = 0
   for (const row of rows) {
     const label = row.getAttribute('aria-label') || ''
-    if (sinceDay && rowDay(row) < sinceDay) {
+    const at = rowTime(row)
+    if (since && (at ? at <= since : rowDay(row) < sinceDay)) { // nothing newer than the last refresh: not opened
       if (/^(?:\S+\s+)*?Pinned\b/.test(label)) continue // a pinned email sits on top whatever its date
       if (++old >= 3) break // newest first: everything below is older
       continue
