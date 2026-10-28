@@ -195,7 +195,7 @@ def _prompt(ctx: dict, prof: dict, bank: str, tailor: bool = False) -> str:
     if tailor:  # names and roles only: what was said in the chats stays out of the letter
         names = lambda ps: "\n".join(f"- {p['name']} ({', '.join(x for x in (p['title'], p['grp']) if x) or 'role not recorded'})" for p in ps) or "- (none)"  # noqa: E731
         return "\n\n".join([
-            f"Student: {ctx['name']}",
+            f"Student writing the letter (\"My name is\" uses exactly this name): {ctx['name']}",
             f"School line: {prof['school_line'] or schools.default_school_line(sc) or '[[NEED: your school and year]]'}",
             f"Shape: exactly {n} paragraphs, as in the student's letter.",
             f"Applying to: Investment Banking {sc['role']} role at {bank}" + (f", {ctx['office']} office" if ctx["office"] else ""),
@@ -211,7 +211,7 @@ def _prompt(ctx: dict, prof: dict, bank: str, tailor: bool = False) -> str:
             f"The student's own letter, to tailor (keep paragraphs 2 onward):\n{prof['example_letter']}",
         ])
     parts = [
-        f"Student: {ctx['name']}",
+        f"Student writing the letter (\"My name is\" uses exactly this name): {ctx['name']}",
         f"School line: {prof['school_line'] or schools.default_school_line(sc) or '[[NEED: your school and year]]'}",
         f"Shape: exactly {n} paragraphs, {lo} to {hi} words in total.",
         f"Applying to: Investment Banking {sc['role']} role at {bank}"
@@ -241,6 +241,10 @@ TOO_SPECIFIC = re.compile(r"homework|case study|final project|super ?day|group[-
 def problems(paragraphs: list[str], bank: str, ctx: dict, template: str = "", tailor: bool = False) -> list[str]:
     text = "\n".join(paragraphs)
     found = []
+    # the writer's own name, exactly: a contact who shares a first name has been swapped in before
+    said = re.match(r"\s*My name is ([^,]+),", paragraphs[0]) if paragraphs else None
+    if ctx["name"] and paragraphs and (ctx["name"] not in paragraphs[0] or (said and said[1].strip() != ctx["name"])):
+        found.append(f"the opening must say \"My name is {ctx['name']}\": that is the student writing the letter, not anyone they met")
     if tailor:
         found += [f"it mentions \"{m}\": keep the opening to general reasons for the firm, as the sample letters do"
                   for m in dict.fromkeys(m.group(0) for m in TOO_SPECIFIC.finditer(paragraphs[0] if paragraphs else ""))]
@@ -303,6 +307,10 @@ async def write(uid: int, chosen: Chosen, bank: str) -> dict:
             break
         prompt = f"{base}\n\nYour last draft broke these rules, fix them and return the whole letter again:\n- " + "\n- ".join(issues) \
                  + "\n\nLast draft:\n" + "\n\n".join(paragraphs)
+    if ctx["name"] and paragraphs:  # last resort: the writer's own name is never left wrong
+        paragraphs[0] = re.sub(r"^(\s*My name is )[^,]+,", lambda m: f"{m[1]}{ctx['name']},", paragraphs[0])
+        if ctx["name"] in paragraphs[0]:
+            issues = [i for i in issues if not i.startswith('the opening must say "My name is')]
     for need in re.findall(r"\[\[NEED:\s*([^\]]+)\]\]", "\n".join(paragraphs)):
         issues.append(f"needs your input: {need.strip()}")
     if not ctx["spoken"]:
