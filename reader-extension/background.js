@@ -126,8 +126,10 @@ async function syncOutlook(state, lines) {
     if (!out.ok) return lines.push(`Outlook: ${out.error}`)
     // Newest mail first, so today's news is filed even if the day's allowance runs out partway.
     const newest = (b) => b.items.reduce((m, i) => (i.at > m ? i.at : m), '')
+    // What each folder showed, so a refresh that files nothing still says why.
+    lines.push(`Outlook read ${out.batches.length} folders: ` + out.batches.map((b) => `${b.conversation} (${b.note || 'nothing new'})`).join('; '))
     const batches = out.batches.filter((b) => b.items.length).sort((a, b) => newest(b).localeCompare(newest(a)))
-    for (const [i, { more, ...b }] of batches.entries()) {
+    for (const [i, { more, note, ...b }] of batches.entries()) {
       await progress(30 + (20 * i) / batches.length, `Filing what's new in ${b.conversation} (${i + 1} of ${batches.length})`)
       await file(b, lines)
       if (more) lines.push(`Outlook ${b.conversation}: ${more} more new email${more > 1 ? 's' : ''}, read on the next refresh.`)

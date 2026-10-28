@@ -30,7 +30,7 @@ FORBIDDEN = {
     r"\bfetch\s*\(|XMLHttpRequest|sendBeacon|WebSocket": "talks to the network from the page",
     r"window\.open|location\s*=|location\.href\s*=|\.assign\s*\(": "navigates the page",
 }
-SAFE_DEF = re.compile(r"function rhqSafeClick\(.*?\n}\n", re.S)
+SAFE_DEF = re.compile(r"function rhqSafe(Click|Expand)\(.*?\n}\n", re.S)
 BAD_PERMISSIONS = {"scripting", "debugger", "tabs", "cookies", "webRequest", "declarativeNetRequestWithHostAccess", "nativeMessaging",
                    "clipboardWrite", "clipboardRead", "management", "userScripts"}
 

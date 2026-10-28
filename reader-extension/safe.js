@@ -53,6 +53,22 @@ function rhqSafeClick(el, listName) {
   return true
 }
 
+/** Open up a collapsed folder in Outlook's folder tree so its subfolders show (Outlook loads with them folded away).
+ *  The only thing it presses is that folder's own expand arrow: the one icon-only button inside a collapsed tree item. */
+function rhqSafeExpand(item) {
+  if (rhqComposeOpen('outlook')) throw new RhqStop('Stopped: a compose or reply box was open, so the reader did nothing more.')
+  if (!item || !item.matches('[role="tree"] [role="treeitem"][aria-expanded="false"]')) return false
+  const arrows = item.querySelectorAll('button, [role="button"]')
+  if (arrows.length !== 1) return false
+  const arrow = arrows[0]
+  // icon fonts draw the arrow with a private-use character; any real text means it isn't the arrow
+  if (arrow.closest('[role="treeitem"]') !== item || arrow.textContent.replace(/[-\s]/g, '')) return false
+  if ([...arrow.querySelectorAll('*')].some((c) => !['SPAN', 'I', 'svg', 'path'].includes(c.tagName))) return false
+  if (RHQ_FORBIDDEN.test(`${arrow.getAttribute('aria-label') || ''} ${arrow.getAttribute('title') || ''}`)) return false
+  arrow.click()
+  return true
+}
+
 /** Wait until `test()` returns something truthy, checking every 250 ms, for at most `ms`. */
 async function rhqWaitFor(test, ms = 15000) {
   const end = Date.now() + ms

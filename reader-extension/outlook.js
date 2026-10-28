@@ -13,6 +13,18 @@ function folderNode(name) {
 const SKIP_FOLDERS = new Set(['Drafts', 'Deleted Items', 'Junk Email', 'Archive', 'Outbox', 'Conversation History', 'Notes', 'RSS Feeds',
   'RSS Subscriptions', 'Sync Issues', 'Conflicts', 'Local Failures', 'Server Failures', 'Clutter', 'Scheduled'])
 
+/** Unfold every collapsed folder (and the folders inside those), so subfolders like Recruiting > Goldman Sachs are read too. */
+async function expandAll() {
+  for (let pass = 0; pass < 4; pass++) {
+    const closed = [...document.querySelectorAll('[role="tree"] [role="treeitem"][aria-expanded="false"]')]
+      .filter((t) => !SKIP_FOLDERS.has((t.getAttribute('title') || '').replace(/ - \d+ items?.*$/, '').trim()))
+    if (!closed.length) return
+    for (const t of closed) {
+      if (rhqSafeExpand(t)) await rhqSleep(700)
+    }
+  }
+}
+
 /** Every mail folder shown in the folder list (everyone files mail differently), Inbox and Sent Items first.
  *  What isn't about banking recruiting or the finance club is dropped later, before anything is filed. */
 function folders() {
@@ -73,9 +85,12 @@ async function newRows(since, sinceDay) {
  *  than everything filed this time, so the next refresh starts with them and nothing is skipped. */
 async function readFolder(name, since) {
   const node = folderNode(name)
-  if (!node || !rhqSafeClick(node, 'outlook-folders')) return { items: [], more: 0 }
+  if (!node) return { items: [], more: 0, note: 'not in the folder list' }
+  if (!rhqSafeClick(node, 'outlook-folders')) return { items: [], more: 0, note: 'refused by the click guard' }
   await rhqSleep(2500)
-  await rhqWaitFor(() => document.querySelector('[role="listbox"] [role="option"]'))
+  if (!(await rhqWaitFor(() => document.querySelector('[role="listbox"] [role="option"]')))) {
+    return { items: [], more: 0, note: `no emails showed (${document.visibilityState} window)` }
+  }
   since = since || rhqIso(new Date(Date.now() - 14 * 864e5)) // no starting line: the last two weeks
   const rows = await newRows(since, new Date(since.slice(0, 10) + 'T00:00:00'))
   const out = []
@@ -90,7 +105,7 @@ async function readFolder(name, since) {
     if (!when || when <= since) continue
     out.push({ key: `${id}|${when}`, at: when, author: '', text: text.slice(0, 8000) })
   }
-  return { items: out, more: Math.max(0, rows.length - MAX_OPEN) }
+  return { items: out, more: Math.max(0, rows.length - MAX_OPEN), note: `${rows.length} new since ${since.slice(5, 16).replace('T', ' ')}` }
 }
 
 /** Emails scheduled to send, read from the Drafts list WITHOUT opening them (Outlook opens a draft for editing).
@@ -216,13 +231,14 @@ chrome.runtime.onMessage.addListener((msg, _sender, reply) => {
   if (msg.type !== 'outlook-collect') return
   ;(async () => {
     await rhqWaitFor(() => document.querySelector('[role="tree"] [role="treeitem"]'), 30000)
+    await expandAll()
     const batches = []
     const list = folders()
     for (const [i, name] of list.entries()) {
       chrome.runtime.sendMessage({ type: 'outlook-progress', i, n: list.length, name }).catch(() => undefined)
       const since = msg.checkpoints[name] || msg.baseline
-      const { items, more } = await readFolder(name, since)
-      batches.push({ source: 'outlook', conversation: name, group_chat: false, items, more })
+      const { items, more, note } = await readFolder(name, since)
+      batches.push({ source: 'outlook', conversation: name, group_chat: false, items, more, note })
     }
     reply({ ok: true, batches })
   })().catch((e) => reply({ ok: false, error: String(e) }))
