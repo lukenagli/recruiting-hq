@@ -47,9 +47,11 @@ def announced_on(deal_id: int, uid: int) -> date | None:
         row = conn.execute("""SELECT p.value FROM deal_points p JOIN deals d ON d.id = p.deal_id
                               WHERE p.deal_id = ? AND d.user_id = ? AND p.label = 'Timeline and status'""", (deal_id, uid)).fetchone()
     text = (row["value"] if row else "") or ""
-    m = re.search(r"announced\D{0,12}([A-Za-z]{3})[a-z]*[- ](\d{1,2}),?[- ](\d{4})", text, re.I)
+    # "announced May-14-2026", "announced July 10, 2026", or "announced July 10" (the year from elsewhere in the note)
+    m = re.search(r"announced\D{0,12}?([A-Za-z]{3})[a-z]*\.?[- ](\d{1,2})(?:,?[- ](\d{4}))?", text, re.I)
     if m and m[1].lower() in MONTHS:
-        return date(int(m[3]), MONTHS[m[1].lower()], int(m[2]))
+        year = m[3] or (re.search(r"\b(20\d{2})\b", text) or [None, str(date.today().year)])[1]
+        return date(int(year), MONTHS[m[1].lower()], int(m[2]))
     m = re.search(r"(\d{4})-(\d{2})-(\d{2})", text)
     return date(int(m[1]), int(m[2]), int(m[3])) if m else None
 
