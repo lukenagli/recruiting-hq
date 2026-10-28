@@ -32,10 +32,18 @@ async function unlockTab(tabId, filters) {
   await chrome.declarativeNetRequest.updateSessionRules({ removeRuleIds: filters.map((_, i) => base + i + 1) })
 }
 
+/** A minimized window at a full desktop size. Created minimized, a window is small, and Outlook then lays itself out
+ *  for a narrow screen with the folder list hidden; so it is opened at desktop size first and minimized at once. */
+async function minimizedWindow(url) {
+  const win = await chrome.windows.create({ url, focused: false, state: 'normal', width: 1440, height: 900 })
+  await chrome.windows.update(win.id, { state: 'minimized' })
+  return win
+}
+
 /** A tab with the network lock on before it loads anything, in a minimized window of its own so the student's
  *  windows never fill with tabs. Closing its only tab closes the window. */
 async function lockedTab(url, filters) {
-  const win = await chrome.windows.create({ url: 'about:blank', state: 'minimized', focused: false })
+  const win = await minimizedWindow('about:blank')
   const tab = win.tabs[0]
   await lockTab(tab.id, filters)
   await chrome.tabs.update(tab.id, { url })
@@ -184,7 +192,7 @@ async function syncWhatsApp(state, lines) {
   let [tab] = await chrome.tabs.query({ url: 'https://web.whatsapp.com/*' })
   let own = null
   if (!tab) {
-    own = await chrome.windows.create({ url: 'https://web.whatsapp.com/', state: 'minimized', focused: false })
+    own = await minimizedWindow('https://web.whatsapp.com/')
     tab = own.tabs[0]
     await loaded(tab.id)
   }

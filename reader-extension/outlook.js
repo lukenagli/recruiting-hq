@@ -230,7 +230,9 @@ chrome.runtime.onMessage.addListener((msg, _sender, reply) => {
   }
   if (msg.type !== 'outlook-collect') return
   ;(async () => {
-    await rhqWaitFor(() => document.querySelector('[role="tree"] [role="treeitem"]'), 30000)
+    if (!(await rhqWaitFor(() => document.querySelector('[role="tree"] [role="treeitem"]'), 30000))) {
+      throw new Error(`Outlook's folder list didn't show (window ${window.innerWidth}×${window.innerHeight}, ${document.visibilityState}), so nothing was read.`)
+    }
     await expandAll()
     const batches = []
     const list = folders()
