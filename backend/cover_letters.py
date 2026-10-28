@@ -48,7 +48,8 @@ You tailor a student's own investment banking cover letter to one bank, in the s
 second-years at the student's school sent (Cover Letter Guidance). Banks read these as a box to check: what matters \
 is a clean, professional "why this firm", the right names, and no mistakes. The student wrote the letter themselves \
 (often for another bank). Keep paragraphs 2 onward exactly as they wrote them, apart from a line that names another \
-bank. Rewrite only the opening paragraph, and the bank's name in the closing, for this bank.
+bank (and, for a group placement, the bridging sentences below). Rewrite only the opening paragraph, and the bank's \
+name in the closing, for this bank.
 
 The opening paragraph follows this pattern, sentence by sentence:
 1. "My name is <name>, and I am <school line> writing to express my strong interest in the <role> [in the <group> group] \
@@ -64,6 +65,17 @@ Never put specifics from the conversations or about how recruiting works into th
 final projects, training, staffing or mentor assignments, whether the program is group-specific or generalist as a \
 fact someone told you, team sizes, offices or headcounts, deals, anecdotes, or what any one person said or did. Keep \
 it general and gracious, the way every sample letter is.
+
+Group placement (the role is in one named group, not a generalist program): bankers want the letter to show why this \
+group and why this student for it. So:
+- In the opening, say plainly that the student is interested in that group specifically, and add one sentence with \
+the student's own reason for it, taken from their notes. If their notes give no reason, write [[NEED: why <group>, in \
+your own words]] there; never invent one.
+- In each experience paragraph, add at most one short sentence (or clause) that connects experience already in the \
+letter to the kind of companies or work the group covers, using only facts already in the letter or the resume. \
+Never add a new claim, figure or responsibility. Leave the rest of each paragraph as written, trimming a few words \
+elsewhere if needed so the letter keeps its length.
+- In the closing, name the group alongside the bank.
 
 Rules:
 - Never make anything up. Names must come from the list given; no facts about the bank beyond the general qualities above.
@@ -185,9 +197,13 @@ def _prompt(ctx: dict, prof: dict, bank: str, tailor: bool = False) -> str:
             f"Shape: exactly {n} paragraphs, as in the student's letter.",
             f"Applying to: Investment Banking {sc['role']} role at {bank}" + (f", {ctx['office']} office" if ctx["office"] else ""),
             ("Program: generalist; the reason in sentence 4 is the breadth of the generalist program." if ctx["generalist"] else
-             f"Group: {ctx['group'] or '[[NEED: group]]'}; name it in the first sentence, and sentence 4's reason is advising companies in it."),
+             f"Group placement: {ctx['group'] or '[[NEED: group]]'}; name it in the first sentence, and sentence 4's reason is "
+             "advising companies in it. Follow the group placement steps."),
             f"People the student has spoken with at {bank} (the only names you may use):\nBankers:\n{names(bankers)}\n"
             f"{sc['peers']} going to this bank (name them after the bankers, only if there are few bankers):\n{names(students)}",
+            *([] if ctx["generalist"] else [
+                f"The student's notes (their target groups and why, what to highlight):\n{profiles.background(prof) or '(none)'}",
+                f"Resume (facts the bridging sentences may use):\n{prof['resume_text'] or '(not provided)'}"]),
             f"Rules from the student's own notes:\n{prof['email_rules'] or '(none)'}",
             f"The student's own letter, to tailor (keep paragraphs 2 onward):\n{prof['example_letter']}",
         ])
