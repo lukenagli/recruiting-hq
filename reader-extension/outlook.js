@@ -72,7 +72,7 @@ async function newRows(since, sinceDay) {
         if (!/^(?:\S+\s+)*?Pinned\b/.test(label)) old++ // a pinned email sits on top whatever its date
         continue
       }
-      found.set(id, at)
+      found.set(id, { at, label })
     }
     if (old >= 3 || !sc) break // newest first: everything further down is older
     if (sc.scrollTop + sc.clientHeight >= sc.scrollHeight - 5) break // the whole folder is on screen
@@ -81,12 +81,14 @@ async function newRows(since, sinceDay) {
     await rhqSleep(450)
     stale = sc.scrollTop === before ? stale + 1 : 0
   }
-  return [...found].sort((a, b) => a[1].localeCompare(b[1]))
+  return [...found].map(([id, r]) => ({ id, ...r })).sort((a, b) => a.at.localeCompare(b.at))
 }
 
 /** New mail in one folder, oldest first. At most MAX_OPEN conversations are opened per refresh; the rest are newer
- *  than everything filed this time, so the next refresh starts with them and nothing is skipped. */
-async function readFolder(name, since, patience = 10000) {
+ *  than everything filed this time, so the next refresh starts with them and nothing is skipped.
+ *  `screen` (a regex) is for folders the student doesn't keep recruiting mail in: there an email is only opened when
+ *  the sender, subject and preview Outlook shows mention a bank, the process or someone in their tracker. */
+async function readFolder(name, since, patience = 10000, screen = null) {
   const node = folderNode(name)
   if (!node) return { items: [], more: 0, note: 'not in the folder list' }
   const firstId = () => document.querySelector('[role="listbox"] [role="option"]')?.getAttribute('data-convid') || ''
@@ -102,9 +104,10 @@ async function readFolder(name, since, patience = 10000) {
   await rhqSleep(250)
   if (!firstId()) return { items: [], more: 0, note: count ? `its ${count} emails didn't load` : 'empty' }
   since = since || rhqIso(new Date(Date.now() - 14 * 864e5)) // no starting line: the last two weeks
-  const rows = await newRows(since, new Date(since.slice(0, 10) + 'T00:00:00'))
+  const all = await newRows(since, new Date(since.slice(0, 10) + 'T00:00:00'))
+  const rows = screen ? all.filter((r) => screen.test(r.label)) : all
   const out = []
-  for (const [id, at] of rows.slice(0, MAX_OPEN)) {
+  for (const { id, at } of rows.slice(0, MAX_OPEN)) {
     const text = ((await openConversation(id)) || '').trim()
     if (!document.querySelector('[role="listbox"] [role="option"]')) {
       throw new Error("Outlook's reading pane is turned off, so emails open over the list. In Outlook, choose View > Layout > " +
@@ -115,7 +118,11 @@ async function readFolder(name, since, patience = 10000) {
     if (!when || when <= since) continue
     out.push({ key: `${id}|${when}`, at: when, author: '', text: text.slice(0, 8000) })
   }
-  return { items: out, more: Math.max(0, rows.length - MAX_OPEN), note: `${rows.length} new since ${since.slice(5, 16).replace('T', ' ')}` }
+  const more = Math.max(0, rows.length - MAX_OPEN)
+  // A screened folder whose matching emails were all opened: everything up to its newest email has been looked at.
+  const seenUntil = screen && !more ? all.map((r) => r.at).filter(Boolean).sort().slice(-1)[0] || '' : ''
+  const note = `${all.length} new since ${since.slice(5, 16).replace('T', ' ')}` + (screen && all.length ? `, ${rows.length} about recruiting` : '')
+  return { items: out, more, note, seen_until: seenUntil }
 }
 
 /** Emails scheduled to send, read from the Drafts list WITHOUT opening them (Outlook opens a draft for editing).
@@ -246,18 +253,29 @@ chrome.runtime.onMessage.addListener((msg, _sender, reply) => {
     await expandAll()
     const batches = []
     const list = folders()
+    // Read in full: Inbox, Sent Items, folders named after a bank or recruiting, and folders where recruiting news
+    // was found before (msg.watch, from Recruiting HQ). Every other folder is still checked, but screened.
+    let screen = null
+    try {
+      screen = msg.screen ? new RegExp(msg.screen, 'i') : null
+    } catch {
+      screen = null // an unreadable pattern: read everything in full, as before
+    }
+    const full = (name) => !screen || ['Inbox', 'Sent Items'].includes(name) || (msg.watch || []).includes(name) || screen.test(name)
+    const screenFor = (name) => (full(name) ? null : screen)
     for (const [i, name] of list.entries()) {
       chrome.runtime.sendMessage({ type: 'outlook-progress', i, n: list.length, name }).catch(() => undefined)
       const since = msg.checkpoints[name] || msg.baseline
-      const { items, more, note } = await readFolder(name, since)
-      batches.push({ source: 'outlook', conversation: name, group_chat: false, items, more, note })
+      const r = await readFolder(name, since, 10000, screenFor(name))
+      batches.push({ source: 'outlook', conversation: name, group_chat: false, ...r })
     }
     // While Outlook is still starting up in a minimized window, the first folders' lists often don't show; by the
     // end of the pass it has, so those folders get a second, more patient try.
     for (const b of batches.filter((b) => /didn't load/.test(b.note || ''))) {
-      const again = await readFolder(b.conversation, msg.checkpoints[b.conversation] || msg.baseline, 45000)
+      const again = await readFolder(b.conversation, msg.checkpoints[b.conversation] || msg.baseline, 45000, screenFor(b.conversation))
       b.items = again.items
       b.more = again.more
+      b.seen_until = again.seen_until
       b.note = `${again.note} (second try)`
     }
     reply({ ok: true, batches })

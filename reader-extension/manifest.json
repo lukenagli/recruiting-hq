@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Recruiting HQ Reader",
-  "version": "1.5.8",
+  "version": "1.6.0",
   "description": "Reads (never sends) what's new in your recruiting email, Slack and WhatsApp and files it in Recruiting HQ.",
   "permissions": ["storage", "declarativeNetRequest"],
   "host_permissions": [

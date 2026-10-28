@@ -126,6 +126,7 @@ class Batch(BaseModel):
     conversation: str     # folder, channel, DM or group name
     group_chat: bool = False
     baseline: str = ""    # the reader's starting line, local ISO time; used for a conversation with no checkpoint yet
+    seen_until: str = ""  # a screened Outlook folder: everything up to here was looked at, even what wasn't sent
     items: list[Item]
 
 
@@ -176,7 +177,35 @@ def state(uid: int) -> dict:
             slack.append({"id": "", "name": chat["name"], "group": True})
         elif chat["app"] == "whatsapp" and chat["name"] not in whatsapp:
             whatsapp.append(chat["name"])
-    return {"checkpoints": out, "season_start": SEASON_START, "log": log, "has_key": has_key, "config": config}
+    return {"checkpoints": out, "season_start": SEASON_START, "log": log, "has_key": has_key, "config": config,
+            "outlook": {"watch": _watched_folders(uid), "screen": _screen(uid)}}
+
+
+def _watched_folders(uid: int) -> list[str]:
+    """Outlook folders where filing has changed the tracker before: the reader reads these in full. Other folders
+    (besides Inbox, Sent Items and folders named after a bank or recruiting) are screened by _screen."""
+    with connect(read_only=True) as conn:
+        rows = conn.execute("""SELECT DISTINCT user_message FROM agent_runs WHERE user_id = ? AND snapshot IS NOT NULL
+                               AND user_message LIKE 'New messages from my Outlook email, %'""", (uid,)).fetchall()
+    found = (re.match(r"New messages from my Outlook email, (['\"])(.*?)\1, read by", r["user_message"]) for r in rows)
+    return sorted({m[2] for m in found if m})
+
+
+def _js_escape(text: str) -> str:
+    return re.sub(r"[.*+?^${}()|[\]\\/]", lambda m: "\\" + m[0], text)
+
+
+def _screen(uid: int) -> str:
+    """A pattern (JavaScript regex source, case-insensitive) for the sender, subject and preview Outlook shows in its
+    list: an email in a screened folder is only opened when they mention a bank, the process, or someone in the
+    student's tracker. Also used on folder names, to read folders named after a bank in full."""
+    with connect(read_only=True) as conn:
+        names = [r["name"] for r in conn.execute("SELECT DISTINCT name FROM people WHERE user_id = ?", (uid,))]
+    surnames = {n.split()[-1] for n in names if len(n.split()) > 1 and len(n.split()[-1]) >= 4}
+    words = [RELEVANT.pattern, r"finance club|investment bank|\bibd?\b|summer associate|recruiting|networking|first round|hirevue",
+             "|".join(_js_escape(b) for b in sorted(bank_info.DOMAINS)),
+             "|".join(_js_escape(s) for s in sorted(surnames))]
+    return "|".join(w for w in words if w)
 
 
 def _group_chats(uid: int) -> list[dict]:
@@ -288,14 +317,18 @@ async def ingest(user: dict, chosen: Chosen, batch: Batch) -> dict:
             out = await assistant.run(user, chosen, _message(batch, chunk, sc["short"] or "my school"), [], transcript=True)
             filed += len(chunk)
             note = out["reply"][:400]
-    if fresh:
-        top = max(i.at for i in fresh)
+    top = max((i.at for i in fresh), default="")
+    if batch.seen_until[:10] >= SEASON_START and batch.seen_until > max(top, last_at or ""):
+        top = batch.seen_until  # a screened folder: the emails passed over up to here needn't be looked at again
+    if top and (fresh or top > (last_at or "")):
         keys = "|".join(_key(i) for i in fresh if i.at == top)
         with connect() as conn:
             conn.execute("""INSERT INTO sync_state (user_id, source, conversation, last_at, last_keys, updated_at) VALUES (?, ?, ?, ?, ?, ?)
                             ON CONFLICT(user_id, source, conversation) DO UPDATE SET last_at = excluded.last_at,
                             last_keys = excluded.last_keys, updated_at = excluded.updated_at""",
                          (uid, batch.source, batch.conversation, top, keys, now))
+    if not batch.items:  # only moved a screened folder's checkpoint on
+        return {"ok": True, "received": 0, "new": 0, "filed": 0, "note": ""}
     return _log(uid, now, batch, len(batch.items), len(fresh), filed, note or ("Nothing new." if not fresh else "Nothing relevant."))
 
 

@@ -116,10 +116,10 @@ chrome.runtime.onMessage.addListener((msg, sender) => {
 })
 
 async function file(batch, lines) {
-  if (!batch.items.length) return
+  if (!batch.items.length && !batch.seen_until) return
   const { baseline } = await chrome.storage.local.get('baseline')
   const out = await api('/api/sync/ingest', { ...batch, baseline })
-  lines.push(`${batch.source} · ${batch.conversation}: ${out.new} new, ${out.filed} filed. ${out.note || ''}`.trim())
+  if (batch.items.length) lines.push(`${batch.source} · ${batch.conversation}: ${out.new} new, ${out.filed} filed. ${out.note || ''}`.trim())
 }
 
 async function syncOutlook(state, lines) {
@@ -136,14 +136,15 @@ async function syncOutlook(state, lines) {
     await progress(5, 'Reading Outlook')
     await loaded(tab.id)
     outlookShare = [5, 30]
-    const out = await ask(tab.id, { type: 'outlook-collect', checkpoints: state.checkpoints.outlook || {}, baseline: state.baseline })
+    const out = await ask(tab.id, { type: 'outlook-collect', checkpoints: state.checkpoints.outlook || {}, baseline: state.baseline,
+                                    watch: (state.outlook || {}).watch || [], screen: (state.outlook || {}).screen || '' })
     outlookShare = null
     if (!out.ok) return lines.push(`Outlook: ${out.error}`)
     // Newest mail first, so today's news is filed even if the day's allowance runs out partway.
     const newest = (b) => b.items.reduce((m, i) => (i.at > m ? i.at : m), '')
     // What each folder showed, so a refresh that files nothing still says why.
     lines.push(`Outlook read ${out.batches.length} folders: ` + out.batches.map((b) => `${b.conversation} (${b.note || 'nothing new'})`).join('; '))
-    const batches = out.batches.filter((b) => b.items.length).sort((a, b) => newest(b).localeCompare(newest(a)))
+    const batches = out.batches.filter((b) => b.items.length || b.seen_until).sort((a, b) => newest(b).localeCompare(newest(a)))
     for (const [i, { more, note, ...b }] of batches.entries()) {
       await progress(30 + (20 * i) / batches.length, `Filing what's new in ${b.conversation} (${i + 1} of ${batches.length})`)
       await file(b, lines)
