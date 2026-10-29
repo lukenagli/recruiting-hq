@@ -64,10 +64,12 @@ last item ("...the breadth of its global platform, and the growth of its <group>
 reason for the firm, make the reason advising the group's companies ("...in combination with the opportunity to \
 advise leading <the group's kind of companies> on their most important transactions, has cemented my interest in \
 <bank>").
-  - Experience paragraphs: where a phrase points the student's experience at a different industry or group, re-angle \
-it toward this group using only facts already in the letter or the resume. For example, a list of other industries \
-can become "supporting the firm's portfolio airlines, where consumer demand and pricing strategy drive performance" \
-for a consumer group. The paragraph's last line can name the group ("...required to succeed as a Summer Associate in \
+  - Experience paragraphs: where a phrase points the student's experience at a different industry or group, replace \
+that phrase (don't add to it) with one aimed at this group, using only facts already in the letter or the resume, \
+so the sentence stays about as long. For example, for a consumer group, "evaluate new investments across industries \
+including aviation, aerospace and defense, and energy, while also supporting the firm's portfolio companies" becomes \
+"evaluate new investments while also supporting the firm's portfolio airlines, where consumer demand and pricing \
+strategy drive performance". The paragraph's last line can name the group ("...required to succeed as a Summer Associate in \
 the <group> group"). At most one such change per paragraph; leave everything else as written.
   - Closing: name the group with the bank ("...beginning my career in investment banking with the <group> group at \
 <bank>").
@@ -157,6 +159,17 @@ def _added(tailored: str, original: str) -> list[str]:
         return []
     likeness = lambda s: max((len(words(s) & m) / max(1, len(words(s))) for m in mine), default=0)  # noqa: E731
     return sorted(theirs, key=likeness)[:extra]
+
+
+def _grown(tailored: str, original: str) -> list[tuple[str, int]]:
+    """Each tailored sentence with how many words longer it is than the student's sentence it is most like."""
+    words = lambda s: set(re.findall(r"[a-z']+", s.lower()))  # noqa: E731
+    mine = _sentences(original)
+    out = []
+    for s in _sentences(tailored):
+        twin = max(mine, key=lambda m: len(words(s) & words(m)), default="")
+        out.append((s, len(s.split()) - len(twin.split())))
+    return out
 
 
 def shape(template: str) -> tuple[int, int, int]:
@@ -311,6 +324,9 @@ def problems(paragraphs: list[str], bank: str, ctx: dict, template: str = "", ta
                       "into one of the student's existing sentences instead" for s in _added(tailored, original)]
             if len(_sentences(tailored)) < len(_sentences(original)):
                 found.append(f"paragraph {k} drops one of the student's sentences: keep every sentence, changing only the words that must")
+            if k > 1:  # experience and closing: a phrase aimed at the group replaces one, it isn't tacked on
+                found += [f'the sentence "{s}" is {grew} words longer than the student\'s: replace the words that point elsewhere '
+                          "instead of adding to them" for s, grew in _grown(tailored, original) if grew > 6]
         group = ctx["group"].strip()
         if group and not ctx["generalist"]:
             found += [f'the sentence "{s}" names the {group} group more than once: name it once' for p in paragraphs
