@@ -3,10 +3,10 @@
 Word lays the letter out on the student's computer, so the server measures it the way Word will: the template's
 font (Times New Roman is measured with Liberation Serif, which has exactly its letter widths), size, margins and
 spacing, breaking each paragraph into lines word by word. When the letter would not fit on one page, only its
-margins come in, by the least that makes it fit (the bottom one to just above the contact
-footer, then the top one by up to a quarter inch): the template's fonts, sizes and spacing are kept exactly. A
-letter still too long needs shorter text: the writer shortens its drafts, and the page says how much to cut. The PDF is drawn from the same measurements, on the
-template's letterhead, so it matches the Word file.
+margins come in, by the least that makes it fit (the bottom one to just above the contact footer, then the top
+one by up to a quarter inch): the template's fonts, sizes and spacing are kept exactly. A letter still too long
+needs shorter text: the writer shortens its drafts, and the page says how much to cut. The PDF is drawn from the
+same measurements, on the template's letterhead, so it matches the Word file.
 """
 import hashlib
 import io
