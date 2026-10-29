@@ -2,8 +2,8 @@
 
 Word lays the letter out on the student's computer, so the server measures it the way Word will: the template's
 font (Times New Roman is measured with Liberation Serif, which has exactly its letter widths), size, margins and
-spacing, breaking each paragraph into lines word by word. When the letter would not fit on one page with room to
-spare, only its margins come in, a little and only as far as needed (the bottom one to just above the contact
+spacing, breaking each paragraph into lines word by word. When the letter would not fit on one page, only its
+margins come in, by the least that makes it fit (the bottom one to just above the contact
 footer, then the top one by up to a quarter inch): the template's fonts, sizes and spacing are kept exactly. A
 letter still too long needs shorter text: the writer shortens its drafts, and the page says how much to cut. The PDF is drawn from the same measurements, on the
 template's letterhead, so it matches the Word file.
@@ -23,9 +23,11 @@ FONTS = {  # family -> regular font files to measure and draw with, first found 
     "sans": ["/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf", "C:/Windows/Fonts/arial.ttf"],
 }
 BUILT_IN = {"serif": "Times-Roman", "sans": "Helvetica"}
-LINE = {"serif": 1.15, "sans": 1.15}  # Word's single line height per point of text (ascent, descent and line gap)
+# Word's single line height per point of text. Times New Roman: Luke's 48-line letter ran onto a second page with
+# a 1 in bottom margin and fit with 0.9 in, which puts it between 1.125 and 1.139.
+LINE = {"serif": 1.132, "sans": 1.15}
 ASCENT = {"serif": 0.93, "sans": 0.94}  # from the top of a line to its baseline, per point
-ROOM = Pt(13)  # the letter must end at least a line above the bottom margin, in case Word wraps a line differently
+ROOM = Pt(2)  # a little room at the bottom, so the margins change as little as possible
 TOP_GIVE = Inches(0.25)  # how far the top margin may come up (1.75 in to 1.5 in on the Yale template)
 EMU_PT = 12700
 
@@ -180,8 +182,7 @@ def fit_one_page(doc) -> float:
         sec.bottom_margin = Emu(max(floor, sec.bottom_margin - up(short())))
     if short() > 0:
         sec.top_margin = Emu(sec.top_margin - min(TOP_GIVE, up(short())))
-    # With both margins as far as they go, a letter that fits without the spare line is still accepted: the
-    # measuring matched Word on real letters, the spare line is only extra care.
+    # With both margins as far as they go, a letter that fits without the little extra room is still accepted.
     line = max((b["height"] for b in blocks(doc)), default=Pt(13).pt)
     return max(0.0, (_used(doc) - _room(doc)) / line)
 
