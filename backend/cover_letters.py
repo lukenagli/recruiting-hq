@@ -138,10 +138,26 @@ agent = Agent(output_type=Letter, instructions=WRITE + INSTRUCTIONS + WRITE_RULE
 tailor_agent = Agent(output_type=Letter, instructions=TAILOR, name="cover_letter_writer")
 
 
+def _body(template: str) -> list[str]:
+    """The body paragraphs of the user's letter, without the date, address, greeting and sign-off lines."""
+    return [b for b in re.split(r"\n\s*\n|\n", template or "") if len(b.split()) >= 25]
+
+
+def _sentences(text: str) -> list[str]:
+    return [s for s in re.split(r"(?<=[.!?])\s+(?=[A-Z])", text.strip()) if s]
+
+
+def _added(tailored: str, original: str) -> list[str]:
+    """Sentences in a tailored paragraph that aren't one of the student's own sentences with a few words changed."""
+    words = lambda s: set(re.findall(r"[a-z']+", s.lower()))  # noqa: E731
+    mine = [words(s) for s in _sentences(original)]
+    return [s for s in _sentences(tailored)
+            if not any(len(words(s) & m) >= 0.5 * max(1, len(words(s))) for m in mine)]
+
+
 def shape(template: str) -> tuple[int, int, int]:
     """(paragraphs, min words, max words) for the letter, read from the user's template when it has one."""
-    blocks = [b for b in re.split(r"\n\s*\n|\n", template or "") if b.strip()]
-    body = [b for b in blocks if len(b.split()) >= 25]  # skips the date, address, greeting and sign-off lines
+    body = _body(template)
     if 2 <= len(body) <= 6:
         words = sum(len(b.split()) for b in body)
         return len(body), max(180, int(words * 0.85)), min(650, int(words * 1.12) + 10)
@@ -251,6 +267,13 @@ def problems(paragraphs: list[str], bank: str, ctx: dict, template: str = "", ta
     if tailor:
         found += [f"it mentions \"{m}\": keep the opening to general reasons for the firm, as the sample letters do"
                   for m in dict.fromkeys(m.group(0) for m in TOO_SPECIFIC.finditer(paragraphs[0] if paragraphs else ""))]
+        if not ctx["generalist"] and paragraphs and "These factors, in addition to" not in paragraphs[0]:
+            found.append('sentence 4 of the opening must start "These factors, in addition to the opportunity to advise leading", '
+                         "as in the group placement steps")
+        # paragraphs 2 onward are the student's own: the group is woven into an existing sentence, never a sentence added
+        for k, (tailored, original) in enumerate(zip(paragraphs[1:], _body(template)[1:]), start=2):
+            found += [f'paragraph {k} adds the sentence "{s}": drop it, and if the group needs a mention there, put a few words '
+                      "into one of the student's existing sentences instead" for s in _added(tailored, original)]
     words = len(text.split())
     n, lo, hi = shape(template)
     lo, hi = lo - 30, hi + 20  # a little slack around the asked-for range before it counts as a problem
