@@ -90,7 +90,7 @@ function clock(note: string) {
   const range = /\b(\d{1,2})(?::(\d{2}))?\s*(?:([ap])\.?m\.?)?\s*(?:[–—-]|to)\s*\d{1,2}(?::\d{2})?\s*([ap])\.?m\b/i.exec(note)
   const one = /\b(\d{1,2})(?::(\d{2}))?\s*([ap])\.?m\b/i.exec(note)
   const [h, m, ap] = range ? [range[1], range[2], range[3] || range[4]] : one ? [one[1], one[2], one[3]] : []
-  return h ? `${Number(h)}:${m ?? '00'} ${ap.toUpperCase()}M` : ''
+  return h && ap ? `${Number(h)}:${m ?? '00'} ${ap.toUpperCase()}M` : ''
 }
 
 /** True once a timed item started more than an hour ago (it has happened); untimed items stay until the day is over. */
