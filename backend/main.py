@@ -840,7 +840,10 @@ def list_cover_letters(user: dict = Depends(current_user)):
 
 @app.get("/api/cover-letters/{bank}")
 def get_cover_letter(bank: str, user: dict = Depends(current_user)):
-    return cover_letters.get(user["id"], bank)
+    out = cover_letters.get(user["id"], bank)
+    if out["exists"] and accounts.in_preview(user):  # preview: say when it can't be kept on one page
+        out["warnings"] = out["warnings"] + cover_letters.page_warning(user["id"], bank)
+    return out
 
 
 @app.post("/api/cover-letters/{bank}/write")

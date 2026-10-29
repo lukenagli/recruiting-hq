@@ -3,15 +3,15 @@
 Word lays the letter out on the student's computer, so the server measures it the way Word will: the template's
 font (Times New Roman is measured with Liberation Serif, which has exactly its letter widths), size, margins and
 spacing, breaking each paragraph into lines word by word. When the letter would not fit on one page with room to
-spare, it is tightened a step at a time (the bottom margin, as far as the contact footer allows, then the blank
-lines between paragraphs, then the text size) until it does. The PDF is drawn from the same measurements, on the
+spare, only its margins come in, a little and only as far as needed (the bottom one to just above the contact
+footer, then the top one by up to a quarter inch): the template's fonts, sizes and spacing are kept exactly. A
+letter still too long needs shorter text: the writer shortens its drafts, and the page says how much to cut. The PDF is drawn from the same measurements, on the
 template's letterhead, so it matches the Word file.
 """
 import hashlib
 import io
 from pathlib import Path
 
-from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
 from docx.shared import Emu, Inches, Pt
 
@@ -26,6 +26,7 @@ BUILT_IN = {"serif": "Times-Roman", "sans": "Helvetica"}
 LINE = {"serif": 1.15, "sans": 1.15}  # Word's single line height per point of text (ascent, descent and line gap)
 ASCENT = {"serif": 0.93, "sans": 0.94}  # from the top of a line to its baseline, per point
 ROOM = Pt(13)  # the letter must end at least a line above the bottom margin, in case Word wraps a line differently
+TOP_GIVE = Inches(0.25)  # how far the top margin may come up (1.75 in to 1.5 in on the Yale template)
 EMU_PT = 12700
 
 
@@ -161,58 +162,28 @@ def _footer_top(doc) -> int | None:
     return min(tops) if tops else None
 
 
-def _set_mark_size(p, half_points: int) -> None:
-    ppr = p._p.get_or_add_pPr()
-    rpr = ppr.find(qn("w:rPr"))
-    if rpr is None:
-        rpr = OxmlElement("w:rPr")
-        ppr.append(rpr)
-    for tag in ("w:sz", "w:szCs"):
-        el = rpr.find(qn(tag))
-        if el is None:
-            el = OxmlElement(tag)
-            rpr.append(el)
-        el.set(qn("w:val"), str(half_points))
-
-
 def fits(doc) -> bool:
     return _used(doc) <= _room(doc) - ROOM.pt
 
 
-def fit_one_page(doc) -> list[str]:
-    """Tighten the letter until it fits on one page with room to spare. Returns what was changed."""
-    sec, changed = doc.sections[0], []
+def fit_one_page(doc) -> float:
+    """Keep the letter on one page by bringing in the margins only as far as it needs, so they still look like the
+    template's: the bottom one down to just above the contact footer, then the top one by at most TOP_GIVE. The
+    template's fonts, sizes and spacing are never changed. Returns how many lines it is still over (0 when it fits);
+    a letter that is over needs shorter text."""
+    sec, step = doc.sections[0], Inches(0.05)
     footer = _footer_top(doc)
     floor = max(Inches(0.5), sec.page_height - footer + Inches(0.1)) if footer else Inches(0.6)
-    first = next((i for i, p in enumerate(doc.paragraphs) if p.text.strip()), 0)
-    last = max((i for i, p in enumerate(doc.paragraphs) if p.text.strip()), default=0)
-    blanks = [p for p in doc.paragraphs[first:last] if not p.text.strip()]
-
-    def margin(inches):
-        target = max(floor, Inches(inches))
-        if sec.bottom_margin > target:
-            sec.bottom_margin = Emu(target)
-            changed.append(f"bottom margin {target / 914400:.2f} in")
-
-    def blank_lines(points):
-        for p in blanks:
-            _set_mark_size(p, points * 2)
-        if blanks:
-            changed.append(f"blank lines {points} pt")
-
-    def text_size(points):
-        for p in doc.paragraphs:
-            for r in p.runs:
-                if r.text.strip() and r.font.size and r.font.size.pt > points:
-                    r.font.size = Pt(points)
-        changed.append(f"text {points} pt")
-
-    for step in (lambda: margin(0.8), lambda: margin(0.6), lambda: blank_lines(9), lambda: blank_lines(7),
-                 lambda: text_size(10.5), lambda: text_size(10)):
-        if fits(doc):
-            break
-        step()
-    return changed
+    short = lambda: Pt(_used(doc)) + ROOM - (sec.page_height - sec.top_margin - sec.bottom_margin)  # noqa: E731
+    up = lambda length: -(-length // step) * step  # rounded up to a twentieth of an inch, as a person would set  # noqa: E731
+    if short() > 0 and sec.bottom_margin > floor:
+        sec.bottom_margin = Emu(max(floor, sec.bottom_margin - up(short())))
+    if short() > 0:
+        sec.top_margin = Emu(sec.top_margin - min(TOP_GIVE, up(short())))
+    # With both margins as far as they go, a letter that fits without the spare line is still accepted: the
+    # measuring matched Word on real letters, the spare line is only extra care.
+    line = max((b["height"] for b in blocks(doc)), default=Pt(13).pt)
+    return max(0.0, (_used(doc) - _room(doc)) / line)
 
 
 # ---- The PDF ----

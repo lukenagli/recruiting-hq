@@ -323,12 +323,19 @@ async def write(uid: int, chosen: Chosen, bank: str) -> dict:
     total = {"input_tokens": 0, "cached_input_tokens": 0, "output_tokens": 0, "requests": 0}
     prompt, issues, paragraphs = base, [], []
     output = NativeOutput(Letter) if chosen.provider == "anthropic" else None  # Claude rejects forced tool calls
-    for _ in range(2):
+    for _ in range(3):
         result = await writer.run(prompt, model=chosen.model, model_settings=chosen.settings, usage_limits=LIMITS, output_type=output)
         for k, v in usage_dict(result.usage).items():
             total[k] += v
         paragraphs = [" ".join(p.split()) for p in result.output.paragraphs if p.strip()]
         issues = problems(paragraphs, bank, ctx, prof["example_letter"], tailor)
+        if tailor:  # preview: it must fit on one page in the student's own template, margins barely touched
+            over = letter_layout.fit_one_page(_document(uid, bank, paragraphs))
+            if over:
+                lines = max(1, round(over + 0.49))
+                issues.append(f"it runs about {lines} line{'s' if lines > 1 else ''} past one page: cut about {lines * 14 + 5} "
+                              "words, from the opening first, then by tightening wording in the other paragraphs (keep every "
+                              "fact, name and sentence)")
         if not issues:
             break
         prompt = f"{base}\n\nYour last draft broke these rules, fix them and return the whole letter again:\n- " + "\n- ".join(issues) \
@@ -466,8 +473,21 @@ def pdf_bytes(uid: int, bank: str) -> bytes:
     return letter_layout.pdf_bytes(doc)
 
 
-def _document(uid: int, bank: str):
-    """The letter written into a copy of the user's own cover letter (or the Yale SOM template), so the fonts,
+def page_warning(uid: int, bank: str) -> list[str]:
+    """Preview: a letter too long for one page even with the bottom margin as low as the contact footer allows."""
+    try:
+        over = letter_layout.fit_one_page(_document(uid, bank))
+    except Exception:  # a template this can't measure: the Word file is still offered as it is
+        return []
+    if not over:
+        return []
+    lines = max(1, round(over + 0.49))
+    return [f"it runs about {lines} line{'s' if lines > 1 else ''} past one page, even with the bottom margin as low as your "
+            f"contact footer allows; cut about {lines * 14} words to keep it on one page"]
+
+
+def _document(uid: int, bank: str, paragraphs: list[str] | None = None):
+    """The letter (or a draft of it: `paragraphs`) written into a copy of the user's own cover letter (or the Yale SOM template), so the fonts,
     margins and spacing are exactly theirs: date, recipient block, salutation, body and signature are replaced,
     everything else in the file is kept."""
     from copy import deepcopy
@@ -476,6 +496,8 @@ def _document(uid: int, bank: str):
     from docx.text.paragraph import Paragraph
 
     letter = get(uid, bank)
+    if paragraphs is not None:
+        letter["paragraphs"] = paragraphs
     keep = accounts.in_preview_uid(uid)  # preview: keep the text boxes (the contact footer) the template anchors to lines
     doc = docx.Document(io.BytesIO(templates.cover_template_bytes(uid)))
     spots = templates.layout(doc)
