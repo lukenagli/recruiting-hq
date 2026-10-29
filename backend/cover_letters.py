@@ -162,13 +162,16 @@ def _added(tailored: str, original: str) -> list[str]:
 
 
 def _grown(tailored: str, original: str) -> list[tuple[str, int]]:
-    """Each tailored sentence with how many words longer it is than the student's sentence it is most like."""
+    """Each tailored sentence with how many words longer it is than the student's sentence it is most like (a
+    bank's name counts as one word, so "Morgan Stanley" in place of "Guggenheim" doesn't count as growth)."""
     words = lambda s: set(re.findall(r"[a-z']+", s.lower()))  # noqa: E731
+    names = [a for aliases in OTHER_BANK_ALIASES.values() for a in sorted(aliases, key=len, reverse=True)]
+    length = lambda s: len(re.sub("|".join(re.escape(n) for n in names), "Bank", s).split())  # noqa: E731
     mine = _sentences(original)
     out = []
     for s in _sentences(tailored):
         twin = max(mine, key=lambda m: len(words(s) & words(m)), default="")
-        out.append((s, len(s.split()) - len(twin.split())))
+        out.append((s, length(s) - length(twin)))
     return out
 
 
