@@ -10,6 +10,7 @@ same measurements, on the template's letterhead, so it matches the Word file.
 """
 import hashlib
 import io
+import re
 from pathlib import Path
 
 from docx.oxml.ns import qn
@@ -23,11 +24,11 @@ FONTS = {  # family -> regular font files to measure and draw with, first found 
     "sans": ["/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf", "C:/Windows/Fonts/arial.ttf"],
 }
 BUILT_IN = {"serif": "Times-Roman", "sans": "Helvetica"}
-# Word's single line height per point of text. Times New Roman: Luke's 48-line letter ran onto a second page with
-# a 1 in bottom margin and fit with 0.9 in, which puts it between 1.125 and 1.139.
-LINE = {"serif": 1.132, "sans": 1.15}
+# Word's single line height per point of text (the font's ascent, descent and line gap). Checked in Word on Luke's
+# 48-line letters at 11 pt: two pages with a 0.9 in bottom margin, one page with 0.8 in.
+LINE = {"serif": 1.15, "sans": 1.15}
 ASCENT = {"serif": 0.93, "sans": 0.94}  # from the top of a line to its baseline, per point
-ROOM = Pt(2)  # a little room at the bottom, so the margins change as little as possible
+ROOM = Pt(1)  # a little room at the bottom, so the margins change as little as possible
 TOP_GIVE = Inches(0.25)  # how far the top margin may come up (1.75 in to 1.5 in on the Yale template)
 EMU_PT = 12700
 
@@ -127,13 +128,14 @@ def blocks(doc) -> list[dict]:
         right = (_format(p, "right_indent") or 0) / EMU_PT
         width = full - left - right
         lines, cur = [], ""
-        for word in p.text.split():
-            trial = f"{cur} {word}" if cur else word
-            if cur and _width(trial, family, size) > width:
-                lines.append(cur)
-                cur = word
-            else:
-                cur = trial
+        for word in p.text.split():  # Word breaks a line at a space, or after a hyphen ("ultra-low-|cost")
+            for n, piece in enumerate(re.findall(r"[^-]+-|[^-]+$|-", word)):
+                trial = cur + (" " if cur and n == 0 else "") + piece
+                if cur and _width(trial, family, size) > width:
+                    lines.append(cur)
+                    cur = piece
+                else:
+                    cur = trial
         lines.append(cur)
         align = _format(p, "alignment")
         out.append({"lines": lines, "height": height, "size": size, "family": family, "left": left, "width": width,
