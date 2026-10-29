@@ -21,7 +21,7 @@ from pydantic_ai.usage import UsageLimits
 
 from . import banks as bank_info
 from . import profile as profiles
-from . import accounts, schools, shared, templates
+from . import accounts, letter_layout, schools, shared, templates
 from .db import connect, init_db
 from .llm import Chosen, usage_dict
 
@@ -450,9 +450,26 @@ def _set_text(paragraph, text: str, keep_shapes: bool = False) -> None:
 
 
 def docx_bytes(uid: int, bank: str) -> bytes:
-    """The letter as a Word file, written into a copy of the user's own cover letter (or the Yale SOM template),
-    so the fonts, margins and spacing are exactly theirs: date, recipient block, salutation, body and signature are
-    replaced, everything else in the file is kept."""
+    """The letter as a Word file (preview: tightened to fit on one page)."""
+    doc = _document(uid, bank)
+    if accounts.in_preview_uid(uid):
+        letter_layout.fit_one_page(doc)
+    out = io.BytesIO()
+    doc.save(out)
+    return out.getvalue()
+
+
+def pdf_bytes(uid: int, bank: str) -> bytes:
+    """Preview: the same one-page letter as a PDF, drawn from the Word file's own layout."""
+    doc = _document(uid, bank)
+    letter_layout.fit_one_page(doc)
+    return letter_layout.pdf_bytes(doc)
+
+
+def _document(uid: int, bank: str):
+    """The letter written into a copy of the user's own cover letter (or the Yale SOM template), so the fonts,
+    margins and spacing are exactly theirs: date, recipient block, salutation, body and signature are replaced,
+    everything else in the file is kept."""
     from copy import deepcopy
 
     import docx
@@ -528,6 +545,4 @@ def docx_bytes(uid: int, bank: str) -> bytes:
                     runs[0].text = contact
                     for t in runs[1:]:
                         t.text = ""
-    out = io.BytesIO()
-    doc.save(out)
-    return out.getvalue()
+    return doc

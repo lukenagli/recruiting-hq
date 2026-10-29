@@ -867,6 +867,17 @@ def download_cover_letter(bank: str, user: dict = Depends(current_user)):
                     headers={"Content-Disposition": f'attachment; filename="{name}"'})
 
 
+@app.get("/api/cover-letters/{bank}/pdf")
+def download_cover_letter_pdf(bank: str, user: dict = Depends(current_user)):
+    """Preview: the letter as a one-page PDF."""
+    if not accounts.in_preview(user):
+        raise HTTPException(status_code=404, detail="Not found")
+    parts = user["name"].split() or ["Cover"]
+    name = f"{parts[-1]}_{' '.join(parts[:-1]) or parts[-1]} Cover Letter ({bank}).pdf"
+    return Response(cover_letters.pdf_bytes(user["id"], bank), media_type="application/pdf",
+                    headers={"Content-Disposition": f'attachment; filename="{name}"'})
+
+
 # ---- Moving data and admin tasks ----
 
 @app.get("/api/export")

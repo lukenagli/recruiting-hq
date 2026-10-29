@@ -118,6 +118,7 @@ export default function CoverLetterEditor({ bank }: { bank: string }) {
         {data.exists && (
           <>
             <a className="btn" href={`${API_URL}${path}/docx`}>Download Word file</a>
+            {preview && <a className="btn" href={`${API_URL}${path}/pdf`}>Download PDF</a>}
             <button className="btn" onClick={() => navigator.clipboard.writeText([data.salutation, ...paragraphs, 'Sincerely,', data.signature].join('\n\n'))}>
               Copy text
             </button>
