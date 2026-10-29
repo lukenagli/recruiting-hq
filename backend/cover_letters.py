@@ -59,7 +59,7 @@ this student for it, said the way second-years' sample letters say it: a few wor
 sentences, never a sentence of personal reasons. When the starting letter already has the right group, leave its \
 group wording exactly as it is.
   - Opening: name the group with the role in the first sentence ("...the Investment Banking Summer Associate role in \
-the <group> group at <bank> in <office>"). In the sentence about what the conversations showed, add the group as the \
+the <group> group at <bank> in <office>", leaving the office out when none is given). In the sentence about what the conversations showed, add the group as the \
 last item ("...the breadth of its global platform, and the growth of its <group> group"). In the sentence giving the \
 reason for the firm, make the reason advising the group's companies ("...in combination with the opportunity to \
 advise leading <the group's kind of companies> on their most important transactions, has cemented my interest in \
@@ -477,8 +477,13 @@ def save_edits(uid: int, bank: str, paragraphs: list[str] | None, details: dict)
                 conn.execute(f"UPDATE my_banks SET {field} = ? WHERE user_id = ? AND bank = ?", (str(details[field]).strip()[:300], uid, bank))
         if paragraphs is not None:
             clean = [" ".join(p.split()) for p in paragraphs if p.strip()]
-            conn.execute("UPDATE cover_letters SET paragraphs = ?, edited = 1, updated_at = ? WHERE user_id = ? AND bank = ?",
-                         (json.dumps(clean), datetime.now().isoformat(timespec="seconds"), uid, bank))
+            row = conn.execute("SELECT warnings FROM cover_letters WHERE user_id = ? AND bank = ?", (uid, bank)).fetchone()
+            needs = set(re.findall(r"\[\[NEED:\s*([^\]]+)\]\]", "\n".join(clean)))
+            # a "needs your input" warning goes once its [[NEED: ...]] marker has been filled in
+            warnings = [w for w in json.loads(row["warnings"]) if not w.startswith("needs your input: ") or
+                        w.removeprefix("needs your input: ").strip() in {n.strip() for n in needs}] if row else []
+            conn.execute("UPDATE cover_letters SET paragraphs = ?, warnings = ?, edited = 1, updated_at = ? WHERE user_id = ? AND bank = ?",
+                         (json.dumps(clean), json.dumps(warnings), datetime.now().isoformat(timespec="seconds"), uid, bank))
     return get(uid, bank)
 
 
