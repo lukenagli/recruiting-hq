@@ -861,6 +861,18 @@ def edit_cover_letter(bank: str, req: LetterEdits, user: dict = Depends(current_
     return cover_letters.save_edits(user["id"], bank, req.paragraphs, req.details)
 
 
+class SubmittedRequest(BaseModel):
+    submitted: bool
+
+
+@app.post("/api/cover-letters/{bank}/submitted")
+def cover_letter_submitted(bank: str, req: SubmittedRequest, user: dict = Depends(current_user)):
+    """Preview: mark a letter as sent, so drafts for the same group start from it."""
+    if not accounts.in_preview(user):
+        raise HTTPException(status_code=404, detail="Not found")
+    return cover_letters.mark_submitted(user["id"], bank, req.submitted)
+
+
 @app.get("/api/cover-letters/{bank}/docx")
 def download_cover_letter(bank: str, user: dict = Depends(current_user)):
     parts = user["name"].split() or ["Cover"]

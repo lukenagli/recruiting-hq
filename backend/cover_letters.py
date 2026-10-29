@@ -40,56 +40,55 @@ WRITE = """\
 You write investment banking internship cover letters for students, following the shape of the student's \
 own template exactly, built from what the student actually learned in their own conversations.
 """
-# Preview: every letter is the student's own letter, tailored to the bank, in the style of the club's 2Y sample letters.
-# Cover letters are a box to check: polished, general reasons for the firm with a light personal touch (the names of
-# the people met), never details from the conversations.
+# Preview: every letter is the student's own letter (or one they already submitted for the same group), changed as
+# little as possible. Cover letters are a box to check: their own tone, wording and flow, the right names, and the
+# group folded into their sentences the way second-years' sample letters do, never details from the conversations.
 TAILOR = """\
-You tailor a student's own investment banking cover letter to one bank, in the style of the polished letters \
-second-years at the student's school sent (Cover Letter Guidance). Banks read these as a box to check: what matters \
-is a clean, professional "why this firm", the right names, and no mistakes. The student wrote the letter themselves \
-(often for another bank). Keep paragraphs 2 onward exactly as they wrote them, apart from a line that names another \
-bank (and, for a group placement, the bridging sentences below). Rewrite only the opening paragraph, and the bank's \
-name in the closing, for this bank.
+You tailor a student's own investment banking cover letter to one bank. Banks read cover letters as a box to check: \
+what matters is a polished, professional "why this firm", the right names, and no mistakes. The student wrote the \
+starting letter themselves, in their own tone, wording and flow, and that is what they want kept. So change as few \
+words as you can: keep every sentence, in order, with its wording, and edit only what has to change for this bank \
+and this role. Never add a sentence and never drop one.
 
-The opening paragraph follows this pattern, sentence by sentence:
-1. "My name is <name>, and I am <school line> writing to express my strong interest in the <role> [in the <group> group] \
-at <bank> [in <office>]."
-2. "Over the last couple of months, I have enjoyed learning more about <bank> through firm events as well as \
-conversations with <names>." (the people given below, bankers first, at most five, spelled exactly as given)
-3. One sentence of general praise the conversations "discussed": one or two of the firm's qualities such as its culture, \
-collaboration, teamwork, mentorship and investment in junior bankers, client focus, or the breadth of its platform.
-4. "The culture at the firm, in combination with <one high-level reason: the generalist program's breadth, or the chance \
-to advise companies in the student's group>, has cemented my interest in <bank>."
+What changes:
+- Anything that belongs to the bank the starting letter was written for: its name, the people it names (use the \
+people given below instead, bankers first, at most five, spelled exactly as given), the office, and any detail \
+specific to that bank.
+- The group, when the role is in one named group (a group placement). Bankers want to see why this group and why \
+this student for it, said the way second-years' sample letters say it: a few words folded into the student's own \
+sentences, never a sentence of personal reasons. When the starting letter already has the right group, leave its \
+group wording exactly as it is.
+  - Opening: name the group with the role in the first sentence ("...the Investment Banking Summer Associate role in \
+the <group> group at <bank> in <office>"). In the sentence about what the conversations showed, add the group as the \
+last item ("...the breadth of its global platform, and the growth of its <group> group"). In the sentence giving the \
+reason for the firm, make the reason advising the group's companies ("...in combination with the opportunity to \
+advise leading <the group's kind of companies> on their most important transactions, has cemented my interest in \
+<bank>").
+  - Experience paragraphs: where a phrase points the student's experience at a different industry or group, re-angle \
+it toward this group using only facts already in the letter or the resume. For example, a list of other industries \
+can become "supporting the firm's portfolio airlines, where consumer demand and pricing strategy drive performance" \
+for a consumer group. The paragraph's last line can name the group ("...required to succeed as a Summer Associate in \
+the <group> group"). At most one such change per paragraph; leave everything else as written.
+  - Closing: name the group with the bank ("...beginning my career in investment banking with the <group> group at \
+<bank>").
+  - Name the group at most once in any sentence, and don't pile up "and"s in a sentence.
+- For a generalist program, name no group: the reason for the firm is the breadth of the generalist program.
 
 Never put specifics from the conversations or about how recruiting works into the letter: no homework, case studies or \
 final projects, training, staffing or mentor assignments, whether the program is group-specific or generalist as a \
 fact someone told you, team sizes, offices or headcounts, deals, anecdotes, or what any one person said or did. Keep \
 it general and gracious, the way every sample letter is.
 
-Group placement (the role is in one named group, not a generalist program): bankers want the letter to show why this \
-group and why this student for it. So:
-- In the opening, fold the group into sentences 3 and 4 the way the sample letters written for one group do, rather \
-than adding a sentence of personal reasons. Sentence 3: "These conversations highlighted the firm's <one or two \
-qualities>, <the breadth of its platform>, and the growth trajectory and competitive positioning of the <group> \
-group." Sentence 4: "These factors, in addition to the opportunity to advise leading <the group's kind of companies> \
-on their most important transactions, cemented my interest in joining the <group> group at <bank>." Keep it a box \
-checker: no statistics, anecdotes or personal specifics.
-- In the experience paragraphs, connect the student's experience to the group the way the sample letters do: a few \
-words woven into an existing factual sentence, not a new sentence explaining what interested them. For example \
-"covering companies across industries including Consumer & Retail", "supporting the firm's consumer-facing portfolio \
-companies", or a closing line ending "required to succeed in the <group> group". At most one such touch per \
-paragraph, using only facts already in the letter or the resume; never a new claim, figure or responsibility, never \
-a colon, never "what held my attention" or other inner reflection. Leave the rest of each paragraph as written and \
-keep the letter's length.
-- In the closing, name the group alongside the bank.
-
 Rules:
-- Never make anything up. Names must come from the list given; no facts about the bank beyond the general qualities above.
+- Never make anything up: no new claims, figures or responsibilities. Names must come from the list given; no facts \
+about the bank beyond general qualities like its culture or the breadth of its platform.
+- No colons, statistics, anecdotes or inner reflection ("what held my interest").
 - Mention no bank other than the one applied to, and no people from other banks.
 - Investment banking is the goal. Never suggest it is a step toward private equity, business school or anything else.
 - Follow any rules in the student's own notes (for example words or punctuation to avoid).
-- Plain text paragraphs only: no greeting, no sign-off, no headings. Use exactly the student's number of paragraphs.
-- Use a [[NEED: ...]] marker only for something the opening truly cannot do without (for example the group, when none is given).
+- Plain text paragraphs only: no greeting, no sign-off, no headings. Use exactly the starting letter's number of paragraphs.
+- Keep the letter's length: it has to fit on one page.
+- Use a [[NEED: ...]] marker only for something the letter truly cannot do without (for example the group, when none is given).
 """
 
 INSTRUCTIONS = """
@@ -148,11 +147,16 @@ def _sentences(text: str) -> list[str]:
 
 
 def _added(tailored: str, original: str) -> list[str]:
-    """Sentences in a tailored paragraph that aren't one of the student's own sentences with a few words changed."""
+    """Sentences a tailored paragraph has beyond the student's own: as many as it has extra, the ones least like
+    any of the student's sentences (a sentence of theirs may have half its words changed, as when its reason
+    becomes the group)."""
     words = lambda s: set(re.findall(r"[a-z']+", s.lower()))  # noqa: E731
-    mine = [words(s) for s in _sentences(original)]
-    return [s for s in _sentences(tailored)
-            if not any(len(words(s) & m) >= 0.5 * max(1, len(words(s))) for m in mine)]
+    mine, theirs = [words(s) for s in _sentences(original)], _sentences(tailored)
+    extra = len(theirs) - len(mine)
+    if extra <= 0:
+        return []
+    likeness = lambda s: max((len(words(s) & m) / max(1, len(words(s))) for m in mine), default=0)  # noqa: E731
+    return sorted(theirs, key=likeness)[:extra]
 
 
 def shape(template: str) -> tuple[int, int, int]:
@@ -201,7 +205,7 @@ def _context(conn, uid: int, bank: str) -> dict:
             "school": schools.for_user(uid, conn)}
 
 
-def _prompt(ctx: dict, prof: dict, bank: str, tailor: bool = False) -> str:
+def _prompt(ctx: dict, prof: dict, bank: str, tailor: bool = False, ref: dict | None = None) -> str:
     def lines(people):
         return "\n".join(f"- {p['name']} ({', '.join(x for x in (p['title'], p['grp']) if x) or 'role not recorded'}): "
                          f"{p['said'] or 'no notes recorded'}" for people_ in [people] for p in people_) or "- (none)"
@@ -210,24 +214,27 @@ def _prompt(ctx: dict, prof: dict, bank: str, tailor: bool = False) -> str:
     bankers = [p for p in ctx["spoken"] if not is_student(p)]
     students = [p for p in ctx["spoken"] if is_student(p)]
     spoken = f"Bankers:\n{lines(bankers)}\n{sc['peers']} going to this bank (name them only if there are few bankers):\n{lines(students)}"
-    n, lo, hi = shape(prof["example_letter"])
+    n, lo, hi = shape(_starting(prof, ref))
     if tailor:  # names and roles only: what was said in the chats stays out of the letter
         names = lambda ps: "\n".join(f"- {p['name']} ({', '.join(x for x in (p['title'], p['grp']) if x) or 'role not recorded'})" for p in ps) or "- (none)"  # noqa: E731
         return "\n\n".join([
             f"Student writing the letter (\"My name is\" uses exactly this name): {ctx['name']}",
             f"School line: {prof['school_line'] or schools.default_school_line(sc) or '[[NEED: your school and year]]'}",
-            f"Shape: exactly {n} paragraphs, as in the student's letter.",
+            f"Shape: exactly {n} paragraphs, as in the starting letter.",
             f"Applying to: Investment Banking {sc['role']} role at {bank}" + (f", {ctx['office']} office" if ctx["office"] else ""),
-            ("Program: generalist; the reason in sentence 4 is the breadth of the generalist program." if ctx["generalist"] else
-             f"Group placement: {ctx['group'] or '[[NEED: group]]'}; name it in the first sentence, and sentence 4's reason is "
-             "advising companies in it. Follow the group placement steps."),
+            ("Program: generalist, so name no group." if ctx["generalist"] else
+             f"Group placement: the {ctx['group'] or '[[NEED: group]]'} group."),
             f"People the student has spoken with at {bank} (the only names you may use):\nBankers:\n{names(bankers)}\n"
             f"{sc['peers']} going to this bank (name them after the bankers, only if there are few bankers):\n{names(students)}",
             *([] if ctx["generalist"] else [
                 f"The student's notes (their target groups and why, what to highlight):\n{profiles.background(prof) or '(none)'}",
                 f"Resume (facts the bridging sentences may use):\n{prof['resume_text'] or '(not provided)'}"]),
             f"Rules from the student's own notes:\n{prof['email_rules'] or '(none)'}",
-            f"The student's own letter, to tailor (keep paragraphs 2 onward):\n{prof['example_letter']}",
+            (f"Starting letter: the one the student submitted to {ref['bank']} for the same "
+             f"{'generalist program' if ctx['generalist'] else ctx['group'] + ' role'}. Its group wording is already right: change "
+             f"only what belongs to {ref['bank']} (its name, the people it names: {', '.join(ref['people']) or 'none'}, its office "
+             f"and anything else specific to it) and keep every other word.\n{_starting(prof, ref)}" if ref else
+             f"Starting letter: the student's own letter (written for another bank or role), to tailor:\n{prof['example_letter']}"),
         ])
     parts = [
         f"Student writing the letter (\"My name is\" uses exactly this name): {ctx['name']}",
@@ -257,6 +264,37 @@ TOO_SPECIFIC = re.compile(r"homework|case study|final project|super ?day|group[-
                           r"junior and (a )?senior mentor|\b\d+ (analysts|associates|interns|people)\b|team size|I learned that", re.I)
 
 
+def _group_key(ctx: dict) -> str:
+    """Which letters are interchangeable: the same group (however it is written), or the generalist program."""
+    if ctx["generalist"]:
+        return "generalist"
+    return re.sub(r"\b(group|team|ib|investment banking)\b|[^a-z]", "", ctx["group"].lower().replace("&", "and"))
+
+
+def _reference(conn, uid: int, bank: str, ctx: dict) -> dict | None:
+    """Preview: the newest letter the student submitted to another bank for the same group (or the generalist
+    program). Submitted means marked submitted on its page, or the application to that bank is marked as sent."""
+    key = _group_key(ctx)
+    if not key:
+        return None
+    rows = conn.execute(
+        """SELECT c.bank, c.paragraphs FROM cover_letters c
+           LEFT JOIN my_banks m ON m.user_id = c.user_id AND m.bank = c.bank
+           WHERE c.user_id = ? AND c.bank != ?
+             AND (COALESCE(c.submitted_at, '') NOT IN ('', 'no') OR (COALESCE(c.submitted_at, '') = '' AND m.applied = 'Yes'))
+           ORDER BY COALESCE(NULLIF(c.submitted_at, ''), c.updated_at) DESC""", (uid, bank)).fetchall()
+    for r in rows:
+        other = _context(conn, uid, r["bank"])
+        if _group_key(other) == key:
+            return {"bank": r["bank"], "paragraphs": json.loads(r["paragraphs"]), "people": [p["name"] for p in other["spoken"]]}
+    return None
+
+
+def _starting(prof: dict, ref: dict | None) -> str:
+    """The letter a draft starts from: a submitted one for the same group, else the student's uploaded letter."""
+    return "\n\n".join(ref["paragraphs"]) if ref else prof["example_letter"]
+
+
 def problems(paragraphs: list[str], bank: str, ctx: dict, template: str = "", tailor: bool = False) -> list[str]:
     text = "\n".join(paragraphs)
     found = []
@@ -267,13 +305,16 @@ def problems(paragraphs: list[str], bank: str, ctx: dict, template: str = "", ta
     if tailor:
         found += [f"it mentions \"{m}\": keep the opening to general reasons for the firm, as the sample letters do"
                   for m in dict.fromkeys(m.group(0) for m in TOO_SPECIFIC.finditer(paragraphs[0] if paragraphs else ""))]
-        if not ctx["generalist"] and paragraphs and "These factors, in addition to" not in paragraphs[0]:
-            found.append('sentence 4 of the opening must start "These factors, in addition to the opportunity to advise leading", '
-                         "as in the group placement steps")
-        # paragraphs 2 onward are the student's own: the group is woven into an existing sentence, never a sentence added
-        for k, (tailored, original) in enumerate(zip(paragraphs[1:], _body(template)[1:]), start=2):
+        # every paragraph is the student's own: words change inside their sentences, sentences are never added or dropped
+        for k, (tailored, original) in enumerate(zip(paragraphs, _body(template)), start=1):
             found += [f'paragraph {k} adds the sentence "{s}": drop it, and if the group needs a mention there, put a few words '
                       "into one of the student's existing sentences instead" for s in _added(tailored, original)]
+            if len(_sentences(tailored)) < len(_sentences(original)):
+                found.append(f"paragraph {k} drops one of the student's sentences: keep every sentence, changing only the words that must")
+        group = ctx["group"].strip()
+        if group and not ctx["generalist"]:
+            found += [f'the sentence "{s}" names the {group} group more than once: name it once' for p in paragraphs
+                      for s in _sentences(p) if s.lower().count(group.lower()) > 1]
     words = len(text.split())
     n, lo, hi = shape(template)
     lo, hi = lo - 30, hi + 20  # a little slack around the asked-for range before it counts as a problem
@@ -317,7 +358,8 @@ async def write(uid: int, chosen: Chosen, bank: str) -> dict:
         return {"ok": False, "reason": "Add your resume in Settings first, so the letter can use your real experience."}
     with connect(read_only=True) as conn:
         ctx = _context(conn, uid, bank)
-    base = _prompt(ctx, prof, bank, tailor)
+        ref = _reference(conn, uid, bank, ctx) if tailor else None  # preview: a letter already sent for this group
+    base = _prompt(ctx, prof, bank, tailor, ref)
     writer = tailor_agent if tailor else agent
     started = datetime.now().isoformat(timespec="seconds")
     total = {"input_tokens": 0, "cached_input_tokens": 0, "output_tokens": 0, "requests": 0}
@@ -328,7 +370,7 @@ async def write(uid: int, chosen: Chosen, bank: str) -> dict:
         for k, v in usage_dict(result.usage).items():
             total[k] += v
         paragraphs = [" ".join(p.split()) for p in result.output.paragraphs if p.strip()]
-        issues = problems(paragraphs, bank, ctx, prof["example_letter"], tailor)
+        issues = problems(paragraphs, bank, ctx, _starting(prof, ref), tailor)
         if tailor:  # preview: it must fit on one page in the student's own template, margins barely touched
             over = letter_layout.fit_one_page(_document(uid, bank, paragraphs))
             if over:
@@ -348,6 +390,8 @@ async def write(uid: int, chosen: Chosen, bank: str) -> dict:
         issues.append(f"needs your input: {need.strip()}")
     if not ctx["spoken"]:
         issues.append(f"you have not logged anyone you spoke with at {bank}, so the letter names no one; the guidance says to list the people you have spoken to")
+    if ref:
+        issues.append(f"started from the letter you submitted to {ref['bank']}: check nothing specific to {ref['bank']} is left")
     if not shared.bank_detail(bank, ctx["mine"], tailor)["recruiter_name"]:
         issues.append("no recruiter name yet, so it is addressed to Hiring Manager; the guidance says to address it to the firm's recruiter")
     now = datetime.now().isoformat(timespec="seconds")
@@ -391,6 +435,7 @@ def get(uid: int, bank: str) -> dict:
         "paragraphs": json.loads(row["paragraphs"]) if row else [],
         "warnings": json.loads(row["warnings"]) if row else [],
         "edited": bool(row["edited"]) if row else False,
+        "submitted": _submitted(row["submitted_at"] if row else None, mine.get("applied")),
         "updated_at": row["updated_at"] if row else "",
         "date": f"{date.today():%B} {date.today().day}, {date.today().year}",
         "recipient": _recipient(uid, bank, mine),
@@ -418,6 +463,23 @@ def save_edits(uid: int, bank: str, paragraphs: list[str] | None, details: dict)
     return get(uid, bank)
 
 
+def _submitted(submitted_at: str | None, applied: str | None) -> bool:
+    """A letter counts as sent when the student marked it so, or (unless they said it wasn't) its application is sent."""
+    if submitted_at is None:
+        return False
+    return submitted_at not in ("", "no") or (submitted_at == "" and applied == "Yes")
+
+
+def mark_submitted(uid: int, bank: str, submitted: bool) -> dict:
+    """Preview: the student says this letter went out, or that it didn't ("no", which outranks an application marked
+    as sent). Letters sent are where drafts for other banks in the same group start."""
+    init_db()
+    with connect() as conn:
+        conn.execute("UPDATE cover_letters SET submitted_at = ? WHERE user_id = ? AND bank = ?",
+                     (datetime.now().isoformat(timespec="seconds") if submitted else "no", uid, bank))
+    return get(uid, bank)
+
+
 def overview(uid: int) -> list[dict]:
     """Every bank the user is still in, with whether a letter exists yet."""
     init_db()
@@ -425,11 +487,13 @@ def overview(uid: int) -> list[dict]:
     with connect(read_only=True) as conn:
         banks = [r["bank"] for r in conn.execute(
             "SELECT bank FROM my_banks WHERE user_id = ? AND COALESCE(status, '') != 'out' ORDER BY bank", (uid,))]
-        letters = {r["bank"]: r for r in conn.execute("SELECT bank, warnings, updated_at, edited FROM cover_letters WHERE user_id = ?", (uid,))}
+        letters = {r["bank"]: r for r in conn.execute("SELECT bank, warnings, updated_at, edited, submitted_at FROM cover_letters WHERE user_id = ?", (uid,))}
         recruiters = {r["bank"]: r["recruiter_name"] for r in conn.execute("SELECT bank, recruiter_name FROM my_banks WHERE user_id = ?", (uid,))}
+        applied = {r["bank"] for r in conn.execute("SELECT bank FROM my_banks WHERE user_id = ? AND applied = 'Yes'", (uid,))}
     return [{"bank": b, "domain": bank_info.domain(b), "exists": b in letters,
              "warnings": len(json.loads(letters[b]["warnings"])) if b in letters else 0,
              "updated_at": letters[b]["updated_at"] if b in letters else "", "edited": bool(letters[b]["edited"]) if b in letters else False,
+             "submitted": b in letters and _submitted(letters[b]["submitted_at"], "Yes" if b in applied else ""),
              "recruiter": shared.bank_detail(b, {"recruiter_name": recruiters.get(b) or ""}, pushed)["recruiter_name"]} for b in banks]
 
 

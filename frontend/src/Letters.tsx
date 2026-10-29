@@ -97,7 +97,7 @@ export default function Letters({ bank }: { bank: string }) {
             {data.map((l) => (
               <a key={l.bank} href={`#/letters/${encodeURIComponent(l.bank)}`} className={`chip ${l.bank === current ? 'on' : ''}`}>
                 <Logo bank={l.bank} domain={l.domain} size={18} /> {l.bank}
-                <em>{l.exists ? (l.warnings ? `${l.warnings} to check` : l.edited ? 'edited' : `drafted ${fmtDate(l.updated_at.slice(0, 10))}`) : 'no letter'}</em>
+                <em>{l.exists ? (preview && l.submitted ? 'submitted' : l.warnings ? `${l.warnings} to check` : l.edited ? 'edited' : `drafted ${fmtDate(l.updated_at.slice(0, 10))}`) : 'no letter'}</em>
               </a>
             ))}
           </div>

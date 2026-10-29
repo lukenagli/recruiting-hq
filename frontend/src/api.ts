@@ -233,6 +233,7 @@ export type CoverLetter = {
   paragraphs: string[]
   warnings: string[]
   edited: boolean
+  submitted?: boolean
   updated_at: string
   date: string
   recipient: string[]
@@ -244,7 +245,7 @@ export type CoverLetter = {
   office: string
 }
 
-export type LetterSummary = { bank: string; domain: string; exists: boolean; warnings: number; updated_at: string; edited: boolean; recruiter: string }
+export type LetterSummary = { bank: string; domain: string; exists: boolean; warnings: number; updated_at: string; edited: boolean; submitted?: boolean; recruiter: string }
 
 /** Send a file (multipart form). */
 export async function upload<T>(path: string, file: File): Promise<T> {

@@ -244,6 +244,8 @@ LATER_COLUMNS = [
     ("deal_points", "source_kind"), ("deal_points", "doc_id"), ("deal_points", "page"), ("deal_points", "quote"),
     # A scanned or screenshot PDF has no text layer: "yes" until the AI has transcribed it, then "read".
     ("deal_documents", "scanned"),
+    # When the student sent the letter (preview): drafts for other banks in the same group start from it.
+    ("cover_letters", "submitted_at"),
 ]
 
 # What each user tells the app about themselves, used to write their cover letters.

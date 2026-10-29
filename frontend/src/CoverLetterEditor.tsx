@@ -74,6 +74,7 @@ export default function CoverLetterEditor({ bank }: { bank: string }) {
   }
 
   const write = () => {
+    if (preview && data.submitted && !confirm('You marked this letter as submitted. A new draft replaces it. Continue?')) return
     if ((data.edited || dirty || saveNote === 'Saved') && !confirm('Writing a new draft replaces your edits to this letter. Continue?')) return
     run('write', async () => {
       const out = await post<{ ok: boolean; reason?: string }>(`${path}/write`, {})
@@ -119,6 +120,16 @@ export default function CoverLetterEditor({ bank }: { bank: string }) {
           <>
             <a className="btn" href={`${API_URL}${path}/docx`}>Download Word file</a>
             {preview && <a className="btn" href={`${API_URL}${path}/pdf`}>Download PDF</a>}
+            {preview && (
+              <button
+                className={`btn ${data.submitted ? 'on' : ''}`}
+                disabled={!!busy}
+                title="Letters you submitted are where drafts for other banks in the same group start"
+                onClick={() => run('submitted', () => post(`${path}/submitted`, { submitted: !data.submitted }))}
+              >
+                {data.submitted ? '✓ Submitted' : 'Mark as submitted'}
+              </button>
+            )}
             <button className="btn" onClick={() => navigator.clipboard.writeText([data.salutation, ...paragraphs, 'Sincerely,', data.signature].join('\n\n'))}>
               Copy text
             </button>
