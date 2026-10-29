@@ -118,8 +118,9 @@ export default function CoverLetterEditor({ bank }: { bank: string }) {
         </button>
         {data.exists && (
           <>
-            <a className="btn" href={`${API_URL}${path}/docx`}>Download Word file</a>
-            {preview && <a className="btn" href={`${API_URL}${path}/pdf`}>Download PDF</a>}
+            <a className="btn" href={`${API_URL}${path}/docx`} title={preview ? 'For a PDF, open it in Word and choose File > Save As > PDF' : undefined}>
+              Download Word file
+            </a>
             {preview && (
               <button
                 className={`btn ${data.submitted ? 'on' : ''}`}
@@ -136,6 +137,7 @@ export default function CoverLetterEditor({ bank }: { bank: string }) {
           </>
         )}
       </div>
+      {preview && data.exists && <p className="muted"><small>For a PDF, open the Word file and choose File &gt; Save As &gt; PDF: only Word lays it out exactly as Word does.</small></p>}
       {message && <p className="notice error">{message}</p>}
 
       {data.warnings.length > 0 && (

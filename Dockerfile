@@ -9,7 +9,7 @@ COPY frontend/ ./
 RUN npm run build
 
 FROM python:3.14-slim
-# fonts-liberation: Times New Roman's and Arial's letter widths, to keep cover letters on one page and draw their PDFs.
+# fonts-liberation: Times New Roman's and Arial's letter widths, to measure cover letters so they stay on one page.
 RUN apt-get update && apt-get install -y --no-install-recommends tzdata fonts-liberation && rm -rf /var/lib/apt/lists/*
 # The site runs on New Haven time, so "today" (home page, deadlines, the daily AI allowance) matches the students' day.
 ENV TZ=America/New_York

@@ -554,13 +554,6 @@ def docx_bytes(uid: int, bank: str) -> bytes:
     return out.getvalue()
 
 
-def pdf_bytes(uid: int, bank: str) -> bytes:
-    """Preview: the same one-page letter as a PDF, drawn from the Word file's own layout."""
-    doc = _document(uid, bank)
-    letter_layout.fit_one_page(doc)
-    return letter_layout.pdf_bytes(doc)
-
-
 def page_warning(uid: int, bank: str) -> list[str]:
     """Preview: a letter too long for one page even with the bottom margin as low as the contact footer allows."""
     try:

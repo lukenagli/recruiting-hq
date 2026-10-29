@@ -1,25 +1,20 @@
-"""Keeps a cover letter's Word file on one page, and draws the same letter as a PDF.
+"""Keeps a cover letter's Word file on one page.
 
 Word lays the letter out on the student's computer, so the server measures it the way Word will: the template's
 font (Times New Roman is measured with Liberation Serif, which has exactly its letter widths), size, margins and
 spacing, breaking each paragraph into lines word by word. When the letter would not fit on one page, only its
 margins come in, by the least that makes it fit (the bottom one to just above the contact footer, then the top
 one by up to a quarter inch): the template's fonts, sizes and spacing are kept exactly. A letter still too long
-needs shorter text: the writer shortens its drafts, and the page says how much to cut. The PDF is drawn from the
-same measurements, on the template's letterhead, so it matches the Word file.
+needs shorter text: the writer shortens its drafts, and the page says how much to cut. (A PDF is made in Word itself,
+with Save As: only Word draws the letter exactly as Word does.)
 """
-import hashlib
-import io
 import re
 from pathlib import Path
 
 from docx.oxml.ns import qn
 from docx.shared import Emu, Inches, Pt
 
-ASSETS = Path(__file__).parent / "assets"
-# The Yale SOM letterhead is a Windows picture (EMF) PDF tools can't draw: a copy of its top strip as a PNG.
-YALE_LETTERHEAD = {"dbafa504341b8566": (ASSETS / "yale_som_letterhead.png", 1.3)}  # EMF hash -> (strip, inches tall)
-FONTS = {  # family -> regular font files to measure and draw with, first found wins; then a built-in PDF font
+FONTS = {  # family -> regular font files to measure with, first found wins; then a built-in font
     "serif": ["/usr/share/fonts/truetype/liberation/LiberationSerif-Regular.ttf", "C:/Windows/Fonts/times.ttf"],
     "sans": ["/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf", "C:/Windows/Fonts/arial.ttf"],
 }
@@ -27,14 +22,13 @@ BUILT_IN = {"serif": "Times-Roman", "sans": "Helvetica"}
 # Word's single line height per point of text (the font's ascent, descent and line gap). Checked in Word on Luke's
 # 48-line letters at 11 pt: two pages with a 0.9 in bottom margin, one page with 0.8 in.
 LINE = {"serif": 1.15, "sans": 1.15}
-ASCENT = {"serif": 0.93, "sans": 0.94}  # from the top of a line to its baseline, per point
 ROOM = Pt(1)  # a little room at the bottom, so the margins change as little as possible
 TOP_GIVE = Inches(0.25)  # how far the top margin may come up (1.75 in to 1.5 in on the Yale template)
 EMU_PT = 12700
 
 
 def _font(family: str) -> str:
-    """The PDF font name for a family, registered on first use."""
+    """The font name to measure a family with, registered on first use."""
     from reportlab.pdfbase import pdfmetrics
     from reportlab.pdfbase.ttfonts import TTFont
 
@@ -187,90 +181,3 @@ def fit_one_page(doc) -> float:
     # With both margins as far as they go, a letter that fits without the little extra room is still accepted.
     line = max((b["height"] for b in blocks(doc)), default=Pt(13).pt)
     return max(0.0, (_used(doc) - _room(doc)) / line)
-
-
-# ---- The PDF ----
-
-def _letterhead(doc):
-    """The template's letterhead, if it is one this file can draw: (PNG path, inches tall from the page top)."""
-    for header in {id(s.header): s.header for s in doc.sections}.values():
-        for rel in header.part.rels.values():
-            if "image" in rel.reltype:
-                digest = hashlib.sha256(rel.target_part.blob).hexdigest()[:16]
-                if digest in YALE_LETTERHEAD:
-                    return YALE_LETTERHEAD[digest]
-    return None
-
-
-def _shapes(doc):
-    """Lines and text boxes anchored in the letter (the Yale template's contact footer), in page points from the top."""
-    sec = doc.sections[0]
-    left_margin = sec.left_margin / EMU_PT
-    for anchor in doc.element.body.iter(qn("wp:anchor")):
-        h, v, ext = anchor.find(qn("wp:positionH")), anchor.find(qn("wp:positionV")), anchor.find(qn("wp:extent"))
-        voff = v.find(qn("wp:posOffset")) if v is not None else None
-        if voff is None or v.get("relativeFrom") != "page" or ext is None:
-            continue
-        hoff = h.find(qn("wp:posOffset")) if h is not None else None
-        x = (int(hoff.text) / EMU_PT if hoff is not None else 0) + (0 if h is not None and h.get("relativeFrom") == "page" else left_margin)
-        y, w = int(voff.text) / EMU_PT, int(ext.get("cx")) / EMU_PT
-        if anchor.xpath('.//*[local-name()="prstGeom"][@prst="line"]'):
-            yield {"kind": "line", "x": x, "y": y, "w": w}
-        for box in anchor.iter(qn("w:txbxContent")):
-            for p in box.iter(qn("w:p")):
-                text = "".join(t.text or "" for t in p.iter(qn("w:t")))
-                sz = p.find(f".//{qn('w:sz')}")
-                jc = p.find(f".//{qn('w:jc')}")
-                if text.strip():
-                    yield {"kind": "text", "x": x, "y": y, "w": w, "text": text,
-                           "size": int(sz.get(qn("w:val"))) / 2 if sz is not None else 10.0,
-                           "align": jc.get(qn("w:val")) if jc is not None else "left"}
-                    y += (int(sz.get(qn("w:val"))) / 2 if sz is not None else 10.0) * LINE["serif"]
-
-
-def pdf_bytes(doc) -> bytes:
-    """The letter as a one-page PDF, laid out exactly as measured for the Word file."""
-    from reportlab.pdfgen import canvas
-
-    sec = doc.sections[0]
-    page_w, page_h = sec.page_width / EMU_PT, sec.page_height / EMU_PT
-    out = io.BytesIO()
-    c = canvas.Canvas(out, pagesize=(page_w, page_h))
-    head = _letterhead(doc)
-    if head:
-        path, tall = head
-        c.drawImage(str(path), 0, page_h - tall * 72, width=page_w, height=tall * 72, mask="auto")
-    x0, y = sec.left_margin / EMU_PT, page_h - sec.top_margin / EMU_PT
-    for b in blocks(doc):
-        y -= b["before"]
-        font = _font(b["family"])
-        for n, line in enumerate(b["lines"]):
-            base = y - b["size"] * ASCENT[b["family"]]
-            left, words = x0 + b["left"], line.split()
-            spare = b["width"] - _width(line, b["family"], b["size"])
-            c.setFont(font, b["size"])
-            if b["align"] == "JUSTIFY" and n < len(b["lines"]) - 1 and len(words) > 1:
-                gap = _width(" ", b["family"], b["size"]) + spare / (len(words) - 1)
-                for word in words:
-                    c.drawString(left, base, word)
-                    left += _width(word, b["family"], b["size"]) + gap
-            elif b["align"] == "CENTER":
-                c.drawString(left + spare / 2, base, line)
-            elif b["align"] == "RIGHT":
-                c.drawString(left + spare, base, line)
-            elif line:
-                c.drawString(left, base, line)
-            y -= b["height"]
-        y -= b["after"]
-    for s in _shapes(doc):
-        if s["kind"] == "line":
-            c.setLineWidth(0.75)
-            c.line(s["x"], page_h - s["y"], s["x"] + s["w"], page_h - s["y"])
-        else:
-            c.setFont(_font("serif"), s["size"])
-            base = page_h - s["y"] - s["size"] * ASCENT["serif"]
-            spare = s["w"] - _width(s["text"], "serif", s["size"])
-            c.drawString(s["x"] + (spare / 2 if s["align"] == "center" else spare if s["align"] == "right" else 0), base, s["text"])
-    c.showPage()
-    c.save()
-    return out.getvalue()
