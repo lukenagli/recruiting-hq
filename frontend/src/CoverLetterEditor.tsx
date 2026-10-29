@@ -1,7 +1,7 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { API_URL, post } from './api'
 import type { CoverLetter } from './api'
-import { Loading, useApi } from './ui'
+import { Loading, useApi, usePreview } from './ui'
 
 /** One bank's cover letter: who it is addressed to, the draft (editable), its checks, and a Word download. */
 export default function CoverLetterEditor({ bank }: { bank: string }) {
@@ -20,6 +20,44 @@ export default function CoverLetterEditor({ bank }: { bank: string }) {
     setDirty(false)
   }, [data])
 
+  // preview: edits to the letter save themselves a moment after typing stops, and when the page is left.
+  const preview = usePreview()
+  const [saveNote, setSaveNote] = useState('')
+  const latest = useRef(paragraphs)
+  const pending = useRef(false)
+  pending.current = dirty
+  useEffect(() => {
+    latest.current = paragraphs
+    if (!preview || !dirty) return
+    const sent = paragraphs
+    const timer = setTimeout(() => {
+      setSaveNote('Saving…')
+      post(path, { paragraphs: sent }).then(
+        () => {
+          if (latest.current !== sent) return // typed more meanwhile: that is saved next
+          setDirty(false)
+          setSaveNote('Saved')
+        },
+        (e) => setSaveNote(`Not saved: ${(e as Error).message}`),
+      )
+    }, 800)
+    return () => clearTimeout(timer)
+  }, [paragraphs, dirty, preview, path])
+  useEffect(() => {
+    if (!preview) return
+    const flush = () => {
+      if (!pending.current) return
+      pending.current = false
+      fetch(`${API_URL}${path}`, { method: 'POST', keepalive: true, credentials: 'include', headers: { 'Content-Type': 'application/json' },
+                                   body: JSON.stringify({ paragraphs: latest.current }) }).catch(() => undefined)
+    }
+    window.addEventListener('pagehide', flush)
+    return () => {
+      window.removeEventListener('pagehide', flush)
+      flush() // leaving this letter for another page of the site
+    }
+  }, [preview, path])
+
   if (!data) return <Loading error={error} />
 
   async function run(label: string, action: () => Promise<unknown>) {
@@ -36,7 +74,7 @@ export default function CoverLetterEditor({ bank }: { bank: string }) {
   }
 
   const write = () => {
-    if (data.edited && !confirm('Writing a new draft replaces your edits to this letter. Continue?')) return
+    if ((data.edited || dirty || saveNote === 'Saved') && !confirm('Writing a new draft replaces your edits to this letter. Continue?')) return
     run('write', async () => {
       const out = await post<{ ok: boolean; reason?: string }>(`${path}/write`, {})
       if (!out.ok) throw new Error(out.reason)
@@ -118,7 +156,8 @@ export default function CoverLetterEditor({ bank }: { bank: string }) {
           <p>{data.signature}</p>
           <div className="letter-foot">
             <small className={words > 460 ? 'urgent' : ''}>{words} words{words > 460 ? ', likely more than one page' : ''}</small>
-            {dirty && (
+            {preview && saveNote && <small className="muted">{saveNote}</small>}
+            {!preview && dirty && (
               <button className="btn" disabled={!!busy} onClick={saveText}>
                 {busy === 'text' ? 'Saving…' : 'Save my edits'}
               </button>
