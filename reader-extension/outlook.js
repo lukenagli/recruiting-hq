@@ -236,17 +236,24 @@ async function thankYous(since) {
   return emails
 }
 
+/** Long jobs answer at once and send their result in a message of their own when done: Chrome stops the
+ *  background if a single request is left waiting for more than five minutes. */
+function answerLater(msg, reply, job) {
+  reply({ started: true })
+  job().catch((e) => ({ ok: false, error: String(e) }))
+    .then((out) => chrome.runtime.sendMessage({ type: 'rhq-result', id: msg.id, out }).catch(() => undefined))
+}
+
 chrome.runtime.onMessage.addListener((msg, _sender, reply) => {
   if (msg.type === 'outlook-thanks') {
-    thankYous(msg.since).then((emails) => reply({ ok: true, emails })).catch((e) => reply({ ok: false, error: String(e) }))
-    return true
+    return answerLater(msg, reply, async () => ({ ok: true, emails: await thankYous(msg.since) }))
   }
   if (msg.type === 'outlook-scheduled') {
     scheduled(msg.since).then((items) => reply({ ok: true, items })).catch((e) => reply({ ok: false, error: String(e) }))
     return true
   }
   if (msg.type !== 'outlook-collect') return
-  ;(async () => {
+  answerLater(msg, reply, async () => {
     if (!(await rhqWaitFor(() => document.querySelector('[role="tree"] [role="treeitem"]'), 30000))) {
       throw new Error(`Outlook's folder list didn't show (window ${window.innerWidth}×${window.innerHeight}, ${document.visibilityState}), so nothing was read.`)
     }
@@ -271,8 +278,8 @@ chrome.runtime.onMessage.addListener((msg, _sender, reply) => {
     const screenFor = (name) => (full(name) ? null : screen)
     for (const name of list) {
       // Several Outlook tabs read side by side; each folder is read by whichever claims it first.
-      // (With no answer from the background, as when this is the only tab, every folder is read here.)
-      if (!(await chrome.runtime.sendMessage({ type: 'outlook-claim', name, n: list.length }).catch(() => true))) continue
+      // Without a yes (the refresh was stopped), nothing more is read.
+      if ((await chrome.runtime.sendMessage({ type: 'outlook-claim', name, n: list.length }).catch(() => false)) !== true) continue
       const since = msg.checkpoints[name] || msg.baseline
       const r = await readFolder(name, since, 10000, screenFor(name))
       batches.push({ source: 'outlook', conversation: name, group_chat: false, ...r })
@@ -285,7 +292,6 @@ chrome.runtime.onMessage.addListener((msg, _sender, reply) => {
       b.seen_until = again.seen_until
       b.note = `${again.note} (second try)`
     }
-    reply({ ok: true, batches })
-  })().catch((e) => reply({ ok: false, error: String(e) }))
-  return true
+    return { ok: true, batches }
+  })
 })

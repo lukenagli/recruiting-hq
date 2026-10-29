@@ -36,9 +36,29 @@ async function unlockTab(tabId, filters) {
  *  for a narrow screen with the folder list hidden; so it is opened at desktop size first and minimized at once. */
 async function minimizedWindow(url) {
   const win = await chrome.windows.create({ url, focused: false, state: 'normal', width: 1440, height: 900 })
+  const { readerWindows = [] } = await chrome.storage.session.get('readerWindows')
+  await chrome.storage.session.set({ readerWindows: [...readerWindows, win.id] }) // see `ready` below
   await chrome.windows.update(win.id, { state: 'minimized' })
   return win
 }
+
+chrome.windows.onRemoved.addListener(async (id) => {
+  const { readerWindows = [] } = await chrome.storage.session.get('readerWindows')
+  if (readerWindows.includes(id)) await chrome.storage.session.set({ readerWindows: readerWindows.filter((w) => w !== id) })
+})
+
+// Each time Chrome starts this background, no refresh is running in it. So if Chrome stopped the last one partway,
+// its windows are closed here and it no longer counts as running. Runs wait for this before they start.
+const ready = (async () => {
+  const { readerWindows = [] } = await chrome.storage.session.get('readerWindows')
+  for (const id of readerWindows) await chrome.windows.remove(id).catch(() => undefined)
+  await chrome.storage.session.set({ readerWindows: [] })
+  const { running } = await chrome.storage.local.get('running')
+  if (running) {
+    await chrome.storage.local.set({ running: 0, progress: { pct: 100, label: 'Done' }, last: { at: new Date().toLocaleString(),
+      lines: ['Chrome stopped the last refresh partway through. What it filed is kept; refresh again to read the rest.'] } })
+  }
+})().catch(() => undefined)
 
 /** A tab with the network lock on before it loads anything, in a minimized window of its own so the student's
  *  windows never fill with tabs. Closing its only tab closes the window. */
@@ -102,6 +122,29 @@ async function ask(tabId, msg) {
   return { ok: false, error: 'The page did not answer.' }
 }
 
+// Long jobs (reading all of Outlook) answer at once and send their result later in an 'rhq-result' message: Chrome
+// stops this background when one request waits more than five minutes, which closed nothing and lost the run.
+const waiting = new Map()
+chrome.runtime.onMessage.addListener((msg, sender) => {
+  if (sender.id !== chrome.runtime.id || msg.type !== 'rhq-result' || !waiting.has(msg.id)) return
+  waiting.get(msg.id)(msg.out)
+  waiting.delete(msg.id)
+})
+
+async function askLong(tabId, msg) {
+  const id = crypto.randomUUID()
+  const result = new Promise((resolve) => waiting.set(id, resolve))
+  const started = await ask(tabId, { ...msg, id })
+  if (!started.started) {
+    waiting.delete(id)
+    return started.ok === false ? started : { ok: false, error: 'The page did not start reading.' }
+  }
+  const stop = sleep(20 * 60 * 1000).then(() => ({ ok: false, error: 'stopped answering after 20 minutes.' }))
+  const out = await Promise.race([result, stop])
+  waiting.delete(id)
+  return out
+}
+
 /** How far along the run is, for the progress bar on the site: { pct: 0-100, label: what it is doing }. */
 async function progress(pct, label) {
   await chrome.storage.local.set({ progress: { pct: Math.max(0, Math.min(100, Math.round(pct))), label } })
@@ -127,7 +170,8 @@ async function report(source, frac, label) {
 const OUTLOOK_READERS = 3
 let outlookRun = null // { claimed: Set of folder names, n: folders in the list }
 chrome.runtime.onMessage.addListener((msg, sender, reply) => {
-  if (sender.id !== chrome.runtime.id || msg.type !== 'outlook-claim' || !outlookRun) return
+  if (sender.id !== chrome.runtime.id || msg.type !== 'outlook-claim') return
+  if (!outlookRun) return reply(false) // no refresh running here any more: the tab stops reading
   const take = !outlookRun.claimed.has(msg.name)
   if (take) {
     outlookRun.claimed.add(msg.name)
@@ -181,7 +225,7 @@ async function syncOutlook(state, lines) {
         if (sched.ok) pending.push(file({ source: 'outlook', conversation, group_chat: false, items: sched.items }, lines))
         else lines.push(`Outlook scheduled: ${sched.error}`)
       }
-      return ask(tab.id, msg)
+      return askLong(tab.id, msg)
     }))
     results = results.map((r) => (r.status === 'fulfilled' ? r.value : { ok: false, error: String((r.reason && r.reason.message) || r.reason) }))
   } finally {
@@ -310,6 +354,7 @@ async function syncCapIQ(lines) {
 }
 
 async function capiqAll() {
+  await ready
   const { running } = await chrome.storage.local.get('running')
   if (running && Date.now() - running < 20 * 60 * 1000) return
   await chrome.storage.local.set({ running: Date.now(), progress: { pct: 0, label: 'Starting' } })
@@ -333,6 +378,7 @@ chrome.runtime.onMessage.addListener((msg, sender) => {
 /** The one-time catch-up: every thank-you email the student sent this season, filed on the person it thanks.
  *  Read only, like a refresh: Outlook opens in a minimized window with the network lock on. No AI is used. */
 async function thanksAll() {
+  await ready
   const { running } = await chrome.storage.local.get('running')
   if (running && Date.now() - running < 20 * 60 * 1000) return
   await chrome.storage.local.set({ running: Date.now(), progress: { pct: 0, label: 'Opening Outlook' } })
@@ -344,7 +390,7 @@ async function thanksAll() {
     tab = await lockedTab('https://outlook.cloud.microsoft/mail/', OUTLOOK_LOCK)
     await loaded(tab.id)
     outlookShare = [2, 30]
-    const out = await ask(tab.id, { type: 'outlook-thanks', since: state.season_start })
+    const out = await askLong(tab.id, { type: 'outlook-thanks', since: state.season_start })
     outlookShare = null
     if (!out.ok) throw new Error(out.error)
     let saved = 0, already = 0
@@ -373,6 +419,7 @@ async function thanksAll() {
 }
 
 async function syncAll() {
+  await ready
   const { running } = await chrome.storage.local.get('running')
   if (running && Date.now() - running < 20 * 60 * 1000) return // a sync is already going
   await chrome.storage.local.set({ running: Date.now(), progress: { pct: 0, label: 'Starting' } })
