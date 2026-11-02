@@ -314,12 +314,15 @@ async def ingest(user: dict, chosen: Chosen, batch: Batch) -> dict:
     else:
         relevant = [i for i in fresh if not (batch.group_chat or club) or RELEVANT.search(i.text) or (club and CLUB_WORDS.search(i.text))]
     filed, note = 0, ""
+    # The refresh's own daily cap keeps half the allowance for the rest of the site. Preview: a refresh is how the
+    # tracker fills itself, so it is held only by the whole daily allowance (ai_for checks that before each run).
+    capped = lambda: not accounts.in_preview_uid(uid) and _sync_used_today(uid) >= SYNC_BUDGET  # noqa: E731
     if relevant and club:
-        if _sync_used_today(uid) >= SYNC_BUDGET:
+        if capped():
             return _log(uid, now, batch, len(batch.items), len(fresh), 0, "Daily sync allowance used; will continue tomorrow.")
         filed, note = await _club_feed(uid, chosen, batch, relevant)
     elif relevant:
-        if _sync_used_today(uid) >= SYNC_BUDGET:
+        if capped():
             return _log(uid, now, batch, len(batch.items), len(fresh), 0, "Daily sync allowance used; will continue tomorrow.")
         sc = schools.for_user(uid)
         chunk, size = [], 0

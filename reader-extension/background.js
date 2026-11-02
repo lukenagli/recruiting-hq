@@ -53,11 +53,14 @@ async function openReader(count = 1) {
   for (let i = 0; i < count; i++) {
     const left = count > 1 ? L + (i % cols) * width : L + Math.max(0, Math.round((W - width) / 2))
     const top = count > 1 ? T + Math.floor(i / cols) * height : T + Math.max(0, Math.round((H - height) / 2))
-    const win = await chrome.windows.create({ url: 'about:blank', focused: i === count - 1, state: 'normal', width, height, left, top })
+    const win = await chrome.windows.create({ url: 'about:blank', focused: true, state: 'normal', width, height, left, top })
     const { readerWindows = [] } = await chrome.storage.session.get('readerWindows')
     await chrome.storage.session.set({ readerWindows: [...readerWindows, win.id] }) // see `ready` below
     windows.push(win.id)
   }
+  // Windows opened while another app or window is in front can land behind it: bring each forward once more. Tiled,
+  // they don't cover one another.
+  for (const id of windows) await chrome.windows.update(id, { focused: true, drawAttention: false }).catch(() => undefined)
   reader = { windows }
   return reader
 }
@@ -65,8 +68,17 @@ async function openReader(count = 1) {
 async function closeReader() {
   const { borrowed } = await chrome.storage.session.get('borrowed')
   if (borrowed) await giveBack(borrowed) // the student's WhatsApp tab never closes with the windows
-  for (const id of (reader && reader.windows) || []) await chrome.windows.remove(id).catch(() => undefined)
+  const { readerWindows = [] } = await chrome.storage.session.get('readerWindows')
+  for (const id of new Set([...((reader && reader.windows) || []), ...readerWindows])) await chrome.windows.remove(id).catch(() => undefined)
+  await chrome.storage.session.set({ readerWindows: [] })
   reader = null
+}
+
+/** Close the window(s) of a part of the refresh as soon as it has been read (filing carries on without them). Only
+ *  when the parts have windows of their own. */
+async function doneWith(...slots) {
+  if (!reader || reader.windows.length < 4) return
+  for (const slot of slots) await chrome.windows.remove(reader.windows[slot]).catch(() => undefined)
 }
 
 /** The reader window for one part of the refresh (the only one, when just one is open). */
@@ -130,7 +142,9 @@ async function lockedTab(url, filters, slot = 0) {
 
 /** Put the student's WhatsApp tab back where it was, at its usual zoom. */
 async function giveBack(borrowed) {
-  await chrome.tabs.move(borrowed.tabId, { windowId: borrowed.windowId, index: borrowed.index }).catch(() => undefined)
+  const home = await chrome.windows.get(borrowed.windowId).catch(() => null)
+  if (home) await chrome.tabs.move(borrowed.tabId, { windowId: borrowed.windowId, index: borrowed.index }).catch(() => undefined)
+  else await chrome.windows.create({ tabId: borrowed.tabId, focused: false }).catch(() => undefined) // its only tab was it
   if (borrowed.active) await chrome.tabs.update(borrowed.tabId, { active: true }).catch(() => undefined)
   await chrome.tabs.setZoom(borrowed.tabId, 0).catch(() => undefined)
   await chrome.tabs.setZoomSettings(borrowed.tabId, { scope: 'per-origin' }).catch(() => undefined)
@@ -392,6 +406,7 @@ async function syncOutlook(state, lines) {
       await chrome.tabs.remove(tab.id).catch(() => undefined)
       await unlockTab(tab.id, OUTLOOK_LOCK)
     }
+    await doneWith(SLOT.outlook, SLOT.calendar)
   }
   await Promise.allSettled(pending) // the scheduled emails and the calendar
   const read = results.filter((r) => r.ok).flatMap((r) => r.batches)
@@ -444,13 +459,14 @@ async function syncSlack(state, lines) {
   } finally {
     await chrome.tabs.remove(tab.id)
     await unlockTab(tab.id, SLACK_LOCK)
+    await doneWith(SLOT.slack)
   }
   await Promise.all(pending)
 }
 
 async function syncWhatsApp(state, lines) {
   const chats = (state.config || {}).whatsapp_chats || []
-  if (!chats.length) return
+  if (!chats.length) return doneWith(SLOT.whatsapp)
   // WhatsApp Web runs in one tab at a time, and opening a second one would knock the student's offline. So the reader
   // reads their WhatsApp tab when it is open, moved into its reader window for the read (so it is drawn) and put back
   // where it was afterwards; otherwise it opens WhatsApp in a tab of that window (signed in the way theirs is).
@@ -495,6 +511,7 @@ async function syncWhatsApp(state, lines) {
     const { borrowed } = await chrome.storage.session.get('borrowed')
     if (borrowed) await giveBack(borrowed)
     else if (ours) await chrome.tabs.remove(tab.id).catch(() => undefined)
+    await doneWith(SLOT.whatsapp)
   }
   await Promise.all(pending)
 }

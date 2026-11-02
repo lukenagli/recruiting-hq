@@ -124,6 +124,7 @@ export default function Refresh({ onDone }: { onDone?: () => void }) {
     if (l.startsWith('Outlook scheduled: ')) return ['your scheduled emails']
     if (l.startsWith('Slack: ')) return ['Slack']
     if (l.startsWith('WhatsApp ')) return ['WhatsApp']
+    if (/allowance used|allowance is used up/.test(l)) return ["filing what was read (the day's AI allowance ran out; it's filed after midnight)"]
     return []
   }))]
 
