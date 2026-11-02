@@ -211,29 +211,32 @@ async function thankYouRows(sinceDay) {
 
 /** Open one conversation from the list (the list is redrawn after each one, so it is found again from the top). */
 async function openConversation(id) {
-  const sc = listScroller()
-  if (!sc) return null
-  sc.scrollTop = 0
-  await rhqSleep(500)
-  for (let k = 0; k < 300; k++) {
-    const row = [...document.querySelectorAll('[role="listbox"] [role="option"]')].find((r) => r.getAttribute('data-convid') === id)
-    if (row) {
-      const before = paneText()
-      if (!rhqSafeClick(row, 'outlook-messages')) return null
-      for (let w = 0; w < 20; w++) { // until the reading pane shows this conversation, not the last one
-        await rhqSleep(400)
-        if (paneText() !== before && paneText().length > 40) break
-      }
-      await rhqSleep(600)
-      return paneText()
+  if (!listScroller()) return null
+  const find = () => [...document.querySelectorAll('[role="listbox"] [role="option"]')].find((r) => r.getAttribute('data-convid') === id)
+  // Conversations are opened oldest first, so the next one is usually on screen or just above the last: look there
+  // first, then upward to the top, then downward to the end (a long backlog would take minutes to rescan from the top
+  // for each email).
+  let row = find()
+  for (const step of [-0.6, 0.6]) {
+    for (let k = 0; k < 300 && !row; k++) {
+      const s = listScroller()
+      const before = s.scrollTop
+      s.scrollTop += s.clientHeight * step
+      await rhqSleep(350)
+      row = find()
+      if (s.scrollTop === before) break // reached the top (or the end)
     }
-    const s = listScroller()
-    const top = s.scrollTop
-    s.scrollTop += s.clientHeight * 0.6
-    await rhqSleep(350)
-    if (s.scrollTop === top) return null
+    if (row) break
   }
-  return null
+  if (!row) return null
+  const before = paneText()
+  if (!rhqSafeClick(row, 'outlook-messages')) return null
+  for (let w = 0; w < 20; w++) { // until the reading pane shows this conversation, not the last one
+    await rhqSleep(400)
+    if (paneText() !== before && paneText().length > 40) break
+  }
+  await rhqSleep(600)
+  return paneText()
 }
 
 async function thankYous(since) {

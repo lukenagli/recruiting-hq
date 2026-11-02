@@ -687,8 +687,11 @@ async def catch_up_sheet(file: UploadFile, user: dict = Depends(current_user)):
 
 @app.get("/api/sync/state")
 def sync_state(user: dict = Depends(preview_user)):
-    # ai_left: the reader can't file anything once the day's AI allowance is used, so it doesn't start a run then
-    return {**sync.state(user["id"]), "ai_left": max(0, config.DAILY_TOKEN_BUDGET - budget.used_today(user["id"]))}
+    # ai_left: the reader can't file anything once the day's AI allowance is used, so it doesn't start a run then.
+    # outlook_only: only the admin's reader reads Slack and WhatsApp for now; everyone else's reads Outlook.
+    # start_from: an account's first sync goes back to the start of fall recruiting, not just to when it was set up.
+    return {**sync.state(user["id"]), "ai_left": max(0, config.DAILY_TOKEN_BUDGET - budget.used_today(user["id"])),
+            "outlook_only": not user["is_admin"], "start_from": sync.first_start(user["id"])}
 
 
 @app.post("/api/sync/key")

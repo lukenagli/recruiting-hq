@@ -104,7 +104,11 @@ export function ThanksCatchUp({ onDone }: { onDone?: () => void }) {
 
 export default function Refresh({ onDone }: { onDone?: () => void }) {
   const { status, installed, stale, checked, sync } = useReader()
-  const allowance = useApi<{ ai_left: number }>('/api/sync/state') // the reader can't file anything once it's used up
+  // ai_left: the reader can't file anything once it's used up; outlook_only: this account's reader reads Outlook only;
+  // start_from: the account's first sync, which reaches back to the start of the season
+  const allowance = useApi<{ ai_left: number; outlook_only?: boolean; start_from?: string }>('/api/sync/state')
+  const outlookOnly = !!allowance.data?.outlook_only
+  const firstSync = !!allowance.data?.start_from
   const [confirming, setConfirming] = useState(false)
   const [wasBusy, setWasBusy] = useState(false)
   const busy = !!status?.busy
@@ -183,20 +187,27 @@ export default function Refresh({ onDone }: { onDone?: () => void }) {
       {busy ? (
         <div className="refresh-warning working">
           <p>
-            <strong>Refreshing…</strong> The reader's Chrome windows, tiled across your screen, are reading your Outlook calendar and
-            email, Slack and WhatsApp at the same time (your own WhatsApp tab moves into one for a moment and goes back). Leave them in front
-            and don't click in them; they close on their own when they're done, usually within a minute.
+            <strong>Refreshing…</strong>{' '}
+            {outlookOnly
+              ? "Two Chrome windows, side by side, are reading your Outlook email and calendar."
+              : "The reader's Chrome windows, tiled across your screen, are reading your Outlook calendar and email, Slack and WhatsApp at the same time (your own WhatsApp tab moves into one for a moment and goes back)."}{' '}
+            Leave them in front and don't click in them; they close on their own when they're done
+            {firstSync ? ". This first one reaches back to September 1, so it can take 10 to 20 minutes." : ', usually within a minute or two.'}
           </p>
           <ReaderProgress status={status} />
         </div>
       ) : confirming ? (
         <div className="refresh-warning">
           <p>
-            <strong>Before you refresh:</strong> the reader opens four Chrome windows tiled across your screen to read your Outlook
-            calendar and email, Slack and WhatsApp at the same time. Chrome only reads what's on screen, so leave them in front while they
-            work (usually under a minute); they close themselves when they're done. WhatsApp only runs in one tab at a time, so if you have
-            WhatsApp open, that tab moves into one of the windows for a moment and goes back. It only reads: it never sends, replies or
-            reacts.
+            <strong>Before you refresh:</strong>{' '}
+            {outlookOnly
+              ? 'the reader opens two Chrome windows side by side to read your Outlook email and calendar.'
+              : 'the reader opens four Chrome windows tiled across your screen to read your Outlook calendar and email, Slack and WhatsApp at the same time. WhatsApp only runs in one tab at a time, so if you have WhatsApp open, that tab moves into one of the windows for a moment and goes back.'}{' '}
+            Chrome only reads what's on screen, so leave them in front while they work; they close themselves when they're done.{' '}
+            {firstSync
+              ? 'This first refresh reads everything since September 1 (every folder, however you organize them), so it can take 10 to 20 minutes; after that, a refresh takes a minute or two.'
+              : 'It usually takes a minute or two.'}{' '}
+            It only reads: it never sends, replies or reacts.
           </p>
           {allowance.data?.ai_left === 0 && (
             <p className="refresh-out">

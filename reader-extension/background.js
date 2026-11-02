@@ -357,7 +357,10 @@ async function readCalendar(tab, screenSource, lines) {
   await chrome.storage.local.set({ calendarSeen: [...calendarSeen, ...fresh].slice(-600) }) // only once filed
 }
 
-async function syncOutlook(state, lines) {
+/** One round of reading Outlook: every folder's new mail, up to MAX_OPEN conversations a folder (oldest first), filed.
+ *  The first round also reads the calendar and the scheduled emails. Returns how many new conversations are still
+ *  waiting (a long backlog, as on a student's first sync): the next round carries on from where this one filed to. */
+async function syncOutlook(state, lines, first = true, last = true) {
   outlookRun = { claimed: new Set(), n: 1 }
   const msg = { type: 'outlook-collect', checkpoints: state.checkpoints.outlook || {}, baseline: state.baseline,
                 watch: (state.outlook || {}).watch || [], screen: (state.outlook || {}).screen || '' }
@@ -368,17 +371,19 @@ async function syncOutlook(state, lines) {
     await report('outlook', 0, 'Opening Outlook')
     // One window starts on Drafts (scheduled emails), the other on the calendar; then both read folders, each
     // claiming the next folder not yet taken, so none is read twice. All opened by address.
-    tabs.push(await lockedTab('https://outlook.cloud.microsoft/mail/drafts', OUTLOOK_LOCK, SLOT.outlook))
-    tabs.push(await lockedTab('https://outlook.cloud.microsoft/calendar/view/week', OUTLOOK_LOCK, SLOT.calendar))
+    tabs.push(await lockedTab(`https://outlook.cloud.microsoft/mail/${first ? 'drafts' : ''}`, OUTLOOK_LOCK, SLOT.outlook))
+    tabs.push(await lockedTab(`https://outlook.cloud.microsoft/${first ? 'calendar/view/week' : 'mail/'}`, OUTLOOK_LOCK, SLOT.calendar))
     const settled = await Promise.allSettled([
       (async () => {
         const tab = tabs[0]
         await loaded(tab.id)
         await fitPage(tab.id)
-        const conversation = 'Scheduled to send (Drafts)' // read from the Drafts list without opening them
-        const sched = await ask(tab.id, { type: 'outlook-scheduled', since: (state.checkpoints.outlook || {})[conversation] || state.baseline })
-        if (sched.ok) pending.push(file({ source: 'outlook', conversation, group_chat: false, items: sched.items }, lines))
-        else lines.push(`Outlook scheduled: ${sched.error}`)
+        if (first) {
+          const conversation = 'Scheduled to send (Drafts)' // read from the Drafts list without opening them
+          const sched = await ask(tab.id, { type: 'outlook-scheduled', since: (state.checkpoints.outlook || {})[conversation] || state.baseline })
+          if (sched.ok) pending.push(file({ source: 'outlook', conversation, group_chat: false, items: sched.items }, lines))
+          else lines.push(`Outlook scheduled: ${sched.error}`)
+        }
         await report('outlook', 0.05, 'Reading your Outlook folders')
         return askLong(tab.id, msg)
       })(),
@@ -386,16 +391,18 @@ async function syncOutlook(state, lines) {
         const tab = tabs[1]
         await loaded(tab.id)
         await fitPage(tab.id)
-        try {
-          pending.push(readCalendar(tab, (state.outlook || {}).screen || '', lines))
-          await pending[pending.length - 1]
-        } catch (e) {
-          if (/ 429 /.test(String(e.message))) throw e
-          lines.push(`Outlook calendar: ${e.message || e}`)
+        if (first) {
+          try {
+            pending.push(readCalendar(tab, (state.outlook || {}).screen || '', lines))
+            await pending[pending.length - 1]
+          } catch (e) {
+            if (/ 429 /.test(String(e.message))) throw e
+            lines.push(`Outlook calendar: ${e.message || e}`)
+          }
+          await chrome.tabs.update(tab.id, { url: 'https://outlook.cloud.microsoft/mail/' }) // by address
+          await loaded(tab.id)
+          await fitPage(tab.id)
         }
-        await chrome.tabs.update(tab.id, { url: 'https://outlook.cloud.microsoft/mail/' }) // by address
-        await loaded(tab.id)
-        await fitPage(tab.id)
         return askLong(tab.id, msg)
       })(),
     ])
@@ -406,7 +413,6 @@ async function syncOutlook(state, lines) {
       await chrome.tabs.remove(tab.id).catch(() => undefined)
       await unlockTab(tab.id, OUTLOOK_LOCK)
     }
-    await doneWith(SLOT.outlook, SLOT.calendar)
   }
   await Promise.allSettled(pending) // the scheduled emails and the calendar
   const read = results.filter((r) => r.ok).flatMap((r) => r.batches)
@@ -414,7 +420,7 @@ async function syncOutlook(state, lines) {
   for (const error of new Set(results.filter((r) => !r.ok).map((r) => r.error))) {
     lines.push(read.length ? `(One Outlook window couldn't start, so the other read every folder: ${error})` : `Outlook: ${error}`)
   }
-  if (!read.length) return
+  if (!read.length) return 0
   // What each folder showed, so a refresh that files nothing still says why.
   lines.push(`Outlook read ${read.length} folders: ` + read.map((b) => `${b.conversation} (${b.note || 'nothing new'})`).join('; '))
   // Newest mail first, so today's news is filed even if the day's allowance runs out partway.
@@ -423,7 +429,25 @@ async function syncOutlook(state, lines) {
   for (const [i, { more, note, ...b }] of batches.entries()) {
     await report('outlook', 0.7 + (0.3 * i) / batches.length, `Filing what's new in ${b.conversation} (${i + 1} of ${batches.length})`)
     await file(b, lines)
-    if (more) lines.push(`Outlook ${b.conversation}: ${more} more new email${more > 1 ? 's' : ''}, read on the next refresh.`)
+    if (more && last) lines.push(`Outlook ${b.conversation}: ${more} more new email${more > 1 ? 's' : ''}, read on the next refresh.`)
+  }
+  return read.reduce((n, b) => n + (b.more || 0), 0)
+}
+
+/** Outlook, in as many rounds as it takes to catch up (a student's first sync reaches back to September), up to
+ *  OUTLOOK_ROUNDS; each round starts from the checkpoints the last one filed to. */
+const OUTLOOK_ROUNDS = 10
+async function syncOutlookFully(state, lines) {
+  let current = state
+  try {
+    for (let round = 0; round < OUTLOOK_ROUNDS; round++) {
+      const waiting = await syncOutlook(current, lines, round === 0, round === OUTLOOK_ROUNDS - 1)
+      if (!waiting || outOfAI) break
+      await report('outlook', 0.5, `Catching up on older email: ${waiting} more conversations (round ${round + 2})`)
+      current = { ...(await api('/api/sync/state')), baseline: state.baseline }
+    }
+  } finally {
+    await doneWith(SLOT.outlook, SLOT.calendar)
   }
 }
 
@@ -630,11 +654,19 @@ async function syncAll() {
     if (state.ai_left === 0) {
       return lines.push("Not started: today's AI allowance is used up, so nothing could be filed. Refresh again after midnight.")
     }
-    state.baseline = (await chrome.storage.local.get('baseline')).baseline // set when the key was first saved
+    // Where reading starts for a folder with no checkpoint: set when the key was first saved, or, on an account's first
+    // sync, the start of fall recruiting (start_from), so a new student's whole season comes in.
+    if (state.start_from) await chrome.storage.local.set({ baseline: state.start_from })
+    state.baseline = (await chrome.storage.local.get('baseline')).baseline
     // All at once, each in its own window(s); each keeps its own lines so the report reads in order. What's read is
     // still filed one batch at a time.
-    await openReader(4)
-    const steps = [['Outlook', 'outlook', syncOutlook], ['Slack', 'slack', syncSlack], ['WhatsApp', 'whatsapp', syncWhatsApp]]
+    // Everyone but the site's admin reads Outlook only for now (two windows); the admin's reader also reads Slack and
+    // WhatsApp (four).
+    const outlookOnly = !!state.outlook_only
+    await openReader(outlookOnly ? 2 : 4)
+    if (outlookOnly) share = { slack: 1, whatsapp: 1 } // so the bar still reaches the end
+    const steps = [['Outlook', 'outlook', syncOutlookFully],
+                   ...(outlookOnly ? [] : [['Slack', 'slack', syncSlack], ['WhatsApp', 'whatsapp', syncWhatsApp]])]
     const each = await Promise.all(steps.map(async ([name, key, step]) => {
       const own = []
       try {

@@ -181,6 +181,19 @@ def state(uid: int) -> dict:
             "outlook": {"watch": _watched_folders(uid), "screen": _screen(uid)}}
 
 
+FIRST_SYNC_FROM = "2026-09-01T00:00:00"  # a new reader catches up on everything since fall recruiting began
+
+
+def first_start(uid: int) -> str:
+    """Where an account's reader starts the first time: FIRST_SYNC_FROM until anything has been read, then ''
+    (from then on, each folder carries on from its own checkpoint)."""
+    ensure()
+    with connect(read_only=True) as conn:
+        synced = conn.execute("SELECT 1 FROM sync_state WHERE user_id = ? UNION SELECT 1 FROM sync_log WHERE user_id = ?",
+                              (uid, uid)).fetchone()
+    return "" if synced else FIRST_SYNC_FROM
+
+
 def _watched_folders(uid: int) -> list[str]:
     """Outlook folders where filing has changed the tracker before: the reader reads these in full. Other folders
     (besides Inbox, Sent Items and folders named after a bank or recruiting) are screened by _screen."""
