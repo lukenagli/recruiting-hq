@@ -730,7 +730,8 @@ def save_application(
         out_of_process: True when the student has been cut by this bank or has dropped it.
         offer: True when the student has received an offer from this bank.
     """
-    args = dict(bank=bank, applied=applied, deadline=deadline, link=link, group_preferences=group_preferences, notes=notes)
+    args = dict(bank=bank, applied=applied, deadline=deadline, link=link, group_preferences=group_preferences, notes=notes,
+                out_of_process=out_of_process or "", offer=offer or "")
     uid, bank = ctx.deps.user_id, nz.bank(bank)
     if bank == nz.UNKNOWN:
         return _refuse(ctx, "save_application", args, "A bank is required.")
@@ -753,7 +754,12 @@ def save_application(
                 conn.execute("UPDATE my_banks SET status = 'offer' WHERE user_id = ? AND bank = ?", (uid, bank))
     finally:
         conn.close()
-    return _done(ctx, "save_application", args, {"ok": True, "did": f"Updated the {bank} application"})
+    from . import accounts
+
+    # preview: say whether it was marked out or as an offer, so a reply can't claim one that wasn't made
+    marked = " and marked it out of process" if out_of_process else " and marked it as an offer" if offer else ""
+    return _done(ctx, "save_application", args,
+                 {"ok": True, "did": f"Updated the {bank} application{marked if accounts.in_preview_uid(uid) else ''}"})
 
 
 @tool

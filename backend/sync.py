@@ -284,6 +284,9 @@ def _message(batch: Batch, items: list[Item], school: str) -> str:
                  "time; only the confirmed meeting is (usually 30 minutes, often an invite titled \"Name / Name - Coffee "
                  "Chat\"). Blocks of time for prep, applications or homework are ignored too. "
                  "Events that aren't about recruiting (classes, club socials, personal plans) are ignored. ")
+    head += ("When a bank tells me I'm not moving forward (a rejection, \"unable to offer\", \"not able to move forward\", "
+             "\"other candidates\", a declined informational or coffee chat request), call save_application for that bank "
+             "with out_of_process=True and the reason and date in notes, and say so; only when it really says that. ")
     head += "Do not draft emails. If nothing is worth saving, save nothing and say so.\n\n"
     lines = [f"[{i.at}] {i.author}: {i.text.strip()}" for i in items]
     return head + "\n".join(lines)
