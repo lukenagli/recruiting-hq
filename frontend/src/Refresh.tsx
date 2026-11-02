@@ -151,19 +151,20 @@ export default function Refresh({ onDone }: { onDone?: () => void }) {
       {busy ? (
         <div className="refresh-warning working">
           <p>
-            <strong>Refreshing…</strong> A Chrome window in front is reading your Outlook calendar and email, then Slack, then WhatsApp
-            (your own WhatsApp tab moves into it for a moment and goes back). Leave it in front and don't click in it; it closes on its own
-            when it's done, usually in a minute or two.
+            <strong>Refreshing…</strong> The reader's Chrome windows, tiled across your screen, are reading your Outlook calendar and
+            email, Slack and WhatsApp at the same time (your own WhatsApp tab moves into one for a moment and goes back). Leave them in front
+            and don't click in them; they close on their own when they're done, usually within a minute.
           </p>
           <ReaderProgress status={status} />
         </div>
       ) : confirming ? (
         <div className="refresh-warning">
           <p>
-            <strong>Before you refresh:</strong> the reader opens a Chrome window in front of this one to read your Outlook calendar and
-            email, Slack and WhatsApp, one after another. Chrome only reads what's on screen, so leave that window in front while it
-            works (a minute or two); it closes itself when it's done. WhatsApp only runs in one tab at a time, so if you have WhatsApp
-            open, that tab moves into the window for a moment and goes back. It only reads: it never sends, replies or reacts.
+            <strong>Before you refresh:</strong> the reader opens four Chrome windows tiled across your screen to read your Outlook
+            calendar and email, Slack and WhatsApp at the same time. Chrome only reads what's on screen, so leave them in front while they
+            work (usually under a minute); they close themselves when they're done. WhatsApp only runs in one tab at a time, so if you have
+            WhatsApp open, that tab moves into one of the windows for a moment and goes back. It only reads: it never sends, replies or
+            reacts.
           </p>
           {allowance.data?.ai_left === 0 && (
             <p className="refresh-out">
@@ -181,7 +182,7 @@ export default function Refresh({ onDone }: { onDone?: () => void }) {
       {!busy && !confirming && status!.last && <small className="muted refresh-last">Last refreshed {status!.last.at}</small>}
       {!busy && !confirming && unread.length > 0 && (
         <p className="notice error refresh-unread">
-          <strong>Not read last time:</strong> {unread.join('; ')}. Refresh again, and leave the reader window in front until it closes.
+          <strong>Not read last time:</strong> {unread.join('; ')}. Refresh again, and leave the reader's windows in front until they close.
         </p>
       )}
     </div>

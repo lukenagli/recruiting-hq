@@ -32,31 +32,46 @@ async function unlockTab(tabId, filters) {
   await chrome.declarativeNetRequest.updateSessionRules({ removeRuleIds: filters.map((_, i) => base + i + 1) })
 }
 
-// The reader works in one ordinary Chrome window of its own, opened in front at a normal size for the minute or two a
-// refresh takes, and closed when it's done. Chrome only draws windows that are on screen, and Outlook and WhatsApp only
-// fill in their lists as they draw them: minimized windows, small windows and windows left behind others each left
-// things unread before. Outlook, Slack and WhatsApp are read one after another in tabs of that window.
-let reader = null // { id: the window, blank: its first tab }
+// The reader works in ordinary Chrome windows of its own, opened only when the student presses Refresh and closed when
+// it's done. Chrome only draws windows that are on screen, and Outlook and WhatsApp only fill in their lists as they
+// draw them: minimized windows, small windows and windows left behind others each left things unread before. So a
+// refresh tiles its windows over the student's screen, side by side with none covering another, and every page in
+// them is drawn: two for Outlook (they share out the folders; one reads the calendar first), one for Slack, one for
+// WhatsApp, all read at the same time. One window alone (the thank-you catch-up) opens at a normal size in the middle.
+let reader = null // { windows: [window ids], in tiling order }
+const SLOT = { outlook: 0, calendar: 1, slack: 2, whatsapp: 3 }
 
-async function openReader() {
+async function openReader(count = 1) {
   const all = await chrome.windows.getAll({ windowTypes: ['normal'] }).catch(() => [])
   const base = all.filter((w) => w.state !== 'minimized').sort((a, b) => b.width * b.height - a.width * a.height)[0]
   const W = (base && base.width) || 1440, H = (base && base.height) || 900
-  const width = Math.max(1100, Math.min(W, 1400)), height = Math.max(700, Math.min(H, 900))
-  const left = ((base && base.left) || 0) + Math.max(0, Math.round((W - width) / 2))
-  const top = ((base && base.top) || 0) + Math.max(0, Math.round((H - height) / 2))
-  const win = await chrome.windows.create({ url: 'about:blank', focused: true, state: 'normal', width, height, left, top })
-  const { readerWindows = [] } = await chrome.storage.session.get('readerWindows')
-  await chrome.storage.session.set({ readerWindows: [...readerWindows, win.id] }) // see `ready` below
-  reader = { id: win.id, blank: win.tabs[0].id }
+  const L = (base && base.left) || 0, T = (base && base.top) || 0
+  const cols = count > 1 ? 2 : 1, rows = Math.ceil(count / cols)
+  const width = count > 1 ? Math.floor(W / cols) : Math.max(1100, Math.min(W, 1400))
+  const height = count > 1 ? Math.floor(H / rows) : Math.max(700, Math.min(H, 900))
+  const windows = []
+  for (let i = 0; i < count; i++) {
+    const left = count > 1 ? L + (i % cols) * width : L + Math.max(0, Math.round((W - width) / 2))
+    const top = count > 1 ? T + Math.floor(i / cols) * height : T + Math.max(0, Math.round((H - height) / 2))
+    const win = await chrome.windows.create({ url: 'about:blank', focused: i === count - 1, state: 'normal', width, height, left, top })
+    const { readerWindows = [] } = await chrome.storage.session.get('readerWindows')
+    await chrome.storage.session.set({ readerWindows: [...readerWindows, win.id] }) // see `ready` below
+    windows.push(win.id)
+  }
+  reader = { windows }
   return reader
 }
 
 async function closeReader() {
   const { borrowed } = await chrome.storage.session.get('borrowed')
-  if (borrowed) await giveBack(borrowed) // the student's WhatsApp tab never closes with the window
-  if (reader) await chrome.windows.remove(reader.id).catch(() => undefined)
+  if (borrowed) await giveBack(borrowed) // the student's WhatsApp tab never closes with the windows
+  for (const id of (reader && reader.windows) || []) await chrome.windows.remove(id).catch(() => undefined)
   reader = null
+}
+
+/** The reader window for one part of the refresh (the only one, when just one is open). */
+function readerWindowFor(slot) {
+  return reader.windows[Math.min(slot, reader.windows.length - 1)]
 }
 
 /** A page laid out for a narrow screen hides Outlook's folder list. Zoom that tab out (this tab only, per-tab zoom,
@@ -68,7 +83,7 @@ async function fitPage(tabId) {
   await chrome.tabs.setZoom(tabId, Math.max(0.5, Math.min(1, (tab.width || 1200) / 1200)))
 }
 
-// If the reader window ends up behind other windows it stops drawing too (the page scripts say so with each pause):
+// If a reader window ends up behind other windows it stops drawing too (the page scripts say so with each pause):
 // it is brought back to the front, at most every 15 seconds. A page that reports itself narrow is zoomed out again.
 const raisedAt = {}
 async function keepInView(windowId) {
@@ -104,10 +119,10 @@ const ready = (async () => {
   }
 })().catch(() => undefined)
 
-/** A tab in the reader window with the network lock on before it loads anything. */
-async function lockedTab(url, filters) {
+/** A tab in a reader window with the network lock on before it loads anything. */
+async function lockedTab(url, filters, slot = 0) {
   if (!reader) await openReader()
-  const tab = await chrome.tabs.create({ windowId: reader.id, url: 'about:blank', active: true })
+  const tab = await chrome.tabs.create({ windowId: readerWindowFor(slot), url: 'about:blank', active: true })
   await lockTab(tab.id, filters)
   await chrome.tabs.update(tab.id, { url })
   return tab
@@ -301,9 +316,6 @@ function isHold({ title, minutes }) {
  *  Coffee Chat, 4:30 PM to 5:00 PM, Monday, November 2, 2026, place"). Events already filed are remembered here, so
  *  only new or changed ones are sent (a rescheduled chat is a changed event). */
 async function readCalendar(tab, screenSource, lines) {
-  await chrome.tabs.update(tab.id, { url: 'https://outlook.cloud.microsoft/calendar/view/week' }) // by address
-  await loaded(tab.id)
-  await fitPage(tab.id)
   const out = await ask(tab.id, { type: 'outlook-calendar', weeks: 3 })
   if (!out.ok) return lines.push(`Outlook calendar: ${out.error}`)
   let screen = null
@@ -335,43 +347,61 @@ async function syncOutlook(state, lines) {
   outlookRun = { claimed: new Set(), n: 1 }
   const msg = { type: 'outlook-collect', checkpoints: state.checkpoints.outlook || {}, baseline: state.baseline,
                 watch: (state.outlook || {}).watch || [], screen: (state.outlook || {}).screen || '' }
-  let tab = null
-  let out = null
+  const tabs = []
   const pending = []
+  let results = []
   try {
     await report('outlook', 0, 'Opening Outlook')
-    tab = await lockedTab('https://outlook.cloud.microsoft/mail/drafts', OUTLOOK_LOCK) // opened by address
-    await loaded(tab.id)
-    await fitPage(tab.id)
-    // Scheduled emails: read from the Drafts list without opening them.
-    const conversation = 'Scheduled to send (Drafts)'
-    const sched = await ask(tab.id, { type: 'outlook-scheduled', since: (state.checkpoints.outlook || {})[conversation] || state.baseline })
-    if (sched.ok) pending.push(file({ source: 'outlook', conversation, group_chat: false, items: sched.items }, lines))
-    else lines.push(`Outlook scheduled: ${sched.error}`)
-    await report('outlook', 0.05, 'Reading your Outlook folders')
-    out = await askLong(tab.id, msg)
-    // Then the calendar, in the same window: chats, calls and interviews you have on it.
-    await report('outlook', 0.65, 'Reading your Outlook calendar')
-    try {
-      await readCalendar(tab, (state.outlook || {}).screen || '', lines)
-    } catch (e) {
-      if (/ 429 /.test(String(e.message))) throw e
-      lines.push(`Outlook calendar: ${e.message || e}`)
-    }
+    // One window starts on Drafts (scheduled emails), the other on the calendar; then both read folders, each
+    // claiming the next folder not yet taken, so none is read twice. All opened by address.
+    tabs.push(await lockedTab('https://outlook.cloud.microsoft/mail/drafts', OUTLOOK_LOCK, SLOT.outlook))
+    tabs.push(await lockedTab('https://outlook.cloud.microsoft/calendar/view/week', OUTLOOK_LOCK, SLOT.calendar))
+    const settled = await Promise.allSettled([
+      (async () => {
+        const tab = tabs[0]
+        await loaded(tab.id)
+        await fitPage(tab.id)
+        const conversation = 'Scheduled to send (Drafts)' // read from the Drafts list without opening them
+        const sched = await ask(tab.id, { type: 'outlook-scheduled', since: (state.checkpoints.outlook || {})[conversation] || state.baseline })
+        if (sched.ok) pending.push(file({ source: 'outlook', conversation, group_chat: false, items: sched.items }, lines))
+        else lines.push(`Outlook scheduled: ${sched.error}`)
+        await report('outlook', 0.05, 'Reading your Outlook folders')
+        return askLong(tab.id, msg)
+      })(),
+      (async () => {
+        const tab = tabs[1]
+        await loaded(tab.id)
+        await fitPage(tab.id)
+        try {
+          pending.push(readCalendar(tab, (state.outlook || {}).screen || '', lines))
+          await pending[pending.length - 1]
+        } catch (e) {
+          if (/ 429 /.test(String(e.message))) throw e
+          lines.push(`Outlook calendar: ${e.message || e}`)
+        }
+        await chrome.tabs.update(tab.id, { url: 'https://outlook.cloud.microsoft/mail/' }) // by address
+        await loaded(tab.id)
+        await fitPage(tab.id)
+        return askLong(tab.id, msg)
+      })(),
+    ])
+    results = settled.map((r) => (r.status === 'fulfilled' ? r.value : { ok: false, error: String((r.reason && r.reason.message) || r.reason) }))
   } finally {
     outlookRun = null
-    if (tab) {
+    for (const tab of tabs) {
       await chrome.tabs.remove(tab.id).catch(() => undefined)
       await unlockTab(tab.id, OUTLOOK_LOCK)
     }
   }
-  await Promise.all(pending) // the scheduled emails
-  if (!out || !out.ok) return lines.push(`Outlook: ${(out && out.error) || 'not read'}`)
+  await Promise.allSettled(pending) // the scheduled emails and the calendar
+  const read = results.filter((r) => r.ok).flatMap((r) => r.batches)
+  for (const error of new Set(results.filter((r) => !r.ok).map((r) => r.error))) lines.push(`Outlook: ${error}`)
+  if (!read.length) return
   // What each folder showed, so a refresh that files nothing still says why.
-  lines.push(`Outlook read ${out.batches.length} folders: ` + out.batches.map((b) => `${b.conversation} (${b.note || 'nothing new'})`).join('; '))
+  lines.push(`Outlook read ${read.length} folders: ` + read.map((b) => `${b.conversation} (${b.note || 'nothing new'})`).join('; '))
   // Newest mail first, so today's news is filed even if the day's allowance runs out partway.
   const newest = (b) => b.items.reduce((m, i) => (i.at > m ? i.at : m), '')
-  const batches = out.batches.filter((b) => b.items.length || b.seen_until).sort((a, b) => newest(b).localeCompare(newest(a)))
+  const batches = read.filter((b) => b.items.length || b.seen_until).sort((a, b) => newest(b).localeCompare(newest(a)))
   for (const [i, { more, note, ...b }] of batches.entries()) {
     await report('outlook', 0.7 + (0.3 * i) / batches.length, `Filing what's new in ${b.conversation} (${i + 1} of ${batches.length})`)
     await file(b, lines)
@@ -382,7 +412,7 @@ async function syncOutlook(state, lines) {
 async function syncSlack(state, lines) {
   const { slack_team: team, slack_channels: picked = [] } = state.config || {}
   // Opened by address: the club's workspace when it is known, otherwise the one Slack opens by default.
-  const tab = await lockedTab(team ? `https://app.slack.com/client/${team}` : 'https://app.slack.com/client', SLACK_LOCK)
+  const tab = await lockedTab(team ? `https://app.slack.com/client/${team}` : 'https://app.slack.com/client', SLACK_LOCK, SLOT.slack)
   const pending = [] // filed in turn while the next channel is read
   try {
     await loaded(tab.id)
@@ -422,19 +452,19 @@ async function syncWhatsApp(state, lines) {
   const chats = (state.config || {}).whatsapp_chats || []
   if (!chats.length) return
   // WhatsApp Web runs in one tab at a time, and opening a second one would knock the student's offline. So the reader
-  // reads their WhatsApp tab when it is open, moved into the reader window for the read (so it is drawn) and put back
-  // where it was afterwards; otherwise it opens WhatsApp in a tab of the reader window (signed in the way theirs is).
+  // reads their WhatsApp tab when it is open, moved into its reader window for the read (so it is drawn) and put back
+  // where it was afterwards; otherwise it opens WhatsApp in a tab of that window (signed in the way theirs is).
   let [tab] = await chrome.tabs.query({ url: 'https://web.whatsapp.com/*' })
   if (!reader) await openReader()
   let ours = false
   const pending = [] // filed in turn while the next chat is read
   if (!tab) {
     ours = true
-    tab = await chrome.tabs.create({ windowId: reader.id, url: 'https://web.whatsapp.com/', active: true })
+    tab = await chrome.tabs.create({ windowId: readerWindowFor(SLOT.whatsapp), url: 'https://web.whatsapp.com/', active: true })
   } else {
     const borrowed = { tabId: tab.id, windowId: tab.windowId, index: tab.index, active: tab.active }
     await chrome.storage.session.set({ borrowed })
-    await chrome.tabs.move(tab.id, { windowId: reader.id, index: -1 })
+    await chrome.tabs.move(tab.id, { windowId: readerWindowFor(SLOT.whatsapp), index: -1 })
     await chrome.tabs.update(tab.id, { active: true })
   }
   await loaded(tab.id)
@@ -581,17 +611,22 @@ async function syncAll() {
       return lines.push("Not started: today's AI allowance is used up, so nothing could be filed. Refresh again after midnight.")
     }
     state.baseline = (await chrome.storage.local.get('baseline')).baseline // set when the key was first saved
-    // One after another in the reader window (filing carries on in the background while the next one is read).
-    await openReader()
-    for (const [name, key, step] of [['Outlook', 'outlook', syncOutlook], ['Slack', 'slack', syncSlack], ['WhatsApp', 'whatsapp', syncWhatsApp]]) {
+    // All at once, each in its own window(s); each keeps its own lines so the report reads in order. What's read is
+    // still filed one batch at a time.
+    await openReader(4)
+    const steps = [['Outlook', 'outlook', syncOutlook], ['Slack', 'slack', syncSlack], ['WhatsApp', 'whatsapp', syncWhatsApp]]
+    const each = await Promise.all(steps.map(async ([name, key, step]) => {
+      const own = []
       try {
-        await step(state, lines)
+        await step(state, own)
       } catch (e) {
-        if (!/ 429 /.test(String(e.message))) lines.push(`${name}: ${e.message || e}`)
+        if (!/ 429 /.test(String(e.message))) own.push(`${name}: ${e.message || e}`)
       } finally {
         await report(key, 1, `${name} done`)
       }
-    }
+      return own
+    }))
+    lines = each.flat()
     if (outOfAI) { // the AI allowance ran out partway: what wasn't filed is read again next time
       lines.push("Stopped filing partway: today's AI allowance is used up. What wasn't filed is picked up on the next refresh.")
     }
