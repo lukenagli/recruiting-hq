@@ -410,7 +410,10 @@ async function syncOutlook(state, lines) {
   }
   await Promise.allSettled(pending) // the scheduled emails and the calendar
   const read = results.filter((r) => r.ok).flatMap((r) => r.batches)
-  for (const error of new Set(results.filter((r) => !r.ok).map((r) => r.error))) lines.push(`Outlook: ${error}`)
+  // One window that couldn't start is only a problem when the other read nothing either (it takes every folder then).
+  for (const error of new Set(results.filter((r) => !r.ok).map((r) => r.error))) {
+    lines.push(read.length ? `(One Outlook window couldn't start, so the other read every folder: ${error})` : `Outlook: ${error}`)
+  }
   if (!read.length) return
   // What each folder showed, so a refresh that files nothing still says why.
   lines.push(`Outlook read ${read.length} folders: ` + read.map((b) => `${b.conversation} (${b.note || 'nothing new'})`).join('; '))

@@ -115,11 +115,30 @@ export default function Refresh({ onDone }: { onDone?: () => void }) {
       onDone?.()
     }
   }, [busy, wasBusy, onDone])
-  // What the last refresh couldn't read, so one that missed something doesn't look like it worked.
-  const unread = [...new Set((status?.last?.lines ?? []).flatMap((l) => {
+  // A first look at the reader for someone who hasn't set it up, until they set it up or say not now.
+  const [welcomed, setWelcomed] = useState(() => {
+    try {
+      return localStorage.getItem('rhq-reader-welcomed') === '1'
+    } catch {
+      return false
+    }
+  })
+  const notNow = () => {
+    setWelcomed(true)
+    try {
+      localStorage.setItem('rhq-reader-welcomed', '1')
+    } catch {
+      /* the plain set-up button shows from now on this visit */
+    }
+  }
+  // What the last refresh couldn't read, so one that missed something doesn't look like it worked. (One Outlook
+  // window that couldn't start doesn't count when the other read every folder.)
+  const lines = status?.last?.lines ?? []
+  const foldersRead = lines.some((l) => l.startsWith('Outlook read '))
+  const unread = [...new Set(lines.flatMap((l) => {
     const stuck = (l.match(/didn't load/g) ?? []).length
     if (l.startsWith('Outlook read ')) return stuck ? [`${stuck} Outlook folder${stuck > 1 ? 's' : ''}`] : []
-    if (l.startsWith('Outlook: ')) return ['your Outlook email']
+    if (l.startsWith('Outlook: ')) return foldersRead ? [] : ['your Outlook email']
     if (l.startsWith('Outlook calendar: ') && !/^Outlook calendar: \d+ events/.test(l)) return ['your Outlook calendar']
     if (l.startsWith('Outlook scheduled: ')) return ['your scheduled emails']
     if (l.startsWith('Slack: ')) return ['Slack']
@@ -138,7 +157,19 @@ export default function Refresh({ onDone }: { onDone?: () => void }) {
   if (!installed)
     return (
       <div className="refresh">
-        <a className="btn" href="#/settings">Set up the reader to refresh from your email</a>
+        {welcomed ? (
+          <a className="btn" href="#/settings">Set up the reader to refresh from your email</a>
+        ) : (
+          <div className="refresh-warning reader-welcome">
+            <p>
+              <strong>New: your tracker can keep itself up to date.</strong> The Recruiting HQ Reader is a Chrome extension: when you
+              press Refresh, it reads what's new in your Outlook email and calendar, Slack and WhatsApp, and files your chats, invites,
+              thank-yous and next steps here. It only reads; it never sends anything. Setting it up takes about five minutes.
+            </p>
+            <a className="btn primary" href="#/settings">Set it up</a>
+            <button className="ghost" onClick={notNow}>Not now</button>
+          </div>
+        )}
       </div>
     )
   if (!status!.has_key)
