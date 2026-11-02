@@ -248,22 +248,70 @@ function localNow() {
   return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 19)
 }
 
-/** The calendar's month view lists every chat, call and interview of the month on one page ("Luke Nagli / Sami
- *  Moufarrij - Coffee Chat, 4:30 PM to 5:00 PM, Monday, November 2, 2026, place"). Events already filed are
- *  remembered here, so only new or changed ones are sent (a rescheduled chat is a changed event). */
-async function readCalendar(tab, lines) {
-  await chrome.tabs.update(tab.id, { url: 'https://outlook.cloud.microsoft/calendar/view/month' }) // by address, no clicks
+// Most students' calendars also hold classes, homework, personal plans and blocks of prep time. Only events that look
+// like recruiting leave the browser: ones naming a bank, someone in the tracker or the process (the same screen the
+// email folders use, from Recruiting HQ), recruiting words, or two people's names joined ("Luke Nagli / Sami
+// Moufarrij", "Jane Lee <> John Kim"). Everything else is read on screen and dropped here.
+const CALENDAR_WORDS = /coffee|\bchat\b|interview|super ?day|super ?week|networking|recruit|info(rmation)? session|first round|second round|hirevue|\bscreen(er|ing)?\b/i
+const TWO_NAMES = /[A-Z][a-z'’-]+ [A-Z][a-z'’-]+\s*(\/|<>|<->|\||&|\+| x | and | - )\s*[A-Z][a-z'’-]+ [A-Z][a-z'’-]+/
+// Holds are not chats. When asking a banker for a coffee chat, students offer three 90-minute windows and block them on
+// their own calendar so nothing double-books; the chat itself is a separate, usually 30-minute meeting. A hold word in
+// the title, or anything that runs 75 minutes or more without saying it is an event that runs long (a dinner, a
+// superday, an interview, an info session...), is a hold and is never sent.
+const HOLD_WORDS = /\b(holds?|on hold|block(ed|s)?|tentative|avail(able|ability)?|placeholder|offered|options?|tbd|tbc)\b/i
+const LONG_BY_NATURE = /dinner|lunch|breakfast|brunch|super ?(day|week)|interview|assessment|info(rmation)? session|session|event|night|happy hour|mixer|reception|panel|presentation|workshop|networking|trek|conference|open house|fair|social|gala|summit|forum|case/i
+
+/** "Title, 4:30 PM to 5:00 PM, Monday, ..." -> { title, minutes } (minutes 1440 for an all-day event). */
+function eventShape(label) {
+  const m = /(\d{1,2})[:.](\d{2})\s*([AP])?\.?M?\.?\s*(?:to|–|-)\s*(\d{1,2})[:.](\d{2})\s*([AP])?/i.exec(label)
+  const title = label.split(/,\s*(?:\d{1,2}[:.]\d{2}|all[ -]day)/i)[0].trim()
+  if (!m) return { title, minutes: /all[ -]day/i.test(label) ? 1440 : 0 }
+  const clock = (h, mm, ap, fallback) => {
+    let hour = Number(h) % 12
+    if ((ap || fallback || '').toUpperCase() === 'P') hour += 12
+    if (!ap && !fallback) hour = Number(h) // a 24-hour clock
+    return hour * 60 + Number(mm)
+  }
+  const start = clock(m[1], m[2], m[3], m[6]), end = clock(m[4], m[5], m[6], m[3])
+  return { title, minutes: (end - start + 1440) % 1440 || 1440 }
+}
+
+function isHold({ title, minutes }) {
+  if (HOLD_WORDS.test(title)) return true
+  return minutes >= 75 && !LONG_BY_NATURE.test(title)
+}
+
+/** This week and the next two in the calendar's week view, which shows every event ("Luke Nagli / Sami Moufarrij -
+ *  Coffee Chat, 4:30 PM to 5:00 PM, Monday, November 2, 2026, place"). Events already filed are remembered here, so
+ *  only new or changed ones are sent (a rescheduled chat is a changed event). */
+async function readCalendar(tab, screenSource, lines) {
+  await chrome.tabs.update(tab.id, { url: 'https://outlook.cloud.microsoft/calendar/view/week' }) // by address
   await loaded(tab.id)
   await fitPage(tab.id)
-  const out = await ask(tab.id, { type: 'outlook-calendar' })
+  const out = await ask(tab.id, { type: 'outlook-calendar', weeks: 3 })
   if (!out.ok) return lines.push(`Outlook calendar: ${out.error}`)
+  let screen = null
+  try {
+    screen = screenSource ? new RegExp(screenSource, 'i') : null
+  } catch {
+    screen = null
+  }
+  const looksLike = out.events.filter((e) => CALENDAR_WORDS.test(e) || TWO_NAMES.test(e) || (screen && screen.test(e)))
+  const holds = looksLike.filter((e) => isHold(eventShape(e)))
+  const recruiting = looksLike.filter((e) => !holds.includes(e))
   const { calendarSeen = [] } = await chrome.storage.local.get('calendarSeen')
-  const fresh = out.events.filter((e) => !calendarSeen.includes(e))
-  lines.push(`Outlook calendar: ${out.events.length} events this month, ${fresh.length} new or changed.`)
+  const fresh = recruiting.filter((e) => !calendarSeen.includes(e))
+  lines.push(`Outlook calendar: ${out.events.length} events in the next three weeks, ${recruiting.length} about recruiting` +
+             (holds.length ? ` (and ${holds.length} time block${holds.length > 1 ? 's' : ''} held for offered times, left out)` : '') +
+             `, ${fresh.length} new or changed.`)
   if (!fresh.length) return
   const at = localNow()
   await file({ source: 'outlook', conversation: 'Calendar', group_chat: false,
-               items: fresh.map((e) => ({ key: `calendar|${e}`, at, author: '', text: `CALENDAR EVENT on my Outlook calendar: ${e}` })) }, lines)
+               items: fresh.map((e) => {
+                 const { minutes } = eventShape(e)
+                 const length = minutes >= 1440 ? 'all day' : minutes ? `${minutes} minutes` : 'length not shown'
+                 return { key: `calendar|${e}`, at, author: '', text: `CALENDAR EVENT on my Outlook calendar (${length}): ${e}` }
+               }) }, lines)
   await chrome.storage.local.set({ calendarSeen: [...calendarSeen, ...fresh].slice(-600) }) // only once filed
 }
 
@@ -289,7 +337,7 @@ async function syncOutlook(state, lines) {
     // Then the calendar, in the same window: chats, calls and interviews you have on it.
     await report('outlook', 0.65, 'Reading your Outlook calendar')
     try {
-      await readCalendar(tab, lines)
+      await readCalendar(tab, (state.outlook || {}).screen || '', lines)
     } catch (e) {
       if (/ 429 /.test(String(e.message))) throw e
       lines.push(`Outlook calendar: ${e.message || e}`)

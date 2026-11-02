@@ -144,16 +144,29 @@ async function scheduled(since) {
   return out
 }
 
-/** The events in the calendar's month view, as Outlook describes them to screen readers: "Luke Nagli / Sami Moufarrij
- *  - Coffee Chat, 4:30 PM to 5:00 PM, Monday, November 2, 2026, place, By organizer". Nothing is clicked or opened.
- *  Phone numbers (a call's location is often one) are left out. */
-async function calendarEvents() {
-  const EVENT = /, \d{1,2}:\d{2} [AP]M to \d{1,2}:\d{2} [AP]M, \w+day, \w+ \d{1,2}, \d{4}/
-  const labels = () => [...document.querySelectorAll('[aria-label]')].map((e) => e.getAttribute('aria-label') || '')
-    .filter((t) => EVENT.test(t) && !/^\d{1,2}:\d{2}/.test(t)) // no title: a work-location marker
-  await rhqWaitFor(() => labels().length, 20000) // a month with nothing on it shows none
-  await rhqSleep(1500) // the rest of the month draws in
-  return [...new Set(labels().map((t) => t.replace(/\s+/g, ' ').replace(/(\+?1[ .-]?)?\(?\d{3}\)?[ .-]\d{3}[ .-]\d{4}/g, '[phone]').trim()))]
+/** The events in the calendar's week view (the background opens it), this week and the next weeks-1, as Outlook
+ *  describes them to screen readers: "Luke Nagli / Sami Moufarrij - Coffee Chat, 4:30 PM to 5:00 PM, Monday, November
+ *  2, 2026, place, By organizer". The week view shows every event (the month view hides some behind "+2 more"). The
+ *  only thing pressed is the calendar's next-week arrow; no event is opened. Everything is returned: which events are
+ *  about recruiting is decided in the background, and the rest never leave the browser. Phone numbers are left out. */
+async function calendarEvents(weeks) {
+  const TIME = /(\d{1,2}[:.]\d{2}\s*([AP]\.?M\.?)?\s*(to|–|-)\s*\d{1,2}[:.]\d{2}|all[ -]day)/i // 4:30 PM to 5:00 PM, 16:30 to 17:00
+  const labels = () => [...document.querySelectorAll('[aria-label]')].map((e) => (e.getAttribute('aria-label') || '').replace(/\s+/g, ' ').trim())
+    .filter((t) => TIME.test(t) && /\b20\d\d\b/.test(t) && !/^go to /i.test(t))
+    .filter((t) => t.split(TIME)[0].replace(/[,\s]+$/, '')) // no title before the time: a work-location marker
+  const nextWeek = () => [...document.querySelectorAll('button, [role="button"]')]
+    .map((b) => b.getAttribute('aria-label') || '').find((l) => /^go to next week/i.test(l)) || ''
+  const found = new Set()
+  for (let w = 0; w < weeks; w++) {
+    await rhqWaitFor(() => labels().length || nextWeek(), 20000) // a week with nothing on it shows no events
+    await rhqSleep(1500) // the rest of the week draws in
+    for (const t of labels()) found.add(t.replace(/(\+?1[ .-]?)?\(?\d{3}\)?[ .-]\d{3}[ .-]\d{4}/g, '[phone]'))
+    if (w === weeks - 1) break
+    const before = nextWeek()
+    if (!rhqSafeNextWeek()) break // no next-week arrow (another language, or Outlook changed): this week only
+    await rhqWaitFor(() => nextWeek() && nextWeek() !== before, 8000)
+  }
+  return [...found]
 }
 
 // ---- The one-time catch-up: thank-you emails the student already sent ----
@@ -261,7 +274,7 @@ chrome.runtime.onMessage.addListener((msg, _sender, reply) => {
     return answerLater(msg, reply, async () => ({ ok: true, emails: await thankYous(msg.since) }))
   }
   if (msg.type === 'outlook-calendar') {
-    calendarEvents().then((events) => reply({ ok: true, events })).catch((e) => reply({ ok: false, error: String(e) }))
+    calendarEvents(Math.max(1, Math.min(4, Number(msg.weeks) || 3))).then((events) => reply({ ok: true, events })).catch((e) => reply({ ok: false, error: String(e) }))
     return true
   }
   if (msg.type === 'outlook-scheduled') {

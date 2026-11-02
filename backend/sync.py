@@ -278,6 +278,11 @@ def _message(batch: Batch, items: list[Item], school: str) -> str:
                  "it is ahead, done once its date has passed), or log it if there is none. Use the bank the tracker has for "
                  "that person, or one the event names; if neither says which bank, save nothing for it (the invite email "
                  "will). An event starting \"Canceled:\" was canceled: set its entry to todo with date_note saying so. "
+                 "Time blocks are not chats: when asking a banker for a coffee chat, students offer three 90-minute windows "
+                 "and block them on their own calendar so nothing double-books. A block like that (90 minutes or so, a hold "
+                 "or availability title, or several similar blocks for one person) is never logged as a chat or a scheduled "
+                 "time; only the confirmed meeting is (usually 30 minutes, often an invite titled \"Name / Name - Coffee "
+                 "Chat\"). Blocks of time for prep, applications or homework are ignored too. "
                  "Events that aren't about recruiting (classes, club socials, personal plans) are ignored. ")
     head += "Do not draft emails. If nothing is worth saving, save nothing and say so.\n\n"
     lines = [f"[{i.at}] {i.author}: {i.text.strip()}" for i in items]

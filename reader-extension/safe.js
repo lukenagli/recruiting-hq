@@ -53,6 +53,22 @@ function rhqSafeClick(el, listName) {
   return true
 }
 
+/** Move Outlook's calendar on by one week. The only thing it presses is the calendar's own "Go to next week" arrow:
+ *  an icon-only button outside any dialog, form or compose area. Changing which week is shown changes nothing. */
+function rhqSafeNextWeek() {
+  if (rhqComposeOpen('outlook')) throw new RhqStop('Stopped: a compose or reply box was open, so the reader did nothing more.')
+  const arrows = [...document.querySelectorAll('button, [role="button"]')]
+    .filter((b) => /^go to next week\b/i.test((b.getAttribute('aria-label') || '').trim()))
+  if (arrows.length !== 1) return false
+  const arrow = arrows[0]
+  if (arrow.closest('[role="dialog"], form, [contenteditable="true"], textarea, [role="textbox"]')) return false
+  if (arrow.textContent.replace(/[-\s]/g, '')) return false // icon only (icon-font glyphs): any real text means it isn't the arrow
+  if ([...arrow.querySelectorAll('*')].some((c) => !['SPAN', 'I', 'svg', 'path'].includes(c.tagName))) return false
+  if (RHQ_FORBIDDEN.test(arrow.getAttribute('aria-label') || '')) return false
+  arrow.click()
+  return true
+}
+
 /** Open up a collapsed folder in Outlook's folder tree so its subfolders show (Outlook loads with them folded away).
  *  The only thing it presses is that folder's own expand arrow: the one icon-only button inside a collapsed tree item. */
 function rhqSafeExpand(item) {
