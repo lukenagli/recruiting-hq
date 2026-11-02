@@ -1075,6 +1075,17 @@ def terms_page():
     return HTMLResponse(legal.page("terms"))
 
 
+class SiteFiles(StaticFiles):
+    """The built website. Its code files have the build's fingerprint in their names, so browsers may keep them;
+    the page itself is checked on every visit, so after a deploy no browser runs a page whose code is gone (blank)."""
+
+    async def get_response(self, path, scope):
+        response = await super().get_response(path, scope)
+        long_lived = path.replace("\\", "/").startswith("assets/") and response.status_code == 200  # Windows paths too
+        response.headers["Cache-Control"] = "public, max-age=31536000, immutable" if long_lived else "no-cache"
+        return response
+
+
 # The built website, served by this same server on the hosted site. Mounted last so /api routes win.
 if config.FRONTEND_DIST.is_dir():
-    app.mount("/", StaticFiles(directory=config.FRONTEND_DIST, html=True), name="site")
+    app.mount("/", SiteFiles(directory=config.FRONTEND_DIST, html=True), name="site")

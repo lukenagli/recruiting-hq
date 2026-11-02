@@ -8,8 +8,10 @@ Safety choices:
 - Each run is capped (model requests, tool calls, tokens) and logged to agent_runs with its tool calls
   and token counts. A snapshot of the user's tracker taken before the first write lets them undo the run.
 """
+import functools
 import json
 import re
+import sqlite3
 from dataclasses import dataclass, field
 from datetime import date, datetime
 
@@ -184,13 +186,31 @@ def _person_id(conn, uid: int, name: str, bank: str):
 agent = Agent(deps_type=Deps, instructions=INSTRUCTIONS, name="tracker_assistant")
 
 
+def tool(fn):
+    """Register a tracker tool. A save that would break one of the tracker's rules (two people with the same name at
+    one bank, two entries with one title) is handed back to the model as a refusal it can work around, instead of
+    ending the whole request with an error after part of it was saved."""
+    @functools.wraps(fn)
+    def safe(ctx: RunContext[Deps], *args, **kwargs):
+        try:
+            return fn(ctx, *args, **kwargs)
+        except sqlite3.IntegrityError as exc:
+            from . import accounts
+
+            if not accounts.in_preview_uid(ctx.deps.user_id):  # preview only until the project is graded
+                raise
+            return _refuse(ctx, fn.__name__, kwargs, f"That would duplicate something already in the tracker ({exc}). Look it up and "
+                                                      "update the existing one instead.")
+    return agent.tool(safe)
+
+
 @agent.instructions
 def _context(ctx: RunContext[Deps]) -> str:
     who = f"The student's name is {ctx.deps.user_name}. " if ctx.deps.user_name else ""
     return f"{who}Today is {date.today():%A, %Y-%m-%d}."
 
 
-@agent.tool
+@tool
 def email_template(ctx: RunContext[Deps], kind: str) -> dict:
     """The student's own email template, to draft an email from it.
 
@@ -207,7 +227,7 @@ def email_template(ctx: RunContext[Deps], kind: str) -> dict:
     return _done(ctx, "email_template", {"kind": kind}, {"found": True, "template": text})
 
 
-@agent.tool
+@tool
 def lookup(ctx: RunContext[Deps], query: str) -> dict:
     """Find people and entries in the tracker.
 
@@ -242,7 +262,7 @@ def lookup(ctx: RunContext[Deps], query: str) -> dict:
     return result
 
 
-@agent.tool
+@tool
 def list_banks(ctx: RunContext[Deps]) -> dict:
     """Every bank in the student's tracker with their application status and how many people they know there.
 
@@ -258,7 +278,7 @@ def list_banks(ctx: RunContext[Deps]) -> dict:
     return {"banks": rows, "note": 'status "out" means the student was cut or dropped out (reason in notes); "offer" means they have an offer.'}
 
 
-@agent.tool
+@tool
 def save_person(
     ctx: RunContext[Deps], name: str, bank: str, title: str = "", group: str = "", email: str = "",
     notes: str = "", outreach_date: str = "", met_at_event: bool = False, yale: str = "", linkedin_url: str = "",
@@ -328,7 +348,7 @@ class RosterPerson(BaseModel):
     notes: str = Field("", description="Replacement notes, only to remove a line the roster makes out of date. Empty leaves notes as they are.")
 
 
-@agent.tool
+@tool
 def save_people(ctx: RunContext[Deps], bank: str, people: list[RosterPerson]) -> dict:
     """Add or correct many people at one bank at once: a team card, a roster, an email's attendee list or signature block.
 
@@ -398,7 +418,7 @@ def save_people(ctx: RunContext[Deps], bank: str, people: list[RosterPerson]) ->
     return _done(ctx, "save_people", args, {"ok": bool(added or updated), "did": did, "added": added, "updated": updated, "skipped": skipped})
 
 
-@agent.tool
+@tool
 def save_entry(
     ctx: RunContext[Deps], bank: str, kind: str, title: str = "", people: list[str] = [], entry_id: int | None = None,
     date: str = "", date_note: str = "", format: str = "", status: str = "", summary: str = "", thank_you: str = "",
@@ -492,7 +512,7 @@ def save_entry(
     return _done(ctx, "save_entry", args, {"ok": True, "entry_id": entry_id, "did": did})
 
 
-@agent.tool
+@tool
 def merge_entries(ctx: RunContext[Deps], bank: str, keep_id: int, duplicate_id: int) -> dict:
     """Fold a duplicate entry (the same chat or event logged twice) into the one to keep, then remove the duplicate.
 
@@ -547,7 +567,7 @@ def merge_entries(ctx: RunContext[Deps], bank: str, keep_id: int, duplicate_id: 
 PERSON_FIELDS = ("title", "grp", "subgroup", "email", "alum", "linkedin_url", "background", "background_sources", "background_at")
 
 
-@agent.tool
+@tool
 def merge_people(ctx: RunContext[Deps], bank: str, keep_id: int, duplicate_id: int, name: str = "") -> dict:
     """Fold a duplicate person (the same person saved twice, e.g. under a misspelled name) into the one to keep.
 
@@ -600,7 +620,7 @@ def merge_people(ctx: RunContext[Deps], bank: str, keep_id: int, duplicate_id: i
                                              "did": f"Merged the duplicate {dup['name']} into {final} at {bank}"})
 
 
-@agent.tool
+@tool
 def record_thank_you(ctx: RunContext[Deps], bank: str, entry_id: int, people: list[str], date: str, scheduled: bool = False,
                      body: str = "") -> dict:
     """Record that the student thanked people from a coffee chat or event, seen in an email they sent or scheduled.
@@ -656,7 +676,7 @@ def record_thank_you(ctx: RunContext[Deps], bank: str, entry_id: int, people: li
     return _done(ctx, "record_thank_you", args, {"ok": True, "did": f"Thank-you to {names} for {entry['title']} marked {'scheduled' if scheduled else 'sent'}"})
 
 
-@agent.tool
+@tool
 def connect_steps(ctx: RunContext[Deps], bank: str, from_ref: str, to_ref: str, label: str = "") -> dict:
     """Draw an arrow on a bank's map showing that one person or entry led to another.
 
@@ -693,7 +713,7 @@ def connect_steps(ctx: RunContext[Deps], bank: str, from_ref: str, to_ref: str, 
     return _done(ctx, "connect_steps", args, {"ok": True, "did": f"Connected {from_ref.split(':', 1)[1]} to {to_ref.split(':', 1)[1]} at {bank}"})
 
 
-@agent.tool
+@tool
 def save_application(
     ctx: RunContext[Deps], bank: str, applied: str = "", deadline: str = "", link: str = "",
     group_preferences: str = "", notes: str = "", out_of_process: bool = False, offer: bool = False,
@@ -736,7 +756,7 @@ def save_application(
     return _done(ctx, "save_application", args, {"ok": True, "did": f"Updated the {bank} application"})
 
 
-@agent.tool
+@tool
 def save_fact(ctx: RunContext[Deps], bank: str, category: str, fact: str, source: str = "") -> dict:
     """Add one fact about a bank itself to that bank's fact sheet.
 
@@ -766,7 +786,7 @@ def save_fact(ctx: RunContext[Deps], bank: str, category: str, fact: str, source
     return _done(ctx, "save_fact", args, {"ok": True, "did": f"Added to the {bank} fact sheet: {fact[:70]}"})
 
 
-@agent.tool
+@tool
 def save_deal_point(ctx: RunContext[Deps], deal: str, section: str, label: str, value: str, source: str = "") -> dict:
     """Fill in or correct one point on one of the student's interview deals (the Finance Club pitch checklist).
 
