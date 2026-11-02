@@ -1,5 +1,5 @@
-# Hosted build: one container that serves the website and the API, with the SQLite database
-# continuously backed up to S3-compatible storage by Litestream (the free host's disk is wiped on restart).
+# Hosted build: one container that serves the website and the API. The SQLite database sits on the service's
+# persistent disk (/data, see render.yaml) and is continuously backed up to S3-compatible storage by Litestream.
 
 FROM node:22-slim AS web
 WORKDIR /web

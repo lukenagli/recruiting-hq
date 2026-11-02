@@ -5,6 +5,13 @@ services:
     runtime: docker
     plan: starter
     healthCheckPath: /api/health
+    # The database lives on this disk (APP_DB_PATH=/data/app.db). With a disk, Render stops the old server before the
+    # new one starts, so a deploy can't lose changes saved while it switches over (without one, the new server started
+    # from the backup while the old one was still taking changes). Litestream still backs the database up.
+    disk:
+      name: data
+      mountPath: /data
+      sizeGB: 1
     envVars:
       # The course key. Only the site's admin account (the first one created) and the teaching staff's demo
       # account (backend/demo.py) use it; everyone else adds their own key in Settings.

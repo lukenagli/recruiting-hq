@@ -1,6 +1,7 @@
 #!/bin/sh
-# Start the hosted app. With backup storage configured, first restore the latest copy of the database,
-# then run the server under Litestream so every change is copied out within about a second.
+# Start the hosted app. The database is kept on the persistent disk; only when it isn't there yet (a new disk) is the
+# latest copy restored from backup storage. Then the server runs under Litestream, which copies every change out
+# within about a second.
 set -e
 mkdir -p "$(dirname "$APP_DB_PATH")"
 PORT="${PORT:-10000}"
