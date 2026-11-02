@@ -53,12 +53,13 @@ function rhqSafeClick(el, listName) {
   return true
 }
 
-/** Move Outlook's calendar on by one week. The only thing it presses is the calendar's own "Go to next week" arrow:
- *  an icon-only button outside any dialog, form or compose area. Changing which week is shown changes nothing. */
-function rhqSafeNextWeek() {
+/** Move Outlook's calendar one week on ('next') or back ('previous'). The only thing it presses is the calendar's own
+ *  "Go to next week" or "Go to previous week" arrow: an icon-only button outside any dialog, form or compose area.
+ *  Changing which week is shown changes nothing. */
+function rhqSafeWeek(direction) {
   if (rhqComposeOpen('outlook')) throw new RhqStop('Stopped: a compose or reply box was open, so the reader did nothing more.')
   const arrows = [...document.querySelectorAll('button, [role="button"]')]
-    .filter((b) => /^go to next week\b/i.test((b.getAttribute('aria-label') || '').trim()))
+    .filter((b) => new RegExp(`^go to ${direction === 'previous' ? 'previous' : 'next'} week\\b`, 'i').test((b.getAttribute('aria-label') || '').trim()))
   if (arrows.length !== 1) return false
   const arrow = arrows[0]
   if (arrow.closest('[role="dialog"], form, [contenteditable="true"], textarea, [role="textbox"]')) return false

@@ -763,6 +763,96 @@ def save_application(
 
 
 @tool
+def remove_bank(ctx: RunContext[Deps], bank: str) -> dict:
+    """Take a bank off the student's tracker and recruiting map entirely, when they say it was never part of their
+    recruiting (not when they were cut: that is save_application with out_of_process). Only a bank with no people and
+    no logged chats or steps can be removed; otherwise mark it out, or merge it into the right bank with merge_banks.
+
+    Args:
+        bank: The bank to remove, exactly as the tracker names it.
+    """
+    from . import accounts
+
+    args = {"bank": bank}
+    uid, bank = ctx.deps.user_id, " ".join(bank.split())
+    if not accounts.in_preview_uid(uid):
+        return _refuse(ctx, "remove_bank", args, "Removing a bank isn't available on this account.")
+    conn = _write(ctx)
+    try:
+        with conn:
+            if not conn.execute("SELECT 1 FROM my_banks WHERE user_id = ? AND bank = ?", (uid, bank)).fetchone():
+                return _refuse(ctx, "remove_bank", args, f"There is no bank called {bank} in the tracker. Use lookup for its exact name.")
+            if conn.execute("SELECT 1 FROM people WHERE user_id = ? AND bank = ? UNION SELECT 1 FROM interactions WHERE user_id = ? AND bank = ?",
+                            (uid, bank, uid, bank)).fetchone():
+                return _refuse(ctx, "remove_bank", args, f"{bank} has people or logged entries. Mark it out of process, or merge it into "
+                                                        "the bank it really is with merge_banks.")
+            for table in ("my_banks", "bank_facts", "links", "cover_letters"):
+                conn.execute(f"DELETE FROM {table} WHERE user_id = ? AND bank = ?", (uid, bank))
+    finally:
+        conn.close()
+    return _done(ctx, "remove_bank", args, {"ok": True, "did": f"Removed {bank} from the tracker"})
+
+
+@tool
+def merge_banks(ctx: RunContext[Deps], duplicate: str, into: str) -> dict:
+    """Merge a bank the tracker holds twice under different names ("Guggenheim Securities" and "Guggenheim") into one:
+    everything filed under `duplicate` (people, chats and steps, facts, links, the application, the cover letter) moves
+    to `into`, and `duplicate` disappears from the tracker and the map.
+
+    Args:
+        duplicate: The extra name, exactly as the tracker has it.
+        into: The bank to keep, exactly as the tracker has it.
+    """
+    from . import accounts
+
+    args = {"duplicate": duplicate, "into": into}
+    uid, dup, keep = ctx.deps.user_id, " ".join(duplicate.split()), " ".join(into.split())
+    if not accounts.in_preview_uid(uid):
+        return _refuse(ctx, "merge_banks", args, "Merging banks isn't available on this account.")
+    if dup == keep:
+        return _refuse(ctx, "merge_banks", args, "Those are the same bank.")
+    conn = _write(ctx)
+    try:
+        with conn:
+            rows = {r["bank"]: dict(r) for r in conn.execute("SELECT * FROM my_banks WHERE user_id = ? AND bank IN (?, ?)", (uid, dup, keep))}
+            if dup not in rows or keep not in rows:
+                missing = dup if dup not in rows else keep
+                return _refuse(ctx, "merge_banks", args, f"There is no bank called {missing} in the tracker. Use lookup for exact names.")
+            # the application: the kept bank's own entries win; blanks are filled from the duplicate; notes are joined
+            for field in ("applied", "deadline", "link", "prefs", "status", "stage", "recruiter_name", "recruiter_title", "address", "office"):
+                if not (rows[keep].get(field) or "").strip() and (rows[dup].get(field) or "").strip():
+                    conn.execute(f"UPDATE my_banks SET {field} = ? WHERE user_id = ? AND bank = ?", (rows[dup][field], uid, keep))
+            notes = " ".join(n for n in ((rows[keep].get("notes") or "").strip(), (rows[dup].get("notes") or "").strip()) if n)
+            conn.execute("UPDATE my_banks SET notes = ? WHERE user_id = ? AND bank = ?", (notes, uid, keep))
+            # people: someone already at the kept bank under the same name keeps one entry, with both sets of chats
+            for person in conn.execute("SELECT id, name, notes FROM people WHERE user_id = ? AND bank = ?", (uid, dup)).fetchall():
+                twin = conn.execute("SELECT id, notes FROM people WHERE user_id = ? AND bank = ? AND name = ?", (uid, keep, person["name"])).fetchone()
+                if twin:
+                    conn.execute("UPDATE OR IGNORE interaction_people SET person_id = ? WHERE person_id = ?", (twin["id"], person["id"]))
+                    conn.execute("DELETE FROM interaction_people WHERE person_id = ?", (person["id"],))
+                    both = " ".join(n for n in ((twin["notes"] or "").strip(), (person["notes"] or "").strip()) if n)
+                    conn.execute("UPDATE people SET notes = ? WHERE id = ?", (both, twin["id"]))
+                    conn.execute("DELETE FROM people WHERE id = ?", (person["id"],))
+                else:
+                    conn.execute("UPDATE people SET bank = ? WHERE id = ?", (keep, person["id"]))
+            for table in ("interactions", "bank_facts", "links", "prep_attempts"):
+                conn.execute(f"UPDATE {table} SET bank = ? WHERE user_id = ? AND bank = ?", (keep, uid, dup))
+            if conn.execute("SELECT 1 FROM cover_letters WHERE user_id = ? AND bank = ?", (uid, keep)).fetchone():
+                conn.execute("DELETE FROM cover_letters WHERE user_id = ? AND bank = ?", (uid, dup))
+            else:
+                conn.execute("UPDATE cover_letters SET bank = ? WHERE user_id = ? AND bank = ?", (keep, uid, dup))
+            for deal in conn.execute("SELECT id, banks FROM deals WHERE user_id = ?", (uid,)).fetchall():
+                names = [b.strip() for b in (deal["banks"] or "").split(",") if b.strip()]
+                if dup in names:
+                    merged = list(dict.fromkeys(keep if b == dup else b for b in names))
+                    conn.execute("UPDATE deals SET banks = ? WHERE id = ?", (", ".join(merged), deal["id"]))
+            conn.execute("DELETE FROM my_banks WHERE user_id = ? AND bank = ?", (uid, dup))
+    finally:
+        conn.close()
+    return _done(ctx, "merge_banks", args, {"ok": True, "did": f"Merged {dup} into {keep}"})
+
+
+@tool
 def save_fact(ctx: RunContext[Deps], bank: str, category: str, fact: str, source: str = "") -> dict:
     """Add one fact about a bank itself to that bank's fact sheet.
 

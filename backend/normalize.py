@@ -21,7 +21,32 @@ _BANKS = {
     "citi": "Citi",
     "hl": "Houlihan Lokey",
     "hw": "Harris Williams",
+    # the firms' longer names, as emails and signatures write them
+    "guggenheim securities": "Guggenheim",
+    "guggenheim partners": "Guggenheim",
+    "perella weinberg": "PWP",
+    "perella weinberg partners": "PWP",
+    "perella": "PWP",
+    "pjt partners": "PJT",
+    "centerview partners": "Centerview",
+    "rothschild & co": "Rothschild",
+    "rothschild and co": "Rothschild",
+    "evercore partners": "Evercore",
+    "evercore isi": "Evercore",
+    "lazard freres": "Lazard",
+    "barclays capital": "Barclays",
+    "wells fargo securities": "Wells Fargo",
+    "citigroup": "Citi",
+    "citigroup global markets": "Citi",
+    "bank of america merrill lynch": "Bank of America",
+    "bofa securities": "Bank of America",
+    "jpmorgan chase": "J.P. Morgan",
+    "j.p. morgan chase": "J.P. Morgan",
+    "jp morgan chase": "J.P. Morgan",
 }
+# words that only make a firm's name longer ("Guggenheim Securities, LLC", "PJT Partners")
+_FIRM_SUFFIX = re.compile(r"[,\s]+(securities|partners|& co\.?|and co\.?|llc|l\.l\.c\.|inc\.?|lp|l\.p\.|capital|group|"
+                          r"investment banking|investment bank)$", re.I)
 _ROUNDS = {
     "cc": "Coffee Chat",
     "cc.": "Coffee Chat",
@@ -63,7 +88,26 @@ def _lookup(value, table: dict, default_unknown: bool = True) -> str:
 
 
 def bank(value) -> str:
-    return _lookup(value, _BANKS)
+    """A bank's usual short name. Longer forms ("Guggenheim Securities, LLC", "PWP (Perella Weinberg)") become the
+    known bank they name, so one firm is never filed as two banks."""
+    name = _lookup(value, _BANKS)
+    if name == UNKNOWN:
+        return name
+    from . import banks as bank_info
+
+    known = {b.lower(): b for b in bank_info.DOMAINS}
+    candidates = [name, *re.findall(r"\(([^)]+)\)", name), re.sub(r"\s*\([^)]*\)", "", name)]
+    for candidate in candidates:
+        text = candidate.strip()
+        for _ in range(3):  # "Rothschild & Co, LLC": peel the extra words one at a time
+            hit = _BANKS.get(text.lower()) or known.get(text.lower())
+            if hit:
+                return hit
+            shorter = _FIRM_SUFFIX.sub("", text).strip()
+            if shorter == text:
+                break
+            text = shorter
+    return name
 
 
 def round_(value) -> str:

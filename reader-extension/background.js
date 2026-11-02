@@ -326,12 +326,32 @@ function isHold({ title, minutes }) {
   return minutes >= 75 && !LONG_BY_NATURE.test(title)
 }
 
-/** This week and the next two in the calendar's week view, which shows every event ("Luke Nagli / Sami Moufarrij -
- *  Coffee Chat, 4:30 PM to 5:00 PM, Monday, November 2, 2026, place"). Events already filed are remembered here, so
- *  only new or changed ones are sent (a rescheduled chat is a changed event). */
-async function readCalendar(tab, screenSource, lines) {
-  const out = await ask(tab.id, { type: 'outlook-calendar', weeks: 3 })
+const DAY = 864e5
+const AHEAD_DAYS = 7 // upcoming chats: only the next week's (later invites come in when they're near)
+
+/** The day an event is on, from its label ("..., Monday, November 2, 2026, ..."), as YYYY-MM-DD, or ''. */
+function eventDay(label) {
+  const m = /\b(January|February|March|April|May|June|July|August|September|October|November|December) (\d{1,2}), (20\d\d)\b/.exec(label)
+  if (!m) return ''
+  const month = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'].indexOf(m[1]) + 1
+  return `${m[3]}-${String(month).padStart(2, '0')}-${m[2].padStart(2, '0')}`
+}
+
+/** The calendar in the week view, which shows every event ("Luke Nagli / Sami Moufarrij - Coffee Chat, 4:30 PM to 5:00
+ *  PM, Monday, November 2, 2026, place"): back to where this account's reading starts (its first sync: the start of
+ *  the season) for the chats that already happened, and after that back to a week before the last read; ahead only
+ *  AHEAD_DAYS for the chats coming up. Events already filed are remembered here, so only new or changed ones are sent
+ *  (a rescheduled chat is a changed event). */
+async function readCalendar(tab, screenSource, lines, baseline) {
+  const { calendarReadOn } = await chrome.storage.local.get('calendarReadOn')
+  const today = localNow().slice(0, 10)
+  const lastWeek = calendarReadOn && new Date(new Date(calendarReadOn).getTime() - 7 * DAY).toISOString().slice(0, 10)
+  const from = [String(baseline || '').slice(0, 10), lastWeek || ''].sort().pop() || today // the later of the two
+  const until = new Date(new Date(today).getTime() + AHEAD_DAYS * DAY).toISOString().slice(0, 10)
+  const back = Math.max(0, Math.ceil((new Date(today) - new Date(from)) / (7 * DAY)))
+  const out = await ask(tab.id, { type: 'outlook-calendar', back, ahead: 1 })
   if (!out.ok) return lines.push(`Outlook calendar: ${out.error}`)
+  out.events = out.events.filter((e) => { const day = eventDay(e); return day && day >= from && day <= until })
   let screen = null
   try {
     screen = screenSource ? new RegExp(screenSource, 'i') : null
@@ -343,10 +363,10 @@ async function readCalendar(tab, screenSource, lines) {
   const recruiting = looksLike.filter((e) => !holds.includes(e))
   const { calendarSeen = [] } = await chrome.storage.local.get('calendarSeen')
   const fresh = recruiting.filter((e) => !calendarSeen.includes(e))
-  lines.push(`Outlook calendar: ${out.events.length} events in the next three weeks, ${recruiting.length} about recruiting` +
+  lines.push(`Outlook calendar: ${out.events.length} events from ${from.slice(5)} to ${until.slice(5)}, ${recruiting.length} about recruiting` +
              (holds.length ? ` (and ${holds.length} time block${holds.length > 1 ? 's' : ''} held for offered times, left out)` : '') +
              `, ${fresh.length} new or changed.`)
-  if (!fresh.length) return
+  if (!fresh.length) return chrome.storage.local.set({ calendarReadOn: today })
   const at = localNow()
   await file({ source: 'outlook', conversation: 'Calendar', group_chat: false,
                items: fresh.map((e) => {
@@ -354,7 +374,7 @@ async function readCalendar(tab, screenSource, lines) {
                  const length = minutes >= 1440 ? 'all day' : minutes ? `${minutes} minutes` : 'length not shown'
                  return { key: `calendar|${e}`, at, author: '', text: `CALENDAR EVENT on my Outlook calendar (${length}): ${e}` }
                }) }, lines)
-  await chrome.storage.local.set({ calendarSeen: [...calendarSeen, ...fresh].slice(-600) }) // only once filed
+  await chrome.storage.local.set({ calendarSeen: [...calendarSeen, ...fresh].slice(-1500), calendarReadOn: today }) // only once filed
 }
 
 /** One round of reading Outlook: every folder's new mail, up to MAX_OPEN conversations a folder (oldest first), filed.
@@ -393,7 +413,7 @@ async function syncOutlook(state, lines, first = true, last = true) {
         await fitPage(tab.id)
         if (first) {
           try {
-            pending.push(readCalendar(tab, (state.outlook || {}).screen || '', lines))
+            pending.push(readCalendar(tab, (state.outlook || {}).screen || '', lines, state.baseline))
             await pending[pending.length - 1]
           } catch (e) {
             if (/ 429 /.test(String(e.message))) throw e
