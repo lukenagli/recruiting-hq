@@ -1081,7 +1081,7 @@ class SiteFiles(StaticFiles):
 
     async def get_response(self, path, scope):
         response = await super().get_response(path, scope)
-        long_lived = path.replace("\\", "/").startswith("assets/") and response.status_code == 200  # Windows paths too
+        long_lived = path.replace("\\", "/").startswith("assets/") and response.status_code in (200, 304)  # Windows paths too; 304: "not modified"
         response.headers["Cache-Control"] = "public, max-age=31536000, immutable" if long_lived else "no-cache"
         return response
 
