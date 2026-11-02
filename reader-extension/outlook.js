@@ -144,6 +144,18 @@ async function scheduled(since) {
   return out
 }
 
+/** The events in the calendar's month view, as Outlook describes them to screen readers: "Luke Nagli / Sami Moufarrij
+ *  - Coffee Chat, 4:30 PM to 5:00 PM, Monday, November 2, 2026, place, By organizer". Nothing is clicked or opened.
+ *  Phone numbers (a call's location is often one) are left out. */
+async function calendarEvents() {
+  const EVENT = /, \d{1,2}:\d{2} [AP]M to \d{1,2}:\d{2} [AP]M, \w+day, \w+ \d{1,2}, \d{4}/
+  const labels = () => [...document.querySelectorAll('[aria-label]')].map((e) => e.getAttribute('aria-label') || '')
+    .filter((t) => EVENT.test(t) && !/^\d{1,2}:\d{2}/.test(t)) // no title: a work-location marker
+  await rhqWaitFor(() => labels().length, 20000) // a month with nothing on it shows none
+  await rhqSleep(1500) // the rest of the month draws in
+  return [...new Set(labels().map((t) => t.replace(/\s+/g, ' ').replace(/(\+?1[ .-]?)?\(?\d{3}\)?[ .-]\d{3}[ .-]\d{4}/g, '[phone]').trim()))]
+}
+
 // ---- The one-time catch-up: thank-you emails the student already sent ----
 
 const THANKS = /thank you again for (meeting|speaking)|thank you for (meeting|taking|speaking)|wanted to thank|want to thank|thanks again for/i
@@ -247,6 +259,10 @@ function answerLater(msg, reply, job) {
 chrome.runtime.onMessage.addListener((msg, _sender, reply) => {
   if (msg.type === 'outlook-thanks') {
     return answerLater(msg, reply, async () => ({ ok: true, emails: await thankYous(msg.since) }))
+  }
+  if (msg.type === 'outlook-calendar') {
+    calendarEvents().then((events) => reply({ ok: true, events })).catch((e) => reply({ ok: false, error: String(e) }))
+    return true
   }
   if (msg.type === 'outlook-scheduled') {
     scheduled(msg.since).then((items) => reply({ ok: true, items })).catch((e) => reply({ ok: false, error: String(e) }))

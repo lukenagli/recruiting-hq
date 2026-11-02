@@ -270,6 +270,15 @@ def _message(batch: Batch, items: list[Item], school: str) -> str:
                  "and status upcoming once a new time is agreed (a calendar invite or an accepted time), otherwise status todo "
                  "with date_note saying it is being rescheduled and the times I offered, if I offered any. The latest email in a "
                  "thread decides. ")
+    if batch.source == "outlook" and batch.conversation == "Calendar":
+        head += ("These are events on my Outlook calendar, new or changed since the last refresh. A coffee chat, call, interview "
+                 "or dinner with a banker or a second-year is scheduled for the date, time and place shown (\"Luke Nagli / Sami "
+                 "Moufarrij - Coffee Chat\" is a chat with Sami Moufarrij): find that person's entry with lookup and update the "
+                 "same entry with save_entry (date, time in date_note, place or call details in format; status upcoming while "
+                 "it is ahead, done once its date has passed), or log it if there is none. Use the bank the tracker has for "
+                 "that person, or one the event names; if neither says which bank, save nothing for it (the invite email "
+                 "will). An event starting \"Canceled:\" was canceled: set its entry to todo with date_note saying so. "
+                 "Events that aren't about recruiting (classes, club socials, personal plans) are ignored. ")
     head += "Do not draft emails. If nothing is worth saving, save nothing and say so.\n\n"
     lines = [f"[{i.at}] {i.author}: {i.text.strip()}" for i in items]
     return head + "\n".join(lines)

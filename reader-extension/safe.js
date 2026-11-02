@@ -84,7 +84,8 @@ async function rhqWaitFor(test, ms = 15000) {
  *  second (and later once a minute), so the pause is timed by the extension's background instead, which Chrome
  *  doesn't slow. Falls back to an ordinary timer if the background doesn't answer. */
 function rhqSleep(ms) {
-  return chrome.runtime.sendMessage({ type: 'rhq-sleep', ms }).catch(() => new Promise((r) => setTimeout(r, ms)))
+  // hidden: Chrome isn't drawing this page (its window is behind others), so the background brings it to the front
+  return chrome.runtime.sendMessage({ type: 'rhq-sleep', ms, hidden: document.hidden }).catch(() => new Promise((r) => setTimeout(r, ms)))
 }
 
 /** "2026-10-19T15:17:00" (local time) from a Date. */
