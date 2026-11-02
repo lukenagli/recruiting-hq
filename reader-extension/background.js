@@ -32,40 +32,56 @@ async function unlockTab(tabId, filters) {
   await chrome.declarativeNetRequest.updateSessionRules({ removeRuleIds: filters.map((_, i) => base + i + 1) })
 }
 
-// Chrome stops drawing pages in minimized windows, and Outlook and WhatsApp only fill in their lists as they draw
-// them: read in minimized windows, most folders never loaded. So the reader's windows open small, side by side along
-// the bottom of the student's own window (slot 0 Outlook, 1 Slack, 2 WhatsApp), where they keep drawing, and close
-// themselves when done. Each page is zoomed out (fitPage) so it still lays itself out for a desktop-sized screen.
-const SLOTS = 3
+// The reader works in one ordinary Chrome window of its own, opened in front at a normal size for the minute or two a
+// refresh takes, and closed when it's done. Chrome only draws windows that are on screen, and Outlook and WhatsApp only
+// fill in their lists as they draw them: minimized windows, small windows and windows left behind others each left
+// things unread before. Outlook, Slack and WhatsApp are read one after another in tabs of that window.
+let reader = null // { id: the window, blank: its first tab }
 
-async function readerWindow(url, slot = 0) {
-  const base = await chrome.windows.getLastFocused({ windowTypes: ['normal'] }).catch(() => null)
-  const W = (base && base.width) || 1440, H = (base && base.height) || 900, L = (base && base.left) || 0, T = (base && base.top) || 0
-  const width = Math.max(420, Math.round(W / SLOTS)), height = Math.max(320, Math.round(H * 0.42))
-  const win = await chrome.windows.create({ url, focused: false, state: 'normal', width, height,
-                                            left: L + Math.min(slot, SLOTS - 1) * Math.round(W / SLOTS), top: T + H - height })
+async function openReader() {
+  const all = await chrome.windows.getAll({ windowTypes: ['normal'] }).catch(() => [])
+  const base = all.filter((w) => w.state !== 'minimized').sort((a, b) => b.width * b.height - a.width * a.height)[0]
+  const W = (base && base.width) || 1440, H = (base && base.height) || 900
+  const width = Math.max(1100, Math.min(W, 1400)), height = Math.max(700, Math.min(H, 900))
+  const left = ((base && base.left) || 0) + Math.max(0, Math.round((W - width) / 2))
+  const top = ((base && base.top) || 0) + Math.max(0, Math.round((H - height) / 2))
+  const win = await chrome.windows.create({ url: 'about:blank', focused: true, state: 'normal', width, height, left, top })
   const { readerWindows = [] } = await chrome.storage.session.get('readerWindows')
   await chrome.storage.session.set({ readerWindows: [...readerWindows, win.id] }) // see `ready` below
-  return win
+  reader = { id: win.id, blank: win.tabs[0].id }
+  return reader
 }
 
-/** Zoom a reader tab out so a small window still shows the page's full desktop layout. Only this tab (per-tab
- *  zoom, which a page load resets, so it is applied after each one); the student's own tabs are untouched. */
+async function closeReader() {
+  const { borrowed } = await chrome.storage.session.get('borrowed')
+  if (borrowed) await giveBack(borrowed) // the student's WhatsApp tab never closes with the window
+  if (reader) await chrome.windows.remove(reader.id).catch(() => undefined)
+  reader = null
+}
+
+/** A page laid out for a narrow screen hides Outlook's folder list. Zoom that tab out (this tab only, per-tab zoom,
+ *  which a page load resets) so it has a desktop-sized page again. Called after each page load, and whenever a page
+ *  script reports it is narrower than that. */
 async function fitPage(tabId) {
   const tab = await chrome.tabs.get(tabId)
-  const win = await chrome.windows.get(tab.windowId)
   await chrome.tabs.setZoomSettings(tabId, { mode: 'automatic', scope: 'per-tab' })
-  await chrome.tabs.setZoom(tabId, Math.max(0.3, Math.min(1, (win.width || 1440) / 1400)))
+  await chrome.tabs.setZoom(tabId, Math.max(0.5, Math.min(1, (tab.width || 1200) / 1200)))
 }
 
-// A reader window that ends up behind other windows stops drawing too (the page scripts say so with each pause):
-// it is brought back to the front, at most every 15 seconds.
+// If the reader window ends up behind other windows it stops drawing too (the page scripts say so with each pause):
+// it is brought back to the front, at most every 15 seconds. A page that reports itself narrow is zoomed out again.
 const raisedAt = {}
 async function keepInView(windowId) {
   if (Date.now() - (raisedAt[windowId] || 0) < 15000) return
   raisedAt[windowId] = Date.now()
   const { readerWindows = [] } = await chrome.storage.session.get('readerWindows')
   if (readerWindows.includes(windowId)) await chrome.windows.update(windowId, { focused: true }).catch(() => undefined)
+}
+const fittedAt = {}
+async function keepWide(tabId) {
+  if (Date.now() - (fittedAt[tabId] || 0) < 5000) return
+  fittedAt[tabId] = Date.now()
+  await fitPage(tabId).catch(() => undefined)
 }
 
 chrome.windows.onRemoved.addListener(async (id) => {
@@ -88,11 +104,10 @@ const ready = (async () => {
   }
 })().catch(() => undefined)
 
-/** A tab with the network lock on before it loads anything, in a small reader window of its own so the student's
- *  windows never fill with tabs. Closing its only tab closes the window. */
-async function lockedTab(url, filters, slot = 0) {
-  const win = await readerWindow('about:blank', slot)
-  const tab = win.tabs[0]
+/** A tab in the reader window with the network lock on before it loads anything. */
+async function lockedTab(url, filters) {
+  if (!reader) await openReader()
+  const tab = await chrome.tabs.create({ windowId: reader.id, url: 'about:blank', active: true })
   await lockTab(tab.id, filters)
   await chrome.tabs.update(tab.id, { url })
   return tab
@@ -120,6 +135,7 @@ chrome.runtime.onMessage.addListener((msg, sender, reply) => {
 chrome.runtime.onMessage.addListener((msg, sender, reply) => {
   if (sender.id !== chrome.runtime.id || msg.type !== 'rhq-sleep') return
   if (msg.hidden && sender.tab) keepInView(sender.tab.windowId)
+  if (msg.width && msg.width < 1000 && sender.tab) keepWide(sender.tab.id)
   setTimeout(() => reply(true), Math.max(0, Math.min(Number(msg.ms) || 0, 60000)))
   return true
 })
@@ -324,7 +340,7 @@ async function syncOutlook(state, lines) {
   const pending = []
   try {
     await report('outlook', 0, 'Opening Outlook')
-    tab = await lockedTab('https://outlook.cloud.microsoft/mail/drafts', OUTLOOK_LOCK, 0) // opened by address
+    tab = await lockedTab('https://outlook.cloud.microsoft/mail/drafts', OUTLOOK_LOCK) // opened by address
     await loaded(tab.id)
     await fitPage(tab.id)
     // Scheduled emails: read from the Drafts list without opening them.
@@ -366,7 +382,7 @@ async function syncOutlook(state, lines) {
 async function syncSlack(state, lines) {
   const { slack_team: team, slack_channels: picked = [] } = state.config || {}
   // Opened by address: the club's workspace when it is known, otherwise the one Slack opens by default.
-  const tab = await lockedTab(team ? `https://app.slack.com/client/${team}` : 'https://app.slack.com/client', SLACK_LOCK, 1)
+  const tab = await lockedTab(team ? `https://app.slack.com/client/${team}` : 'https://app.slack.com/client', SLACK_LOCK)
   const pending = [] // filed in turn while the next channel is read
   try {
     await loaded(tab.id)
@@ -406,42 +422,49 @@ async function syncWhatsApp(state, lines) {
   const chats = (state.config || {}).whatsapp_chats || []
   if (!chats.length) return
   // WhatsApp Web runs in one tab at a time, and opening a second one would knock the student's offline. So the reader
-  // reads their WhatsApp tab when it is open, and otherwise opens WhatsApp in a reader window of its own (signed in
-  // the way theirs is) and closes it afterwards. Their own tab is only drawn while it is the tab on show in a window
-  // that isn't minimized; otherwise it is moved into a reader window for the read and put back where it was.
+  // reads their WhatsApp tab when it is open, moved into the reader window for the read (so it is drawn) and put back
+  // where it was afterwards; otherwise it opens WhatsApp in a tab of the reader window (signed in the way theirs is).
   let [tab] = await chrome.tabs.query({ url: 'https://web.whatsapp.com/*' })
-  let own = null
-  let borrowed = null
+  if (!reader) await openReader()
+  let ours = false
   const pending = [] // filed in turn while the next chat is read
   if (!tab) {
-    own = await readerWindow('https://web.whatsapp.com/', 2)
-    tab = own.tabs[0]
-    await loaded(tab.id)
-    await fitPage(tab.id)
-  } else if (!tab.active || (await chrome.windows.get(tab.windowId)).state === 'minimized') {
-    own = await readerWindow('about:blank', 2)
-    borrowed = { tabId: tab.id, windowId: tab.windowId, index: tab.index, active: tab.active }
+    ours = true
+    tab = await chrome.tabs.create({ windowId: reader.id, url: 'https://web.whatsapp.com/', active: true })
+  } else {
+    const borrowed = { tabId: tab.id, windowId: tab.windowId, index: tab.index, active: tab.active }
     await chrome.storage.session.set({ borrowed })
-    await chrome.tabs.move(tab.id, { windowId: own.id, index: -1 })
+    await chrome.tabs.move(tab.id, { windowId: reader.id, index: -1 })
     await chrome.tabs.update(tab.id, { active: true })
-    await fitPage(tab.id)
   }
+  await loaded(tab.id)
+  await fitPage(tab.id)
+  let reloaded = false
   try {
     for (const [i, chat] of chats.entries()) {
       await report('whatsapp', i / chats.length, `Reading WhatsApp: ${chat} (${i + 1} of ${chats.length})`)
       const since = (state.checkpoints.whatsapp || {})[chat] || state.baseline
-      const out = await ask(tab.id, { type: 'whatsapp-collect', chat, since })
+      let out = await ask(tab.id, { type: 'whatsapp-collect', chat, since })
+      if (!out.ok && out.error === 'The page did not answer.' && !reloaded) {
+        // a WhatsApp tab open from before the reader was updated runs the old reader script: reload it once
+        reloaded = true
+        await chrome.tabs.reload(tab.id)
+        await sleep(1500)
+        await loaded(tab.id)
+        await fitPage(tab.id)
+        out = await ask(tab.id, { type: 'whatsapp-collect', chat, since })
+      }
       if (!out.ok) {
-        lines.push(`WhatsApp ${chat}: ${out.error}` + (own
-          ? ' (If WhatsApp isn\'t linked in this Chrome, open web.whatsapp.com once and link your phone.)'
-          : ' (Your WhatsApp tab was open before the Reader was updated: reload that tab once, then refresh again.)'))
+        lines.push(`WhatsApp ${chat}: ${out.error}` + (ours
+          ? ' (If WhatsApp isn\'t linked in this Chrome, open web.whatsapp.com once and link your phone.)' : ''))
         continue
       }
       pending.push(file({ source: 'whatsapp', conversation: chat, group_chat: true, items: out.items }, lines))
     }
   } finally {
+    const { borrowed } = await chrome.storage.session.get('borrowed')
     if (borrowed) await giveBack(borrowed)
-    if (own) await chrome.windows.remove(own.id).catch(() => undefined)
+    else if (ours) await chrome.tabs.remove(tab.id).catch(() => undefined)
   }
   await Promise.all(pending)
 }
@@ -537,6 +560,7 @@ async function thanksAll() {
       await chrome.tabs.remove(tab.id).catch(() => undefined)
       await unlockTab(tab.id, OUTLOOK_LOCK)
     }
+    await closeReader()
     await chrome.storage.local.set({ running: 0, progress: { pct: 100, label: 'Done' },
                                      last: { at: new Date().toLocaleString(), lines } })
   }
@@ -557,26 +581,24 @@ async function syncAll() {
       return lines.push("Not started: today's AI allowance is used up, so nothing could be filed. Refresh again after midnight.")
     }
     state.baseline = (await chrome.storage.local.get('baseline')).baseline // set when the key was first saved
-    // All three at once, each in its own minimized window; each keeps its own lines so the report reads in order.
-    const steps = [['Outlook', 'outlook', syncOutlook], ['Slack', 'slack', syncSlack], ['WhatsApp', 'whatsapp', syncWhatsApp]]
-    const each = await Promise.all(steps.map(async ([name, key, step]) => {
-      const own = []
+    // One after another in the reader window (filing carries on in the background while the next one is read).
+    await openReader()
+    for (const [name, key, step] of [['Outlook', 'outlook', syncOutlook], ['Slack', 'slack', syncSlack], ['WhatsApp', 'whatsapp', syncWhatsApp]]) {
       try {
-        await step(state, own)
+        await step(state, lines)
       } catch (e) {
-        if (!/ 429 /.test(String(e.message))) own.push(`${name}: ${e.message || e}`)
+        if (!/ 429 /.test(String(e.message))) lines.push(`${name}: ${e.message || e}`)
       } finally {
         await report(key, 1, `${name} done`)
       }
-      return own
-    }))
-    lines = each.flat()
+    }
     if (outOfAI) { // the AI allowance ran out partway: what wasn't filed is read again next time
       lines.push("Stopped filing partway: today's AI allowance is used up. What wasn't filed is picked up on the next refresh.")
     }
   } catch (e) {
     lines.push(String(e.message || e))
   } finally {
+    await closeReader()
     clearInterval(keepAlive)
     outlookShare = null
     outlookRun = null

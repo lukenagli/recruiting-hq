@@ -80,7 +80,7 @@ export function ThanksCatchUp({ onDone }: { onDone?: () => void }) {
         <div className="refresh-warning working">
           <p>
             <strong>Bringing in your thank-you emails…</strong> This can take 10 to 20 minutes for a full season. Outlook is open in a
-            minimized Chrome window; leave it alone and it closes itself when it's done. You can keep using this site meanwhile.
+            Chrome window in front of this one; leave it in front and it closes itself when it's done.
           </p>
           <ReaderProgress status={status} />
         </div>
@@ -88,8 +88,8 @@ export function ThanksCatchUp({ onDone }: { onDone?: () => void }) {
         <div className="refresh-warning">
           <p>
             <strong>This may take a while.</strong> For a full season of recruiting it usually takes 10 to 20 minutes, with a progress bar
-            here the whole time. Outlook opens in a minimized Chrome window (you'll see it in your taskbar); please don't open or close it
-            until it's done. It only reads: it never sends, replies or changes anything.
+            here the whole time. Outlook opens in a Chrome window in front of this one (Chrome only reads what's on screen); leave it in front
+            until it closes itself. It only reads: it never sends, replies or changes anything.
           </p>
           <button className="primary" onClick={() => { setAsking(false); setStarted(true); thanks() }}>Start</button>
           <button className="ghost" onClick={() => setAsking(false)}>Not now</button>
@@ -115,6 +115,17 @@ export default function Refresh({ onDone }: { onDone?: () => void }) {
       onDone?.()
     }
   }, [busy, wasBusy, onDone])
+  // What the last refresh couldn't read, so one that missed something doesn't look like it worked.
+  const unread = [...new Set((status?.last?.lines ?? []).flatMap((l) => {
+    const stuck = (l.match(/didn't load/g) ?? []).length
+    if (l.startsWith('Outlook read ')) return stuck ? [`${stuck} Outlook folder${stuck > 1 ? 's' : ''}`] : []
+    if (l.startsWith('Outlook: ')) return ['your Outlook email']
+    if (l.startsWith('Outlook calendar: ') && !/^Outlook calendar: \d+ events/.test(l)) return ['your Outlook calendar']
+    if (l.startsWith('Outlook scheduled: ')) return ['your scheduled emails']
+    if (l.startsWith('Slack: ')) return ['Slack']
+    if (l.startsWith('WhatsApp ')) return ['WhatsApp']
+    return []
+  }))]
 
   if (stale)
     return (
@@ -140,19 +151,19 @@ export default function Refresh({ onDone }: { onDone?: () => void }) {
       {busy ? (
         <div className="refresh-warning working">
           <p>
-            <strong>Refreshing…</strong> A minimized Chrome window is reading your Outlook, Slack and WhatsApp (or your own WhatsApp tab,
-            if it's open). Please don't open or close that window, or click in WhatsApp; it closes on its own when it's done, usually in a
-            few minutes.
+            <strong>Refreshing…</strong> A Chrome window in front is reading your Outlook calendar and email, then Slack, then WhatsApp
+            (your own WhatsApp tab moves into it for a moment and goes back). Leave it in front and don't click in it; it closes on its own
+            when it's done, usually in a minute or two.
           </p>
           <ReaderProgress status={status} />
         </div>
       ) : confirming ? (
         <div className="refresh-warning">
           <p>
-            <strong>Before you refresh:</strong> the reader opens a minimized Chrome window (you'll see it in your taskbar) to read your
-            Outlook, Slack and WhatsApp. WhatsApp only runs in one tab at a time, so if you already have WhatsApp open, it reads that tab
-            instead. Leave them alone while it works (a few minutes); the window closes itself when it's done. It only reads: it never
-            sends, replies or reacts.
+            <strong>Before you refresh:</strong> the reader opens a Chrome window in front of this one to read your Outlook calendar and
+            email, Slack and WhatsApp, one after another. Chrome only reads what's on screen, so leave that window in front while it
+            works (a minute or two); it closes itself when it's done. WhatsApp only runs in one tab at a time, so if you have WhatsApp
+            open, that tab moves into the window for a moment and goes back. It only reads: it never sends, replies or reacts.
           </p>
           {allowance.data?.ai_left === 0 && (
             <p className="refresh-out">
@@ -168,6 +179,11 @@ export default function Refresh({ onDone }: { onDone?: () => void }) {
         </button>
       )}
       {!busy && !confirming && status!.last && <small className="muted refresh-last">Last refreshed {status!.last.at}</small>}
+      {!busy && !confirming && unread.length > 0 && (
+        <p className="notice error refresh-unread">
+          <strong>Not read last time:</strong> {unread.join('; ')}. Refresh again, and leave the reader window in front until it closes.
+        </p>
+      )}
     </div>
   )
 }
