@@ -472,9 +472,15 @@ def save_edits(uid: int, bank: str, paragraphs: list[str] | None, details: dict)
     init_db()
     with connect() as conn:
         conn.execute("INSERT OR IGNORE INTO my_banks (user_id, bank, applied, deadline, link, prefs, notes) VALUES (?, ?, '', '', '', '', '')", (uid, bank))
+        mine = conn.execute("SELECT * FROM my_banks WHERE user_id = ? AND bank = ?", (uid, bank)).fetchone()
+        shown = shared.bank_detail(bank, dict(mine) if mine else {}, accounts.in_preview_uid(uid))
         for field in ("recruiter_name", "recruiter_title", "address", "office"):
             if field in details:
-                conn.execute(f"UPDATE my_banks SET {field} = ? WHERE user_id = ? AND bank = ?", (str(details[field]).strip()[:300], uid, bank))
+                value = str(details[field]).strip()[:300]
+                # a filled-in field emptied on purpose stays empty (no default), on this save and later ones
+                if not value and (shown.get(field) or (mine and mine[field] == shared.CLEARED)):
+                    value = shared.CLEARED
+                conn.execute(f"UPDATE my_banks SET {field} = ? WHERE user_id = ? AND bank = ?", (value, uid, bank))
         if paragraphs is not None:
             clean = [" ".join(p.split()) for p in paragraphs if p.strip()]
             row = conn.execute("SELECT warnings FROM cover_letters WHERE user_id = ? AND bank = ?", (uid, bank)).fetchone()

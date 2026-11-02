@@ -80,10 +80,14 @@ def push_bank_defaults(updates: dict[str, dict]) -> dict:
     return bank_defaults()
 
 
+CLEARED = "(none)"  # a field the student emptied on purpose (a letter to "Hiring Manager"): no admin default for it
+
+
 def bank_detail(bank: str, mine: dict, pushed: bool = True) -> dict:
-    """The details a letter uses for one bank: the student's own where they typed one, else the admin's default."""
+    """The details a letter uses for one bank: the student's own where they typed one (or emptied on purpose), else
+    the admin's default."""
     base = bank_defaults(pushed).get(bank, {f: "" for f in BANK_FIELDS})
-    return {f: (mine.get(f) or base[f] or "") for f in BANK_FIELDS}
+    return {f: "" if mine.get(f) == CLEARED else (mine.get(f) or base[f] or "") for f in BANK_FIELDS}
 
 
 # ---- Chats ----
