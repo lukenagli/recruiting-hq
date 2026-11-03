@@ -96,6 +96,7 @@ async function readFolder(name, since, patience = 10000, screen = null) {
   const prev = firstId()
   const open = node.getAttribute('aria-selected') === 'true' // already showing (Inbox, when Outlook opens)
   const count = Number(((/ - ([\d,]+) items?/.exec(node.getAttribute('title') || '') || [])[1] || '0').replace(/,/g, '')) // as the folder list says
+  node.scrollIntoView({ block: 'nearest' }) // on screen in the folder list, as when it's clicked by hand
   if (!rhqSafeClick(node, 'outlook-folders')) return { items: [], more: 0, note: 'refused by the click guard' }
   // As long as Outlook takes to show the folder, and no longer: the tab title changes, then the list empties and
   // loads (about 1.5 s; much longer for the first folders while Outlook is still starting up).
@@ -340,8 +341,14 @@ chrome.runtime.onMessage.addListener((msg, _sender, reply) => {
       }
       batches.push(b)
     }
-    // A folder whose list still didn't show gets one second, more patient try at the end.
+    // A folder whose list still didn't show gets one second, more patient try at the end, opened fresh: from the Inbox
+    // once its emails show (a folder clicked while Outlook is still busy with the last one can stay blank).
     for (const b of batches.filter((b) => /didn't load/.test(b.note || ''))) {
+      const inbox = folderNode('Inbox')
+      if (inbox && b.conversation !== 'Inbox' && rhqSafeClick(inbox, 'outlook-folders')) {
+        await rhqWaitFor(() => document.querySelector('[role="listbox"] [role="option"]'), 20000)
+        await rhqSleep(1000)
+      }
       const again = await readFolder(b.conversation, msg.checkpoints[b.conversation] || msg.baseline, 45000, screenFor(b.conversation))
       b.items = again.items
       b.more = again.more

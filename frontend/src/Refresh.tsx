@@ -140,8 +140,10 @@ export default function Refresh({ onDone }: { onDone?: () => void }) {
   const lines = status?.last?.lines ?? []
   const foldersRead = lines.some((l) => l.startsWith('Outlook read '))
   const unread = [...new Set(lines.flatMap((l) => {
-    const stuck = (l.match(/didn't load/g) ?? []).length
-    if (l.startsWith('Outlook read ')) return stuck ? [`${stuck} Outlook folder${stuck > 1 ? 's' : ''}`] : []
+    // "Outlook read 41 folders: Inbox (2 new ...); MGT 410: Competitor (its 7 emails didn't load (second try)); ..."
+    const stuck = l.replace(/^Outlook read \d+ folders: /, '').split('; ').filter((f) => /didn't load/.test(f))
+      .map((f) => f.replace(/ \(its [\d,]+ emails didn't load.*$/, ''))
+    if (l.startsWith('Outlook read ')) return stuck.length ? [`the Outlook folder${stuck.length > 1 ? 's' : ''} ${stuck.join(', ')}`] : []
     if (l.startsWith('Outlook: ')) return foldersRead ? [] : ['your Outlook email']
     if (l.startsWith('Outlook calendar: ') && !/^Outlook calendar: \d+ events/.test(l)) return ['your Outlook calendar']
     if (l.startsWith('Outlook scheduled: ')) return ['your scheduled emails']
@@ -190,7 +192,7 @@ export default function Refresh({ onDone }: { onDone?: () => void }) {
             <strong>Refreshing…</strong>{' '}
             {outlookOnly
               ? "Two Chrome windows, side by side, are reading your Outlook email and calendar."
-              : "The reader's Chrome windows, tiled across your screen, are reading your Outlook calendar and email, Slack and WhatsApp at the same time (your own WhatsApp tab moves into one for a moment and goes back)."}{' '}
+              : "Three Chrome windows, tiled across your screen, are reading your Outlook calendar and email and Slack at the same time."}{' '}
             Leave them in front and don't click in them; they close on their own when they're done
             {firstSync ? ". This first one reaches back to September 1, so it can take 10 to 20 minutes." : ', usually within a minute or two.'}
           </p>
@@ -202,7 +204,7 @@ export default function Refresh({ onDone }: { onDone?: () => void }) {
             <strong>Before you refresh:</strong>{' '}
             {outlookOnly
               ? 'the reader opens two Chrome windows side by side to read your Outlook email and calendar.'
-              : 'the reader opens four Chrome windows tiled across your screen to read your Outlook calendar and email, Slack and WhatsApp at the same time. WhatsApp only runs in one tab at a time, so if you have WhatsApp open, that tab moves into one of the windows for a moment and goes back.'}{' '}
+              : 'the reader opens three Chrome windows tiled across your screen to read your Outlook calendar and email and Slack at the same time. WhatsApp is left out until the reader can open its chats reliably.'}{' '}
             Chrome only reads what's on screen, so leave them in front while they work; they close themselves when they're done.{' '}
             {firstSync
               ? 'This first refresh reads everything since September 1 (every folder, however you organize them), so it can take 10 to 20 minutes; after that, a refresh takes a minute or two.'

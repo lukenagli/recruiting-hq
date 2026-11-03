@@ -547,6 +547,9 @@ async function syncSlack(state, lines) {
   await Promise.all(pending)
 }
 
+// Off for now: the chats are found but don't open, so a refresh read nothing from WhatsApp and only reported it.
+const READ_WHATSAPP = false
+
 async function syncWhatsApp(state, lines) {
   const chats = (state.config || {}).whatsapp_chats || []
   if (!chats.length) return doneWith(SLOT.whatsapp)
@@ -717,13 +720,14 @@ async function syncAll() {
     state.baseline = (await chrome.storage.local.get('baseline')).baseline
     // All at once, each in its own window(s); each keeps its own lines so the report reads in order. What's read is
     // still filed one batch at a time.
-    // Everyone but the site's admin reads Outlook only for now (two windows); the admin's reader also reads Slack and
-    // WhatsApp (four).
+    // Everyone but the site's admin reads Outlook only for now (two windows); the admin's reader also reads Slack
+    // (three). WhatsApp is left out until its chats open reliably (READ_WHATSAPP).
     const outlookOnly = !!state.outlook_only
-    await openReader(outlookOnly ? 2 : 4)
-    if (outlookOnly) share = { slack: 1, whatsapp: 1 } // so the bar still reaches the end
+    await openReader(outlookOnly ? 2 : READ_WHATSAPP ? 4 : 3)
+    share = { ...(outlookOnly ? { slack: 1 } : {}), ...(outlookOnly || !READ_WHATSAPP ? { whatsapp: 1 } : {}) } // so the bar still reaches the end
     const steps = [['Outlook', 'outlook', syncOutlookFully],
-                   ...(outlookOnly ? [] : [['Slack', 'slack', syncSlack], ['WhatsApp', 'whatsapp', syncWhatsApp]])]
+                   ...(outlookOnly ? [] : [['Slack', 'slack', syncSlack]]),
+                   ...(outlookOnly || !READ_WHATSAPP ? [] : [['WhatsApp', 'whatsapp', syncWhatsApp]])]
     const each = await Promise.all(steps.map(async ([name, key, step]) => {
       const own = []
       try {
