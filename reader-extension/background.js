@@ -74,11 +74,13 @@ async function closeReader() {
   reader = null
 }
 
-/** Close the window(s) of a part of the refresh as soon as it has been read (filing carries on without them). Only
- *  when the parts have windows of their own. */
+/** Close the window(s) of a part of the refresh as soon as it has been read (filing carries on without them). Only a
+ *  part's own window: with two windows open (Outlook only), Slack and WhatsApp have none. */
 async function doneWith(...slots) {
-  if (!reader || reader.windows.length < 4) return
-  for (const slot of slots) await chrome.windows.remove(reader.windows[slot]).catch(() => undefined)
+  if (!reader || reader.windows.length < 2) return
+  for (const slot of slots) {
+    if (slot < reader.windows.length) await chrome.windows.remove(reader.windows[slot]).catch(() => undefined)
+  }
 }
 
 /** The reader window for one part of the refresh (the only one, when just one is open). */
@@ -265,6 +267,16 @@ chrome.runtime.onMessage.addListener((msg, sender, reply) => {
   reply(take)
 })
 
+// Each folder as soon as a page has read it: filed in turn with everything else, so filing goes on while the other
+// folders are still being read. Once the round is over (outlookRun gone) it is filed with the rest instead.
+chrome.runtime.onMessage.addListener((msg, sender, reply) => {
+  if (sender.id !== chrome.runtime.id || msg.type !== 'outlook-read') return
+  if (!outlookRun) return reply(false)
+  const { more, note, filing, ...batch } = msg.batch
+  if (batch.items.length || batch.seen_until) fileSoon(outlookRun.filings, batch, outlookRun.lines)
+  reply(true)
+})
+
 // Reading runs side by side, but what was read is still filed one batch at a time, so two batches never change
 // the tracker at once. Once the day's AI allowance runs out, nothing more is sent: it is read again next time.
 let filing = Promise.resolve()
@@ -281,10 +293,25 @@ async function fileNow(batch, lines) {
   try {
     const out = await api('/api/sync/ingest', { ...batch, baseline })
     if (batch.items.length) lines.push(`${batch.source} · ${batch.conversation}: ${out.new} new, ${out.filed} filed. ${out.note || ''}`.trim())
+    return true
   } catch (e) {
     if (/ 429 /.test(String(e.message))) outOfAI = true
     throw e
   }
+}
+
+/** File a batch without waiting for it (it's added to `filings`, to wait for later); a failure is a line in the report.
+ *  `then` runs only if it was filed (not when the AI allowance had already run out). */
+function fileSoon(filings, batch, lines, then = () => undefined) {
+  filings.push(file(batch, lines).then((filed) => filed && then()).catch((e) => {
+    if (!/ 429 /.test(String(e.message))) lines.push(`Outlook ${batch.conversation}: ${e.message || e}`)
+  }))
+}
+
+/** "2m 05s" */
+function took(ms) {
+  const s = Math.round(ms / 1000)
+  return s < 60 ? `${s}s` : `${Math.floor(s / 60)}m ${String(s % 60).padStart(2, '0')}s`
 }
 
 /** Now as a local timestamp like the page scripts give ("2026-11-02T13:05:00"). */
@@ -341,8 +368,9 @@ function eventDay(label) {
  *  PM, Monday, November 2, 2026, place"): back to where this account's reading starts (its first sync: the start of
  *  the season) for the chats that already happened, and after that back to a week before the last read; ahead only
  *  AHEAD_DAYS for the chats coming up. Events already filed are remembered here, so only new or changed ones are sent
- *  (a rescheduled chat is a changed event). */
-async function readCalendar(tab, screenSource, lines, baseline) {
+ *  (a rescheduled chat is a changed event). Returns once the calendar is read; its filing is added to `filings`, so the
+ *  window goes on to the email folders without waiting for it. */
+async function readCalendar(tab, screenSource, lines, baseline, filings) {
   const { calendarReadOn } = await chrome.storage.local.get('calendarReadOn')
   const today = localNow().slice(0, 10)
   const lastWeek = calendarReadOn && new Date(new Date(calendarReadOn).getTime() - 7 * DAY).toISOString().slice(0, 10)
@@ -368,24 +396,26 @@ async function readCalendar(tab, screenSource, lines, baseline) {
              `, ${fresh.length} new or changed.`)
   if (!fresh.length) return chrome.storage.local.set({ calendarReadOn: today })
   const at = localNow()
-  await file({ source: 'outlook', conversation: 'Calendar', group_chat: false,
-               items: fresh.map((e) => {
-                 const { minutes } = eventShape(e)
-                 const length = minutes >= 1440 ? 'all day' : minutes ? `${minutes} minutes` : 'length not shown'
-                 return { key: `calendar|${e}`, at, author: '', text: `CALENDAR EVENT on my Outlook calendar (${length}): ${e}` }
-               }) }, lines)
-  await chrome.storage.local.set({ calendarSeen: [...calendarSeen, ...fresh].slice(-1500), calendarReadOn: today }) // only once filed
+  fileSoon(filings, { source: 'outlook', conversation: 'Calendar', group_chat: false,
+                      items: fresh.map((e) => {
+                        const { minutes } = eventShape(e)
+                        const length = minutes >= 1440 ? 'all day' : minutes ? `${minutes} minutes` : 'length not shown'
+                        return { key: `calendar|${e}`, at, author: '', text: `CALENDAR EVENT on my Outlook calendar (${length}): ${e}` }
+                      }) }, lines,
+           () => chrome.storage.local.set({ calendarSeen: [...calendarSeen, ...fresh].slice(-1500), calendarReadOn: today })) // only once filed
 }
 
-/** One round of reading Outlook: every folder's new mail, up to MAX_OPEN conversations a folder (oldest first), filed.
- *  The first round also reads the calendar and the scheduled emails. Returns how many new conversations are still
- *  waiting (a long backlog, as on a student's first sync): the next round carries on from where this one filed to. */
+/** One round of reading Outlook: every folder's new mail, up to MAX_OPEN conversations a folder (oldest first), each
+ *  folder filed as soon as it is read. The first round also reads the calendar and the scheduled emails. Returns how
+ *  many new conversations are still waiting (a long backlog, as on a student's first sync): the next round carries on
+ *  from where this one filed to. */
 async function syncOutlook(state, lines, first = true, last = true) {
-  outlookRun = { claimed: new Set(), n: 1 }
+  const filings = [] // filed one at a time (see file), while the windows go on reading
+  outlookRun = { claimed: new Set(), n: 1, filings, lines }
   const msg = { type: 'outlook-collect', checkpoints: state.checkpoints.outlook || {}, baseline: state.baseline,
                 watch: (state.outlook || {}).watch || [], screen: (state.outlook || {}).screen || '' }
   const tabs = []
-  const pending = []
+  const started = Date.now()
   let results = []
   try {
     await report('outlook', 0, 'Opening Outlook')
@@ -401,7 +431,7 @@ async function syncOutlook(state, lines, first = true, last = true) {
         if (first) {
           const conversation = 'Scheduled to send (Drafts)' // read from the Drafts list without opening them
           const sched = await ask(tab.id, { type: 'outlook-scheduled', since: (state.checkpoints.outlook || {})[conversation] || state.baseline })
-          if (sched.ok) pending.push(file({ source: 'outlook', conversation, group_chat: false, items: sched.items }, lines))
+          if (sched.ok) fileSoon(filings, { source: 'outlook', conversation, group_chat: false, items: sched.items }, lines)
           else lines.push(`Outlook scheduled: ${sched.error}`)
         }
         await report('outlook', 0.05, 'Reading your Outlook folders')
@@ -413,10 +443,8 @@ async function syncOutlook(state, lines, first = true, last = true) {
         await fitPage(tab.id)
         if (first) {
           try {
-            pending.push(readCalendar(tab, (state.outlook || {}).screen || '', lines, state.baseline))
-            await pending[pending.length - 1]
+            await readCalendar(tab, (state.outlook || {}).screen || '', lines, state.baseline, filings)
           } catch (e) {
-            if (/ 429 /.test(String(e.message))) throw e
             lines.push(`Outlook calendar: ${e.message || e}`)
           }
           await chrome.tabs.update(tab.id, { url: 'https://outlook.cloud.microsoft/mail/' }) // by address
@@ -434,24 +462,32 @@ async function syncOutlook(state, lines, first = true, last = true) {
       await unlockTab(tab.id, OUTLOOK_LOCK)
     }
   }
-  await Promise.allSettled(pending) // the scheduled emails and the calendar
+  const readIn = Date.now() - started
   const read = results.filter((r) => r.ok).flatMap((r) => r.batches)
+  const waiting = read.reduce((n, b) => n + (b.more || 0), 0)
+  // Reading is over: unless another round follows, the windows close now (filing doesn't need them).
+  if (!waiting || last) await doneWith(SLOT.outlook, SLOT.calendar)
   // One window that couldn't start is only a problem when the other read nothing either (it takes every folder then).
   for (const error of new Set(results.filter((r) => !r.ok).map((r) => r.error))) {
     lines.push(read.length ? `(One Outlook window couldn't start, so the other read every folder: ${error})` : `Outlook: ${error}`)
   }
-  if (!read.length) return 0
-  // What each folder showed, so a refresh that files nothing still says why.
-  lines.push(`Outlook read ${read.length} folders: ` + read.map((b) => `${b.conversation} (${b.note || 'nothing new'})`).join('; '))
-  // Newest mail first, so today's news is filed even if the day's allowance runs out partway.
-  const newest = (b) => b.items.reduce((m, i) => (i.at > m ? i.at : m), '')
-  const batches = read.filter((b) => b.items.length || b.seen_until).sort((a, b) => newest(b).localeCompare(newest(a)))
-  for (const [i, { more, note, ...b }] of batches.entries()) {
-    await report('outlook', 0.7 + (0.3 * i) / batches.length, `Filing what's new in ${b.conversation} (${i + 1} of ${batches.length})`)
-    await file(b, lines)
-    if (more && last) lines.push(`Outlook ${b.conversation}: ${more} more new email${more > 1 ? 's' : ''}, read on the next refresh.`)
+  if (read.length) {
+    // What each folder showed, so a refresh that files nothing still says why.
+    lines.push(`Outlook read ${read.length} folders: ` + read.map((b) => `${b.conversation} (${b.note || 'nothing new'})`).join('; '))
   }
-  return read.reduce((n, b) => n + (b.more || 0), 0)
+  // What wasn't handed over while reading (a folder on its second try, or an Outlook tab left from an older reader).
+  for (const { more, note, filing, ...b } of read) {
+    if (!filing && (b.items.length || b.seen_until)) fileSoon(filings, b, lines)
+  }
+  for (const b of read) {
+    if (b.more && last) lines.push(`Outlook ${b.conversation}: ${b.more} more new email${b.more > 1 ? 's' : ''}, read on the next refresh.`)
+  }
+  await report('outlook', 0.9, 'Filing the last of what Outlook had')
+  await Promise.allSettled(filings)
+  const counts = results.map((r, i) => `window ${i + 1}: ${first && i === 1 ? 'the calendar and ' : ''}${r.ok ? r.batches.length : 0} folders`)
+  lines.push(`Outlook${first ? '' : ' catch-up round'} timing: read in ${took(readIn)} (${counts.join('; ')}); ` +
+             `filing finished ${took(Date.now() - started - readIn)} after reading did.`)
+  return waiting
 }
 
 /** Outlook, in as many rounds as it takes to catch up (a student's first sync reaches back to September), up to
@@ -669,6 +705,7 @@ async function syncAll() {
   let lines = []
   share = {}
   outOfAI = false
+  const started = Date.now()
   try {
     const state = await api('/api/sync/state')
     if (state.ai_left === 0) {
@@ -699,6 +736,7 @@ async function syncAll() {
       return own
     }))
     lines = each.flat()
+    lines.push(`The whole refresh took ${took(Date.now() - started)}.`)
     if (outOfAI) { // the AI allowance ran out partway: what wasn't filed is read again next time
       lines.push("Stopped filing partway: today's AI allowance is used up. What wasn't filed is picked up on the next refresh.")
     }

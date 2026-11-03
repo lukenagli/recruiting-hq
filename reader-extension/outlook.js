@@ -332,7 +332,13 @@ chrome.runtime.onMessage.addListener((msg, _sender, reply) => {
       if ((await chrome.runtime.sendMessage({ type: 'outlook-claim', name, n: list.length }).catch(() => false)) !== true) continue
       const since = msg.checkpoints[name] || msg.baseline
       const r = await readFolder(name, since, 10000, screenFor(name))
-      batches.push({ source: 'outlook', conversation: name, group_chat: false, ...r })
+      const b = { source: 'outlook', conversation: name, group_chat: false, ...r }
+      // Handed over to be filed now, while the next folders are read (filing marks it so it isn't filed twice). A
+      // folder whose list didn't load waits for its second try below.
+      if (!/didn't load/.test(r.note || '')) {
+        b.filing = (await chrome.runtime.sendMessage({ type: 'outlook-read', batch: b }).catch(() => false)) === true
+      }
+      batches.push(b)
     }
     // A folder whose list still didn't show gets one second, more patient try at the end.
     for (const b of batches.filter((b) => /didn't load/.test(b.note || ''))) {
