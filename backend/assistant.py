@@ -815,14 +815,22 @@ def merge_banks(ctx: RunContext[Deps], duplicate: str, into: str) -> dict:
     try:
         with conn:
             rows = {r["bank"]: dict(r) for r in conn.execute("SELECT * FROM my_banks WHERE user_id = ? AND bank IN (?, ?)", (uid, dup, keep))}
-            if dup not in rows or keep not in rows:
-                missing = dup if dup not in rows else keep
-                return _refuse(ctx, "merge_banks", args, f"There is no bank called {missing} in the tracker. Use lookup for exact names.")
+            # a bank can be in the tracker only through what's filed under it (people, entries, facts), with no application
+            filed_under = lambda name: conn.execute(  # noqa: E731
+                "SELECT 1 FROM people WHERE user_id = ? AND bank = ? UNION SELECT 1 FROM interactions WHERE user_id = ? AND bank = ? "
+                "UNION SELECT 1 FROM bank_facts WHERE user_id = ? AND bank = ?", (uid, name, uid, name, uid, name)).fetchone()
+            for name in (dup, keep):
+                if name not in rows and not filed_under(name):
+                    return _refuse(ctx, "merge_banks", args, f"There is no bank called {name} in the tracker. Use lookup for exact names.")
+            if keep not in rows:
+                conn.execute("INSERT INTO my_banks (user_id, bank, applied, deadline, link, prefs, notes) VALUES (?, ?, '', '', '', '', '')", (uid, keep))
+                rows[keep] = dict(conn.execute("SELECT * FROM my_banks WHERE user_id = ? AND bank = ?", (uid, keep)).fetchone())
             # the application: the kept bank's own entries win; blanks are filled from the duplicate; notes are joined
+            dup_row = rows.get(dup, {})
             for field in ("applied", "deadline", "link", "prefs", "status", "stage", "recruiter_name", "recruiter_title", "address", "office"):
-                if not (rows[keep].get(field) or "").strip() and (rows[dup].get(field) or "").strip():
-                    conn.execute(f"UPDATE my_banks SET {field} = ? WHERE user_id = ? AND bank = ?", (rows[dup][field], uid, keep))
-            notes = " ".join(n for n in ((rows[keep].get("notes") or "").strip(), (rows[dup].get("notes") or "").strip()) if n)
+                if not (rows[keep].get(field) or "").strip() and (dup_row.get(field) or "").strip():
+                    conn.execute(f"UPDATE my_banks SET {field} = ? WHERE user_id = ? AND bank = ?", (dup_row[field], uid, keep))
+            notes = " ".join(n for n in ((rows[keep].get("notes") or "").strip(), (dup_row.get("notes") or "").strip()) if n)
             conn.execute("UPDATE my_banks SET notes = ? WHERE user_id = ? AND bank = ?", (notes, uid, keep))
             # people: someone already at the kept bank under the same name keeps one entry, with both sets of chats
             for person in conn.execute("SELECT id, name, notes FROM people WHERE user_id = ? AND bank = ?", (uid, dup)).fetchall():
