@@ -1258,10 +1258,14 @@ main h1 { text-shadow: 0 2px 16px rgba(4, 10, 26, 0.5); }
 .k-deadline .agenda-what { border-color: var(--amber); }
 .k-step .agenda-what { border-color: var(--gray); }
 
-.todos li a { display: flex; gap: 12px; align-items: flex-start; padding: 8px 6px; border-radius: 10px; }
+.todos li { display: flex; gap: 6px; align-items: flex-start; }
+.todos li > .todo-dot { margin: 10px 0 0 6px; }
+.todos li a { flex: 1; min-width: 0; display: flex; gap: 12px; align-items: flex-start; padding: 8px 6px; border-radius: 10px; }
 .todos li a:hover { background: var(--gray-soft); }
+.todo-tick { padding: 0; background: none; cursor: pointer; }
+.todo-tick:hover { border-color: var(--green, #2f9e6a); background: var(--green-soft, #e3f4ea); }
 .todo-dot { flex: none; width: 16px; height: 16px; margin-top: 2px; border-radius: 50%; border: 2px solid #c3cad8; }
-.todos li a.urgent .todo-dot { border-color: var(--amber); background: var(--amber-soft); }
+.todos li.urgent .todo-dot { border-color: var(--amber); background: var(--amber-soft); }
 .todo-what { display: flex; flex-direction: column; min-width: 0; }
 .todo-what small { font-size: 13px; }
 .todos .link { margin-top: 6px; }

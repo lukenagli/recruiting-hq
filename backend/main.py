@@ -685,6 +685,15 @@ async def catch_up_sheet(file: UploadFile, user: dict = Depends(current_user)):
 
 # ---- Preview: the Recruiting HQ Reader (read-only sync from email, Slack and WhatsApp) ----
 
+@app.post("/api/todos/{entry_id}/done")
+def todo_done(entry_id: int, user: dict = Depends(preview_user)):
+    """Preview: tick a to-do off on the home page (no AI needed)."""
+    with connect() as conn:
+        n = conn.execute("UPDATE interactions SET status = 'done' WHERE id = ? AND user_id = ? AND status = 'todo'",
+                         (entry_id, user["id"])).rowcount
+    return {"ok": bool(n)}
+
+
 class RereadRequest(BaseModel):
     since: str
 

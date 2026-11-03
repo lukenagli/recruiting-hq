@@ -315,7 +315,7 @@ def home(uid: int) -> dict:
         ],
         # open to-dos (steps still to be done), soonest first, undated last
         "todos": sorted(
-            ({"bank": i["bank"], "title": i["title"], "date": i["date"] or ""} for i in data["interactions"] if i["status"] == "todo"),
+            ({"id": i["id"], "bank": i["bank"], "title": i["title"], "date": i["date"] or ""} for i in data["interactions"] if i["status"] == "todo"),
             key=lambda t: t["date"] or "9999"),
         "deadlines": sorted(deadlines, key=lambda d: d["date"]),
         "thanks_due": _thanks_due(uid, data, names),  # preview home

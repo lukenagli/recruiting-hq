@@ -495,6 +495,11 @@ def save_entry(
                     return _refuse(ctx, "save_entry", args,
                                    f"{row['title']} was called off at that time ({row['date_note']}). It can only be marked done with "
                                    "the new date it happened on, and a date note saying when.")
+                # Preview: a cancelled chat the student has closed out stays closed (re-reading the cancellation email must
+                # not reopen it as a to-do); only a new date brings it back.
+                if (status in ("todo", "upcoming") and row["status"] == "done" and CALLED_OFF.search(row["title"] or "")
+                        and date in ("", row["date"]) and _in_preview(uid)):
+                    return _refuse(ctx, "save_entry", args, f"{row['title']} is already closed out as cancelled; leave it as it is.")
                 changed = []
                 if kind != row["kind"]:
                     conn.execute("UPDATE interactions SET kind = ? WHERE id = ? AND user_id = ?", (kind, entry_id, uid))

@@ -4,6 +4,7 @@ import type { AiSettings, BankSummary, CalendarItem, HomeData } from './api'
 import { useDictation } from './dictation'
 import ClubFeed from './ClubFeed'
 import Refresh from './Refresh'
+import { post } from './api'
 import { Loading, Logo, StagePips, daysUntil, fmtDate, useApi, useSchool } from './ui'
 
 /**
@@ -135,11 +136,18 @@ function Agenda({ d, out }: { d: HomeData; out: Set<string> }) {
   )
 }
 
-function Todos({ d, out }: { d: HomeData; out: Set<string> }) {
+function Todos({ d, out, onChanged }: { d: HomeData; out: Set<string>; onChanged: () => void }) {
   const [all, setAll] = useState(false)
+  const [ticked, setTicked] = useState<Set<number>>(new Set())
+  async function tick(id: number) {
+    setTicked((s) => new Set(s).add(id)) // gone at once; the list reloads behind it
+    await post(`/api/todos/${id}/done`, {}).catch(() => undefined)
+    onChanged()
+  }
   const items = [
     // everyone from a coffee chat or networking event still to thank; each name drops off once the reader sees the email
     ...(d.thanks_due ?? []).map((t) => ({
+      id: 0,
       key: `ty${t.bank}${t.title}${t.date}`,
       title: t.who.length === 1 ? `Send a thank-you email to ${t.who[0]}` : `Send thank-you emails to ${t.who.join(', ')}`,
       bank: t.bank,
@@ -147,8 +155,8 @@ function Todos({ d, out }: { d: HomeData; out: Set<string> }) {
       when: t.kind === 'event' ? `${t.title}, ${fmtDate(t.date)}` : `spoke ${fmtDate(t.date)}`,
       urgent: true,
     })),
-    ...(d.todos ?? []).map((t) => ({ key: `td${t.bank}${t.title}`, title: t.title, bank: t.bank, date: t.date, when: t.date ? fmtDate(t.date) : '', urgent: !!t.date && daysUntil(t.date, d.today) <= 1 })),
-    ...d.deadlines.filter((a) => !out.has(a.bank) && daysUntil(a.date, d.today) > 7).map((a) => ({ key: `ap${a.bank}`, title: `Apply to ${a.bank}`, bank: a.bank, date: a.date, when: `due ${fmtDate(a.date)}`, urgent: false })),
+    ...(d.todos ?? []).filter((t) => !ticked.has(t.id)).map((t) => ({ id: t.id, key: `td${t.bank}${t.title}`, title: t.title, bank: t.bank, date: t.date, when: t.date ? fmtDate(t.date) : '', urgent: !!t.date && daysUntil(t.date, d.today) <= 1 })),
+    ...d.deadlines.filter((a) => !out.has(a.bank) && daysUntil(a.date, d.today) > 7).map((a) => ({ id: 0, key: `ap${a.bank}`, title: `Apply to ${a.bank}`, bank: a.bank, date: a.date, when: `due ${fmtDate(a.date)}`, urgent: false })),
   ].sort((a, b) => (a.date || '9999').localeCompare(b.date || '9999')) // earliest first, undated last
   const shown = all ? items : items.slice(0, 7)
   return (
@@ -159,9 +167,13 @@ function Todos({ d, out }: { d: HomeData; out: Set<string> }) {
       {items.length === 0 && <p className="muted">All caught up.</p>}
       <ul>
         {shown.map((t) => (
-          <li key={t.key}>
-            <a href={`#/bank/${encodeURIComponent(t.bank)}`} className={t.urgent ? 'urgent' : ''}>
+          <li key={t.key} className={t.urgent ? 'urgent' : ''}>
+            {t.id ? (
+              <button type="button" className="todo-dot todo-tick" onClick={() => tick(t.id)} aria-label={`Mark done: ${t.title}`} title="Mark done" />
+            ) : (
               <span className="todo-dot" aria-hidden />
+            )}
+            <a href={`#/bank/${encodeURIComponent(t.bank)}`}>
               <span className="todo-what">
                 <strong>{t.title}</strong>
                 <small>{[t.bank, t.when].filter(Boolean).join(' · ')}</small>
@@ -327,7 +339,7 @@ export default function HomeNext({ name }: { name: string }) {
           !newcomer && (
             <div className="dash-grid">
               <Agenda d={data} out={out} />
-              <Todos d={data} out={out} />
+              <Todos d={data} out={out} onChanged={() => api.reload()} />
             </div>
           )
         )}
