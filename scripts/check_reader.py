@@ -1,4 +1,4 @@
-"""Fail if the Recruiting HQ Reader could ever write, type or send anything in Outlook, Slack or WhatsApp.
+"""Fail if the Recruiting HQ Reader could ever write, type, send, reply or react to anything in Outlook.
 
 Run:  python scripts/check_reader.py
 
@@ -19,7 +19,7 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent / "reader-extension"
-PAGE_SCRIPTS = ["safe.js", "outlook.js", "slack.js", "whatsapp.js", "bridge.js"]  # bridge.js runs on Recruiting HQ only
+PAGE_SCRIPTS = ["safe.js", "outlook.js", "bridge.js"]  # bridge.js runs on Recruiting HQ only
 FORBIDDEN = {
     r"\.value\s*=(?!=)": "sets a field's value",
     r"\.(textContent|innerText|innerHTML|outerHTML)\s*=(?!=)": "writes into the page",
@@ -57,8 +57,7 @@ def main() -> int:
         problems.append(f"manifest.json: page scripts not covered by this check: {sorted(scripts - set(PAGE_SCRIPTS))}")
     background = re.sub(r"//[^\n]*", "", (ROOT / "background.js").read_text(encoding="utf-8"))
     for url in re.findall(r"https://[^\s'\"`/]+", background):
-        if url not in ("https://recruiting-hq.onrender.com", "https://outlook.cloud.microsoft", "https://app.slack.com", "https://web.whatsapp.com",
-                       "https://www.capitaliq.com"):
+        if url not in ("https://recruiting-hq.onrender.com", "https://outlook.cloud.microsoft", "https://www.capitaliq.com"):
             problems.append(f"background.js: unexpected address {url}")
     # Capital IQ is only ever read: its one fetch helper sends GET requests and nothing else.
     capiq = re.search(r"async function capiqGet\(.*?\n}\n", background, re.S)
@@ -72,6 +71,20 @@ def main() -> int:
             problems.append(f"background.js: a network rule of type '{kind}' (only 'block' is allowed)")
     if re.search(r"updateDynamicRules|redirect|modifyHeaders|allowAllRequests|upgradeScheme", background):
         problems.append("background.js: network rules that do more than block")
+    # Outlook only: no other chat or email site is reachable, and the network lock is on before any Outlook page loads.
+    sites = " ".join(manifest.get("host_permissions", []) + [m for cs in manifest.get("content_scripts", []) for m in cs["matches"]])
+    for other in ("slack", "whatsapp", "gmail", "google.com", "teams", "linkedin"):
+        if other in sites:
+            problems.append(f"manifest.json: reaches {other}")
+    lock = re.search(r"const OUTLOOK_LOCK = \[(.*?)\]", background, re.S)
+    for must in ("action=Send", "action=CreateItem", "action=Respond", "action=Reply", "action=Forward", "action=React", "reaction",
+                 "readreceipt", "/send", "/reply", "/forward"):
+        if not lock or f"'{must}'" not in lock.group(1):
+            problems.append(f"background.js: the network lock no longer blocks {must}")
+    if "tabIds: [-1], initiatorDomains: OUTLOOK_SITES" not in background or background.count("await lockWorkers()") < 2:
+        problems.append("background.js: Outlook's service worker isn't covered by the network lock in every run")
+    if re.search(r"chrome\.tabs\.create\(\{[^}]*url: '?`?https", background):
+        problems.append("background.js: a tab opens a site before its network lock is on (open tabs through lockedTab)")
     if problems:
         print("Reader check FAILED:\n  " + "\n  ".join(problems))
         return 1

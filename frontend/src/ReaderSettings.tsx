@@ -9,7 +9,7 @@ type SyncState = {
   log: { at: string; source: string; conversation: string; received: number; new: number; filed: number; note: string }[]
 }
 
-/** Preview: the Recruiting HQ Reader extension, which keeps the tracker up to date from email, Slack and WhatsApp. */
+/** Preview: the Recruiting HQ Reader extension, which keeps the tracker up to date from Outlook email and calendar. */
 export default function ReaderSettings() {
   const { data, reload } = useApi<SyncState>('/api/sync/state')
   const [key, setKey] = useState('')
@@ -29,10 +29,11 @@ export default function ReaderSettings() {
 
   return (
     <section className="card setup-card reader-card">
-      <h2>Email, Slack and WhatsApp reader</h2>
+      <h2>Outlook reader</h2>
       <p>
-        The Recruiting HQ Reader is a Chrome extension. When you press Refresh, it reads what's new in your Outlook, Slack and WhatsApp and
-        files it here. It never runs on its own. <strong>It can only read: it cannot send, reply, react or type anywhere.</strong>
+        The Recruiting HQ Reader is a Chrome extension. When you press Refresh, it reads what's new in your Outlook email and calendar and
+        files it here. It never runs on its own. <strong>It can only read: it cannot send, reply, react or type anywhere, and while
+        it reads, Chrome blocks anything in Outlook that would.</strong>
       </p>
       <ol className="reader-steps">
         <li>
@@ -42,7 +43,7 @@ export default function ReaderSettings() {
         <li>In Chrome, open <code>chrome://extensions</code>, turn on <strong>Developer mode</strong> (top right), click <strong>Load unpacked</strong> and choose that folder.</li>
         <li>Click the puzzle-piece icon in Chrome's toolbar, then the pin next to Recruiting HQ Reader.</li>
         <li>Create a reader key below, click the Reader's icon, paste the key and click <strong>Save key</strong>.</li>
-        <li>Stay signed in to Outlook and Slack in Chrome. For WhatsApp, open web.whatsapp.com once and link your phone; after that it doesn't need to stay open.</li>
+        <li>Stay signed in to Outlook (outlook.cloud.microsoft) in Chrome.</li>
       </ol>
       {key ? (
         <div className="reader-key">

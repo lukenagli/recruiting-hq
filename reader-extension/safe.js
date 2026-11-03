@@ -3,8 +3,8 @@
 // The reader must never send, reply, react or type anything. Page scripts only read text, scroll, and open a
 // conversation or email by clicking it in a list, the same as clicking it to read it. This guard makes sure a click
 // can only ever land on such a list item:
-//   - the element must sit inside one of the allowed lists (Outlook's folder tree or message list, WhatsApp's chat
-//     list), never inside a compose box, toolbar or message area;
+//   - the element must sit inside one of the allowed lists (Outlook's folder tree or message list), never inside a
+//     compose box, toolbar or message area;
 //   - it must not be, or contain, a button, link, text box or anything editable;
 //   - anything that looks like send / reply / forward / react is refused outright.
 // scripts/check_reader.py fails the build if any page script clicks, types or submits outside this file.
@@ -12,25 +12,22 @@
 const RHQ_ALLOWED_LISTS = {
   'outlook-folders': '[role="tree"]',
   'outlook-messages': '[role="listbox"]',
-  'whatsapp-chats': '#pane-side',
 }
 
 const RHQ_FORBIDDEN = /send|reply|forward|react|compose|new message|new mail|post|submit|delete|archive|flag|pin|mute|call|draft/i
 
-/** Tripwire: true when anything that could send is on screen (a compose or reply box, or a Send button). In Outlook
- *  any editable area counts; WhatsApp always shows its message box, so there it counts only if it holds text. */
-function rhqComposeOpen(site) {
+/** Tripwire: true when anything that could send is on screen (a compose or reply box, or a Send button): any editable
+ *  area outside the search box counts. */
+function rhqComposeOpen() {
   const editors = [...document.querySelectorAll('[contenteditable="true"], textarea, [role="textbox"]')]
   const sendButton = [...document.querySelectorAll('button, [role="button"]')].some((b) => /^send\b/i.test((b.getAttribute('aria-label') || b.getAttribute('title') || '').trim()))
-  if (site === 'whatsapp') return editors.some((e) => e.closest('footer') && (e.innerText || e.value || '').trim()) || false
   return editors.some((e) => e.offsetParent !== null && !e.closest('[role="search"], [role="combobox"], header')) || sendButton
 }
 
 class RhqStop extends Error {}
 
 function rhqSafeClick(el, listName) {
-  const site = listName.startsWith('whatsapp') ? 'whatsapp' : 'outlook'
-  if (rhqComposeOpen(site)) throw new RhqStop('Stopped: a compose or reply box was open, so the reader did nothing more.')
+  if (rhqComposeOpen()) throw new RhqStop('Stopped: a compose or reply box was open, so the reader did nothing more.')
   const listSelector = RHQ_ALLOWED_LISTS[listName]
   if (!el || !listSelector) return false
   const list = el.closest(listSelector)
@@ -47,7 +44,7 @@ function rhqSafeClick(el, listName) {
     if (/\[draft\]|^(?:(?:collapsed|expanded|unread|replied|forwarded|pinned|flagged|has attachments|important)\s+)*draft\b/i.test(label.trim())) return false
   } else {
     if (el.querySelector('input, textarea, [contenteditable="true"], [role="textbox"]')) return false
-    if (listName === 'whatsapp-chats' ? /\bsend\b|\breply\b/i.test(label) : RHQ_FORBIDDEN.test(label.replace(/Collapsed|Expanded/g, ''))) return false
+    if (RHQ_FORBIDDEN.test(label.replace(/Collapsed|Expanded/g, ''))) return false
   }
   el.click()
   return true
@@ -57,7 +54,7 @@ function rhqSafeClick(el, listName) {
  *  "Go to next week" or "Go to previous week" arrow: an icon-only button outside any dialog, form or compose area.
  *  Changing which week is shown changes nothing. */
 function rhqSafeWeek(direction) {
-  if (rhqComposeOpen('outlook')) throw new RhqStop('Stopped: a compose or reply box was open, so the reader did nothing more.')
+  if (rhqComposeOpen()) throw new RhqStop('Stopped: a compose or reply box was open, so the reader did nothing more.')
   const arrows = [...document.querySelectorAll('button, [role="button"]')]
     .filter((b) => new RegExp(`^go to ${direction === 'previous' ? 'previous' : 'next'} week\\b`, 'i').test((b.getAttribute('aria-label') || '').trim()))
   if (arrows.length !== 1) return false
@@ -73,7 +70,7 @@ function rhqSafeWeek(direction) {
 /** Open up a collapsed folder in Outlook's folder tree so its subfolders show (Outlook loads with them folded away).
  *  The only thing it presses is that folder's own expand arrow: the one icon-only button inside a collapsed tree item. */
 function rhqSafeExpand(item) {
-  if (rhqComposeOpen('outlook')) throw new RhqStop('Stopped: a compose or reply box was open, so the reader did nothing more.')
+  if (rhqComposeOpen()) throw new RhqStop('Stopped: a compose or reply box was open, so the reader did nothing more.')
   if (!item || !item.matches('[role="tree"] [role="treeitem"][aria-expanded="false"]')) return false
   const arrows = item.querySelectorAll('button, [role="button"]')
   if (arrows.length !== 1) return false

@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react'
-import { useApi } from './ui'
+import { useApi, usePreview } from './ui'
 
 /**
  * The Refresh button: asks the Recruiting HQ Reader (Chrome extension) to read what's new in the student's Outlook,
- * Slack and WhatsApp. The extension's bridge script answers on window.postMessage; with no extension, nothing answers.
+ * Slack and WhatsApp (now Outlook only: the button names it for preview accounts). The extension's bridge script answers on window.postMessage; with no extension, nothing answers.
  */
 
 export type ReaderStatus = {
@@ -104,6 +104,7 @@ export function ThanksCatchUp({ onDone }: { onDone?: () => void }) {
 
 export default function Refresh({ onDone }: { onDone?: () => void }) {
   const { status, installed, stale, checked, sync } = useReader()
+  const preview = usePreview()
   // ai_left: the reader can't file anything once it's used up; outlook_only: this account's reader reads Outlook only;
   // start_from: the account's first sync, which reaches back to the start of the season
   const allowance = useApi<{ ai_left: number; outlook_only?: boolean; start_from?: string }>('/api/sync/state')
@@ -147,8 +148,6 @@ export default function Refresh({ onDone }: { onDone?: () => void }) {
     if (l.startsWith('Outlook: ')) return foldersRead ? [] : ['your Outlook email']
     if (l.startsWith('Outlook calendar: ') && !/^Outlook calendar: \d+ events/.test(l)) return ['your Outlook calendar']
     if (l.startsWith('Outlook scheduled: ')) return ['your scheduled emails']
-    if (l.startsWith('Slack: ')) return ['Slack']
-    if (l.startsWith('WhatsApp ')) return ['WhatsApp']
     if (/allowance used|allowance is used up/.test(l)) return ["filing what was read (the day's AI allowance ran out; it's filed after midnight)"]
     return []
   }))]
@@ -169,7 +168,7 @@ export default function Refresh({ onDone }: { onDone?: () => void }) {
           <div className="refresh-warning reader-welcome">
             <p>
               <strong>New: your tracker can keep itself up to date.</strong> The Recruiting HQ Reader is a Chrome extension: when you
-              press Refresh, it reads what's new in your Outlook email and calendar, Slack and WhatsApp, and files your chats, invites,
+              press Refresh, it reads what's new in your Outlook email and calendar, and files your chats, invites,
               thank-yous and next steps here. It only reads; it never sends anything. Setting it up takes about five minutes.
             </p>
             <a className="btn primary" href="#/settings">Set it up</a>
@@ -221,7 +220,7 @@ export default function Refresh({ onDone }: { onDone?: () => void }) {
         </div>
       ) : (
         <button className="btn" onClick={() => setConfirming(true)}>
-          ↻ Refresh from email, Slack and WhatsApp
+          {preview ? '↻ Refresh from Outlook' : '↻ Refresh from email, Slack and WhatsApp'}
         </button>
       )}
       {!busy && !confirming && status!.last && <small className="muted refresh-last">Last refreshed {status!.last.at}</small>}

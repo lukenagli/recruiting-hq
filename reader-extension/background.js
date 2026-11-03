@@ -1,30 +1,85 @@
 // Recruiting HQ Reader, background. Only when the student asks (Refresh on the site, or Sync now in this window) it
-// collects what's new from Outlook, Slack and WhatsApp through the read-only page scripts, and hands it to the
+// collects what's new in Outlook (email and calendar) through the read-only page scripts, and hands it to the
 // student's Recruiting HQ account. It never runs on a timer, so tabs only open while the student is waiting for them.
-// It only ever talks to recruiting-hq.onrender.com. Nothing here can send an email or a chat message.
+// It only ever talks to recruiting-hq.onrender.com. Nothing here can send, reply to or react to an email.
 
 const API = 'https://recruiting-hq.onrender.com'
-// What to read (the Slack workspace and channels, the WhatsApp groups) is kept in the student's Recruiting HQ account,
-// not in this code: config = { slack_team, slack_channels: [{ id, name, group }], whatsapp_chats: [name] }.
-// Channels marked group are busy group chats, filed only for messages about the process.
-// The network lock: in the tabs the reader opens, Chrome blocks every request that could send, reply, forward,
-// react, delete, move or mark as read. Rules only ever block, and apply to the reader's own tabs, never to yours.
+// The network lock, the second guard behind the page scripts (which can't type, press keys or click anything but a
+// folder, an email in the list or the calendar's week arrows): while the reader works, Chrome blocks every request
+// that could send, reply, forward, respond to an invite, react, send a read receipt, or change, move or delete mail.
+// It covers the reader's own tabs, and Outlook's service worker too (it fetches for Outlook's pages but belongs to no
+// tab), so a request can't get out that way either. Rules only ever block.
 const OUTLOOK_LOCK = ['action=CreateItem', 'action=SendItem', 'action=UpdateItem', 'action=DeleteItem', 'action=MoveItem', 'action=CopyItem',
-  'action=CreateResponse', 'action=ApplyConversationAction', 'reaction', '/send', '/reply', '/forward', 'sendmail', 'createreply', 'createforward']
-const SLACK_LOCK = ['/api/chat.', '/api/reactions.', '/api/files.upload', '/api/files.complete', '/api/files.share', '/api/conversations.mark',
-  '/api/conversations.join', '/api/conversations.open', '/api/pins.', '/api/stars.', '/api/drafts.', '/api/bookmarks.', '/api/calls.']
+  'action=CreateResponse', 'action=ApplyConversationAction', 'action=Send', 'action=Respond', 'action=Reply', 'action=Forward',
+  'action=React', 'action=Like', 'action=Mark', 'action=SetFlag', 'action=Post', 'action=Update', 'action=Delete', 'action=Move',
+  'reaction', 'readreceipt', 'meetingresponse', '/send', '/reply', '/forward', 'sendmail', 'createreply', 'createforward']
+const OUTLOOK_SITES = ['outlook.cloud.microsoft', 'outlook.office.com', 'outlook.office365.com']
+const WORKER_RULES = 20000000 // rule ids for the service worker's lock, above every tab's (tab ids map below 10,000,000)
 
 async function lockTab(tabId, filters) {
   const base = (tabId % 100000) * 100
+  const ids = filters.map((_, i) => base + i + 1)
   await chrome.declarativeNetRequest.updateSessionRules({
-    removeRuleIds: filters.map((_, i) => base + i + 1),
+    removeRuleIds: ids,
     addRules: filters.map((urlFilter, i) => ({
-      id: base + i + 1,
+      id: ids[i],
       priority: 1,
       action: { type: 'block' },
       condition: { tabIds: [tabId], urlFilter, isUrlFilterCaseSensitive: false },
     })),
   })
+  await lockIsOn(ids)
+}
+
+/** Fail closed: the tab is only given its address once Chrome confirms every rule is in place. */
+async function lockIsOn(ids) {
+  const on = new Set((await chrome.declarativeNetRequest.getSessionRules()).map((r) => r.id))
+  if (!ids.every((id) => on.has(id))) throw new Error("the network lock couldn't be turned on, so nothing was opened or read.")
+}
+
+/** The lock for requests that belong to no tab (tab id -1) and come from Outlook: its service worker's. On for the
+ *  whole refresh; while it is on, your own Outlook tabs in Chrome can't send either. */
+async function lockWorkers() {
+  const ids = OUTLOOK_LOCK.map((_, i) => WORKER_RULES + i + 1)
+  await chrome.declarativeNetRequest.updateSessionRules({
+    removeRuleIds: ids,
+    addRules: OUTLOOK_LOCK.map((urlFilter, i) => ({
+      id: ids[i],
+      priority: 1,
+      action: { type: 'block' },
+      condition: { tabIds: [-1], initiatorDomains: OUTLOOK_SITES, urlFilter, isUrlFilterCaseSensitive: false },
+    })),
+  })
+  await lockIsOn(ids)
+}
+
+async function unlockWorkers() {
+  await chrome.declarativeNetRequest.updateSessionRules({ removeRuleIds: OUTLOOK_LOCK.map((_, i) => WORKER_RULES + i + 1) })
+}
+
+// Every request the lock stops during a refresh, counted by rule (Chrome tells an installed-from-folder extension of
+// each one as it happens; its own record only keeps the last five minutes).
+const lockName = (id) => OUTLOOK_LOCK[id >= WORKER_RULES ? id - WORKER_RULES - 1 : (id % 100) - 1] || 'a request'
+let caught = null
+chrome.declarativeNetRequest.onRuleMatchedDebug?.addListener((info) => {
+  if (!caught) return
+  const name = lockName(info.rule.ruleId)
+  caught[name] = (caught[name] || 0) + 1
+})
+
+/** What the lock stopped since `since` (ms), as a line for the report: proof it was on, and of anything it caught. */
+async function lockReport(since) {
+  let seen = caught
+  if (!chrome.declarativeNetRequest.onRuleMatchedDebug) {
+    const out = await chrome.declarativeNetRequest.getMatchedRules({ minTimeStamp: since }).catch(() => null)
+    if (!out) return 'Network lock: on the whole time.'
+    seen = {}
+    for (const m of out.rulesMatchedInfo) seen[lockName(m.rule.ruleId)] = (seen[lockName(m.rule.ruleId)] || 0) + 1
+  }
+  const n = Object.values(seen || {}).reduce((a, b) => a + b, 0)
+  if (!n) return 'Network lock: on the whole time; nothing tried to send, reply, react or change any email.'
+  return `Network lock: on the whole time, and it stopped ${n} request${n > 1 ? 's' : ''} Outlook made on its own while emails ` +
+         `were opened (${Object.entries(seen).map(([k, c]) => `${k} ×${c}`).join(', ')}).`
 }
 
 async function unlockTab(tabId, filters) {
@@ -33,13 +88,12 @@ async function unlockTab(tabId, filters) {
 }
 
 // The reader works in ordinary Chrome windows of its own, opened only when the student presses Refresh and closed when
-// it's done. Chrome only draws windows that are on screen, and Outlook and WhatsApp only fill in their lists as they
-// draw them: minimized windows, small windows and windows left behind others each left things unread before. So a
-// refresh tiles its windows over the student's screen, side by side with none covering another, and every page in
-// them is drawn: two for Outlook (they share out the folders; one reads the calendar first), one for Slack, one for
-// WhatsApp, all read at the same time. One window alone (the thank-you catch-up) opens at a normal size in the middle.
+// it's done. Chrome only draws windows that are on screen, and Outlook only fills in its lists as it draws them:
+// minimized windows, small windows and windows left behind others each left things unread before. So a refresh opens
+// two windows side by side, neither covering the other, and both are drawn; they share out the folders (one reads the
+// calendar first). One window alone (the thank-you catch-up) opens at a normal size in the middle.
 let reader = null // { windows: [window ids], in tiling order }
-const SLOT = { outlook: 0, calendar: 1, slack: 2, whatsapp: 3 }
+const SLOT = { outlook: 0, calendar: 1 }
 
 async function openReader(count = 1) {
   const all = await chrome.windows.getAll({ windowTypes: ['normal'] }).catch(() => [])
@@ -66,16 +120,13 @@ async function openReader(count = 1) {
 }
 
 async function closeReader() {
-  const { borrowed } = await chrome.storage.session.get('borrowed')
-  if (borrowed) await giveBack(borrowed) // the student's WhatsApp tab never closes with the windows
   const { readerWindows = [] } = await chrome.storage.session.get('readerWindows')
   for (const id of new Set([...((reader && reader.windows) || []), ...readerWindows])) await chrome.windows.remove(id).catch(() => undefined)
   await chrome.storage.session.set({ readerWindows: [] })
   reader = null
 }
 
-/** Close the window(s) of a part of the refresh as soon as it has been read (filing carries on without them). Only a
- *  part's own window: with two windows open (Outlook only), Slack and WhatsApp have none. */
+/** Close the reader's windows as soon as reading is done (filing carries on without them). Only with a window for each. */
 async function doneWith(...slots) {
   if (!reader || reader.windows.length < 2) return
   for (const slot of slots) {
@@ -121,8 +172,7 @@ chrome.windows.onRemoved.addListener(async (id) => {
 // Each time Chrome starts this background, no refresh is running in it. So if Chrome stopped the last one partway,
 // its windows are closed here and it no longer counts as running. Runs wait for this before they start.
 const ready = (async () => {
-  const { borrowed } = await chrome.storage.session.get('borrowed')
-  if (borrowed) await giveBack(borrowed) // the student's WhatsApp tab goes home before its reader window closes
+  await unlockWorkers() // a refresh Chrome stopped partway never leaves your own Outlook tabs unable to send
   const { readerWindows = [] } = await chrome.storage.session.get('readerWindows')
   for (const id of readerWindows) await chrome.windows.remove(id).catch(() => undefined)
   await chrome.storage.session.set({ readerWindows: [] })
@@ -142,16 +192,6 @@ async function lockedTab(url, filters, slot = 0) {
   return tab
 }
 
-/** Put the student's WhatsApp tab back where it was, at its usual zoom. */
-async function giveBack(borrowed) {
-  const home = await chrome.windows.get(borrowed.windowId).catch(() => null)
-  if (home) await chrome.tabs.move(borrowed.tabId, { windowId: borrowed.windowId, index: borrowed.index }).catch(() => undefined)
-  else await chrome.windows.create({ tabId: borrowed.tabId, focused: false }).catch(() => undefined) // its only tab was it
-  if (borrowed.active) await chrome.tabs.update(borrowed.tabId, { active: true }).catch(() => undefined)
-  await chrome.tabs.setZoom(borrowed.tabId, 0).catch(() => undefined)
-  await chrome.tabs.setZoomSettings(borrowed.tabId, { scope: 'per-origin' }).catch(() => undefined)
-  await chrome.storage.session.remove('borrowed')
-}
 
 
 // Earlier versions synced every 30 minutes; clear that timer if it is still set.
@@ -243,8 +283,8 @@ chrome.runtime.onMessage.addListener((msg, sender) => {
   progress(from + ((to - from) * msg.i) / Math.max(1, msg.n), `Reading Outlook: ${msg.name} (${msg.i + 1} of ${msg.n})`)
 })
 
-// A refresh reads Outlook, Slack and WhatsApp side by side, so the bar shows how far all three have got together.
-const WEIGHT = { outlook: 0.6, slack: 0.2, whatsapp: 0.2 }
+// How far the refresh has got, for the bar (Outlook is all it reads).
+const WEIGHT = { outlook: 1 }
 let share = {}
 async function report(source, frac, label) {
   share[source] = frac
@@ -507,101 +547,6 @@ async function syncOutlookFully(state, lines) {
   }
 }
 
-async function syncSlack(state, lines) {
-  const { slack_team: team, slack_channels: picked = [] } = state.config || {}
-  // Opened by address: the club's workspace when it is known, otherwise the one Slack opens by default.
-  const tab = await lockedTab(team ? `https://app.slack.com/client/${team}` : 'https://app.slack.com/client', SLACK_LOCK, SLOT.slack)
-  const pending = [] // filed in turn while the next channel is read
-  try {
-    await loaded(tab.id)
-    await fitPage(tab.id)
-    const at = /\/client\/([A-Z0-9]+)/.exec((await chrome.tabs.get(tab.id)).url || '')
-    const workspace = team || (at && at[1])
-    if (!workspace) return lines.push('Slack: not signed in to Slack in Chrome.')
-    // Channels picked by name are matched to the sidebar; one the student hasn't joined can't be read.
-    const listed = picked.some((c) => !c.id) ? await ask(tab.id, { type: 'slack-channels' }) : { ok: true, channels: [] }
-    const channels = []
-    for (const c of picked) {
-      const found = c.id ? c : ((listed.ok && listed.channels) || []).find((s) => s.name.toLowerCase() === c.name.toLowerCase())
-      if (found) channels.push({ ...c, id: found.id })
-      else lines.push(`Slack #${c.name}: not in your sidebar (join the channel in Slack to include it).`)
-    }
-    for (const [i, c] of channels.entries()) { // the channels only: direct messages are never read
-      await report('slack', i / channels.length, `Reading Slack #${c.name.replace(/^#/, "")} (${i + 1} of ${channels.length})`)
-      await chrome.tabs.update(tab.id, { url: `https://app.slack.com/client/${workspace}/${c.id}` }) // opened by address, no clicks
-      await loaded(tab.id)
-      await fitPage(tab.id)
-      const since = (state.checkpoints.slack || {})[c.name] || state.baseline
-      const out = await ask(tab.id, { type: 'slack-collect', since })
-      if (!out.ok) {
-        lines.push(`Slack ${c.name}: ${out.error}`)
-        continue
-      }
-      pending.push(file({ source: 'slack', conversation: c.name, group_chat: c.group, items: out.items }, lines))
-    }
-  } finally {
-    await chrome.tabs.remove(tab.id)
-    await unlockTab(tab.id, SLACK_LOCK)
-    await doneWith(SLOT.slack)
-  }
-  await Promise.all(pending)
-}
-
-// Off for now: the chats are found but don't open, so a refresh read nothing from WhatsApp and only reported it.
-const READ_WHATSAPP = false
-
-async function syncWhatsApp(state, lines) {
-  const chats = (state.config || {}).whatsapp_chats || []
-  if (!chats.length) return doneWith(SLOT.whatsapp)
-  // WhatsApp Web runs in one tab at a time, and opening a second one would knock the student's offline. So the reader
-  // reads their WhatsApp tab when it is open, moved into its reader window for the read (so it is drawn) and put back
-  // where it was afterwards; otherwise it opens WhatsApp in a tab of that window (signed in the way theirs is).
-  let [tab] = await chrome.tabs.query({ url: 'https://web.whatsapp.com/*' })
-  if (!reader) await openReader()
-  let ours = false
-  const pending = [] // filed in turn while the next chat is read
-  if (!tab) {
-    ours = true
-    tab = await chrome.tabs.create({ windowId: readerWindowFor(SLOT.whatsapp), url: 'https://web.whatsapp.com/', active: true })
-  } else {
-    const borrowed = { tabId: tab.id, windowId: tab.windowId, index: tab.index, active: tab.active }
-    await chrome.storage.session.set({ borrowed })
-    await chrome.tabs.move(tab.id, { windowId: readerWindowFor(SLOT.whatsapp), index: -1 })
-    await chrome.tabs.update(tab.id, { active: true })
-  }
-  await loaded(tab.id)
-  await fitPage(tab.id)
-  let reloaded = false
-  try {
-    for (const [i, chat] of chats.entries()) {
-      await report('whatsapp', i / chats.length, `Reading WhatsApp: ${chat} (${i + 1} of ${chats.length})`)
-      const since = (state.checkpoints.whatsapp || {})[chat] || state.baseline
-      let out = await ask(tab.id, { type: 'whatsapp-collect', chat, since })
-      if (!out.ok && out.error === 'The page did not answer.' && !reloaded) {
-        // a WhatsApp tab open from before the reader was updated runs the old reader script: reload it once
-        reloaded = true
-        await chrome.tabs.reload(tab.id)
-        await sleep(1500)
-        await loaded(tab.id)
-        await fitPage(tab.id)
-        out = await ask(tab.id, { type: 'whatsapp-collect', chat, since })
-      }
-      if (!out.ok) {
-        lines.push(`WhatsApp ${chat}: ${out.error}` + (ours
-          ? ' (If WhatsApp isn\'t linked in this Chrome, open web.whatsapp.com once and link your phone.)' : ''))
-        continue
-      }
-      pending.push(file({ source: 'whatsapp', conversation: chat, group_chat: true, items: out.items }, lines))
-    }
-  } finally {
-    const { borrowed } = await chrome.storage.session.get('borrowed')
-    if (borrowed) await giveBack(borrowed)
-    else if (ours) await chrome.tabs.remove(tab.id).catch(() => undefined)
-    await doneWith(SLOT.whatsapp)
-  }
-  await Promise.all(pending)
-}
-
 /** A Capital IQ page, read with the student's own Capital IQ sign-in. Plain GET requests only: nothing is opened,
  *  clicked or changed in Capital IQ. CapIQ only answers on the Yale network. */
 async function capiqGet(url) {
@@ -666,6 +611,7 @@ async function thanksAll() {
   let tab = null
   try {
     const state = await api('/api/sync/state')
+    await lockWorkers()
     tab = await lockedTab('https://outlook.cloud.microsoft/mail/', OUTLOOK_LOCK)
     await loaded(tab.id)
     await fitPage(tab.id)
@@ -694,6 +640,7 @@ async function thanksAll() {
       await unlockTab(tab.id, OUTLOOK_LOCK)
     }
     await closeReader()
+    await unlockWorkers().catch(() => undefined)
     await chrome.storage.local.set({ running: 0, progress: { pct: 100, label: 'Done' },
                                      last: { at: new Date().toLocaleString(), lines } })
   }
@@ -705,7 +652,7 @@ async function syncAll() {
   if (running && Date.now() - running < 20 * 60 * 1000) return // a sync is already going
   await chrome.storage.local.set({ running: Date.now(), progress: { pct: 0, label: 'Starting' } })
   const keepAlive = setInterval(() => chrome.runtime.getPlatformInfo(), 20000) // keep the background awake while working
-  let lines = []
+  const lines = []
   share = {}
   outOfAI = false
   const started = Date.now()
@@ -718,29 +665,20 @@ async function syncAll() {
     // sync, the start of fall recruiting (start_from), so a new student's whole season comes in.
     if (state.start_from) await chrome.storage.local.set({ baseline: state.start_from })
     state.baseline = (await chrome.storage.local.get('baseline')).baseline
-    // All at once, each in its own window(s); each keeps its own lines so the report reads in order. What's read is
-    // still filed one batch at a time.
-    // Everyone but the site's admin reads Outlook only for now (two windows); the admin's reader also reads Slack
-    // (three). WhatsApp is left out until its chats open reliably (READ_WHATSAPP).
-    const outlookOnly = !!state.outlook_only
-    await openReader(outlookOnly ? 2 : READ_WHATSAPP ? 4 : 3)
-    share = { ...(outlookOnly ? { slack: 1 } : {}), ...(outlookOnly || !READ_WHATSAPP ? { whatsapp: 1 } : {}) } // so the bar still reaches the end
-    const steps = [['Outlook', 'outlook', syncOutlookFully],
-                   ...(outlookOnly ? [] : [['Slack', 'slack', syncSlack]]),
-                   ...(outlookOnly || !READ_WHATSAPP ? [] : [['WhatsApp', 'whatsapp', syncWhatsApp]])]
-    const each = await Promise.all(steps.map(async ([name, key, step]) => {
-      const own = []
-      try {
-        await step(state, own)
-      } catch (e) {
-        if (!/ 429 /.test(String(e.message))) own.push(`${name}: ${e.message || e}`)
-      } finally {
-        await report(key, 1, `${name} done`)
-      }
-      return own
-    }))
-    lines = each.flat()
+    // Outlook only: two windows side by side, sharing out the folders. Slack and WhatsApp had too little news to be
+    // worth their windows.
+    caught = {}
+    await lockWorkers()
+    await openReader(2)
+    try {
+      await syncOutlookFully(state, lines)
+    } catch (e) {
+      if (!/ 429 /.test(String(e.message))) lines.push(`Outlook: ${e.message || e}`)
+    } finally {
+      await report('outlook', 1, 'Outlook done')
+    }
     lines.push(`The whole refresh took ${took(Date.now() - started)}.`)
+    lines.push(await lockReport(started))
     if (outOfAI) { // the AI allowance ran out partway: what wasn't filed is read again next time
       lines.push("Stopped filing partway: today's AI allowance is used up. What wasn't filed is picked up on the next refresh.")
     }
@@ -748,6 +686,7 @@ async function syncAll() {
     lines.push(String(e.message || e))
   } finally {
     await closeReader()
+    await unlockWorkers().catch(() => undefined)
     clearInterval(keepAlive)
     outlookShare = null
     outlookRun = null
