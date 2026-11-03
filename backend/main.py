@@ -13,6 +13,7 @@ from pydantic import BaseModel
 from pydantic_ai import Agent
 
 from . import banks as banks_info
+from . import tracker_edits
 from . import accounts, assistant, attachments, auth, budget, capiq, catch_up, config, cover_letters, deal_docs, deal_recs, deal_sources, deals, importer, legal, llm, market, network, onboarding, practice, profile, schools, reference, research, shared, stars, sync, templates, thank_backfill, thank_you, transfer, user_keys
 from .auth import admin_user, current_user
 from .db import connect, init_db
@@ -684,6 +685,17 @@ async def catch_up_sheet(file: UploadFile, user: dict = Depends(current_user)):
 
 
 # ---- Preview: the Recruiting HQ Reader (read-only sync from email, Slack and WhatsApp) ----
+
+class TrackerEdits(BaseModel):
+    ops: list[dict]
+    note: str = ""
+
+
+@app.post("/api/tracker/edits")
+def edit_tracker(req: TrackerEdits, user: dict = Depends(preview_user)):
+    """Preview: direct corrections to the student's own tracker, without the AI (undone like an assistant run)."""
+    return tracker_edits.apply(user["id"], req.ops, req.note)
+
 
 @app.post("/api/todos/{entry_id}/done")
 def todo_done(entry_id: int, user: dict = Depends(preview_user)):

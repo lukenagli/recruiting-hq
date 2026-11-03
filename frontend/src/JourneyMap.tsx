@@ -1,5 +1,5 @@
 import type { BankDetail, Interaction, Person } from './api'
-import { STATUS_LABEL, fmtDate, useSchool } from './ui'
+import { STATUS_LABEL, fmtDate, usePreview, useSchool } from './ui'
 
 /**
  * How the process at one bank unfolded, step by step in date order. Each column is one date; arrows run from
@@ -30,13 +30,17 @@ function isYale(p: Person) {
   return p.alum === 'student' || p.origin === 'classmate'
 }
 
-function build(detail: BankDetail) {
+// Preview: the notes worth showing on the map are who referred or introduced you, and who decides an invitation.
+const KEY_NOTE = /refer|introduc|connected me|put me in touch|determin|decid/i
+
+function build(detail: BankDetail, preview: boolean) {
   const byId = new Map(detail.contacts.map((p) => [p.id, p]))
   const bankSide = detail.contacts.filter((p) => !isYale(p) && p.origin !== 'listed')
   const cards: Card[] = []
   const placed = new Set<number>()
 
   for (const i of detail.interactions) {
+    if (preview && i.status === 'todo') continue // to-dos are on the home page, not the map
     const members = i.people.map((j) => byId.get(j.person_id)).filter((p): p is Person => !!p)
     if (i.kind === 'coffee_chat') {
       const bankers = members.filter((p) => !isYale(p))
@@ -102,6 +106,7 @@ function build(detail: BankDetail) {
   }
   const notes = new Map<Card, string[]>()
   for (const l of detail.links) {
+    if (preview && !KEY_NOTE.test(l.label || '')) continue
     const from = cardFor(l.src)
     const to = cardFor(l.dst)
     if (from && to) {
@@ -119,7 +124,8 @@ function build(detail: BankDetail) {
 
 export default function JourneyMap(props: { detail: BankDetail; selected: string; onSelect: (id: string) => void }) {
   const school = useSchool()
-  const { columns, notes, yale } = build(props.detail)
+  const preview = usePreview()
+  const { columns, notes, yale } = build(props.detail, preview)
 
   return (
     <div className="process">

@@ -699,6 +699,37 @@ def record_thank_you(ctx: RunContext[Deps], bank: str, entry_id: int, people: li
 
 
 @tool
+def remove_entry(ctx: RunContext[Deps], entry_id: int, reason: str) -> dict:
+    """Remove an entry that doesn't belong on the student's map: a chat cancelled for good (no new time, or replaced by
+    a chat with someone else), or a scheduling step (sending an invite or a resume, booking a room, confirming a time).
+    Never a chat, event or interview that happened.
+
+    Args:
+        entry_id: The entry, from lookup.
+        reason: Why it goes, in a few words.
+    """
+    args = dict(entry_id=entry_id, reason=reason)
+    uid = ctx.deps.user_id
+    if not _in_preview(uid):
+        return _refuse(ctx, "remove_entry", args, "Entries can't be deleted; mark the entry instead.")
+    from .tracker_edits import delete_entry
+
+    conn = _write(ctx)
+    try:
+        with conn:
+            row = conn.execute("SELECT kind, status, title, date_note, summary FROM interactions WHERE id = ? AND user_id = ?", (entry_id, uid)).fetchone()
+            if row is None:
+                return _refuse(ctx, "remove_entry", args, f"No entry with id {entry_id}. Use lookup to find the right one.")
+            happened = row["status"] == "done" and row["kind"] in ("coffee_chat", "event", "interview")
+            if happened and not CALLED_OFF.search(" ".join(filter(None, (row["title"], row["date_note"], row["summary"])))):
+                return _refuse(ctx, "remove_entry", args, f"{row['title']} happened, so it stays on the map.")
+            did = delete_entry(conn, uid, entry_id)
+    finally:
+        conn.close()
+    return _done(ctx, "remove_entry", args, {"ok": True, "did": f"{did} ({reason})"})
+
+
+@tool
 def connect_steps(ctx: RunContext[Deps], bank: str, from_ref: str, to_ref: str, label: str = "") -> dict:
     """Draw an arrow on a bank's map showing that one person or entry led to another.
 
