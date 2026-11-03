@@ -29,6 +29,8 @@ from .llm import Chosen, usage_dict
 FACT_CATEGORIES = ["Spots for SOM", "Program", "Homework", "Final project", "Training", "Staffing", "Team size", "Offices",
                    "Recruiting process", "Talking points"]
 KINDS = {"coffee_chat", "event", "interview", "step"}
+# A date note saying a chat didn't happen when planned.
+CALLED_OFF = re.compile(r"cancel|reschedul|postpon|push(ed)? back|called off|fell through", re.I)
 STATUSES = {"done", "upcoming", "todo"}
 FORMATS = {"", "In person", "Phone", "Zoom", "Email"}
 LIMITS = UsageLimits(request_limit=10, tool_calls_limit=25, total_tokens_limit=80_000)
@@ -121,6 +123,12 @@ If the student wrote nothing alongside it, file what it tells you and say what y
 When you finish, reply in two or three plain sentences saying what you saved or changed. If a tool \
 refused something, say what and why.
 """
+
+
+def _in_preview(uid: int) -> bool:
+    from . import accounts  # the switch for changes being tried out on preview accounts first
+
+    return accounts.in_preview_uid(uid)
 
 
 @dataclass
@@ -473,11 +481,20 @@ def save_entry(
                 if invite_only:
                     conn.execute("UPDATE interactions SET invite_only = 'yes' WHERE id = ?", (entry_id,))
             else:
-                row = conn.execute("SELECT bank, title, kind FROM interactions WHERE id = ? AND user_id = ?", (entry_id, uid)).fetchone()
+                row = conn.execute("SELECT bank, title, kind, date, date_note, status FROM interactions WHERE id = ? AND user_id = ?",
+                                   (entry_id, uid)).fetchone()
                 if row is None:
                     return _refuse(ctx, "save_entry", args, f"No entry with id {entry_id}. Use lookup to find the right one.")
                 if row["bank"] != bank:
                     return _refuse(ctx, "save_entry", args, f"Entry {entry_id} belongs to {row['bank']}, not {bank}.")
+                # Preview: a chat that was cancelled or is being rescheduled didn't happen at its old time (an invite left
+                # on the calendar says nothing), so it only becomes done with the new date it happened on.
+                called_off = CALLED_OFF.search(row["date_note"] or "") and not (date_note and not CALLED_OFF.search(date_note))
+                if (status == "done" and row["status"] != "done" and called_off and date in ("", row["date"])
+                        and _in_preview(uid)):
+                    return _refuse(ctx, "save_entry", args,
+                                   f"{row['title']} was called off at that time ({row['date_note']}). It can only be marked done with "
+                                   "the new date it happened on, and a date note saying when.")
                 changed = []
                 if kind != row["kind"]:
                     conn.execute("UPDATE interactions SET kind = ? WHERE id = ? AND user_id = ?", (kind, entry_id, uid))

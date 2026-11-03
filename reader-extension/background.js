@@ -87,35 +87,24 @@ async function unlockTab(tabId, filters) {
   await chrome.declarativeNetRequest.updateSessionRules({ removeRuleIds: filters.map((_, i) => base + i + 1) })
 }
 
-// The reader works in ordinary Chrome windows of its own, opened only when the student presses Refresh and closed when
-// it's done. Chrome only draws windows that are on screen, and Outlook only fills in its lists as it draws them:
-// minimized windows, small windows and windows left behind others each left things unread before. So a refresh opens
-// two windows side by side, neither covering the other, and both are drawn; they share out the folders (one reads the
-// calendar first). One window alone (the thank-you catch-up) opens at a normal size in the middle.
-let reader = null // { windows: [window ids], in tiling order }
-const SLOT = { outlook: 0, calendar: 1 }
+// The reader works in one ordinary Chrome window of its own, opened only when the student presses Refresh and closed
+// when it's done. Chrome only draws windows that are on screen, and Outlook only fills in its lists as it draws them:
+// minimized windows, small windows and windows left behind others each left things unread before, and two Outlook
+// windows starting at once often left one of them without its folder list. So a refresh opens one window, as large as
+// the student's own (more of each list shows at a time), in front, and reads everything in it.
+let reader = null // { windows: [the window's id] }
 
-async function openReader(count = 1) {
+async function openReader() {
   const all = await chrome.windows.getAll({ windowTypes: ['normal'] }).catch(() => [])
   const base = all.filter((w) => w.state !== 'minimized').sort((a, b) => b.width * b.height - a.width * a.height)[0]
-  const W = (base && base.width) || 1440, H = (base && base.height) || 900
-  const L = (base && base.left) || 0, T = (base && base.top) || 0
-  const cols = count > 1 ? 2 : 1, rows = Math.ceil(count / cols)
-  const width = count > 1 ? Math.floor(W / cols) : Math.max(1100, Math.min(W, 1400))
-  const height = count > 1 ? Math.floor(H / rows) : Math.max(700, Math.min(H, 900))
-  const windows = []
-  for (let i = 0; i < count; i++) {
-    const left = count > 1 ? L + (i % cols) * width : L + Math.max(0, Math.round((W - width) / 2))
-    const top = count > 1 ? T + Math.floor(i / cols) * height : T + Math.max(0, Math.round((H - height) / 2))
-    const win = await chrome.windows.create({ url: 'about:blank', focused: true, state: 'normal', width, height, left, top })
-    const { readerWindows = [] } = await chrome.storage.session.get('readerWindows')
-    await chrome.storage.session.set({ readerWindows: [...readerWindows, win.id] }) // see `ready` below
-    windows.push(win.id)
-  }
-  // Windows opened while another app or window is in front can land behind it: bring each forward once more. Tiled,
-  // they don't cover one another.
-  for (const id of windows) await chrome.windows.update(id, { focused: true, drawAttention: false }).catch(() => undefined)
-  reader = { windows }
+  const width = Math.max(1100, (base && base.width) || 1440), height = Math.max(700, (base && base.height) || 900)
+  const win = await chrome.windows.create({ url: 'about:blank', focused: true, state: 'normal', width, height,
+                                            left: (base && base.left) || 0, top: (base && base.top) || 0 })
+  const { readerWindows = [] } = await chrome.storage.session.get('readerWindows')
+  await chrome.storage.session.set({ readerWindows: [...readerWindows, win.id] }) // see `ready` below
+  // A window opened while another app is in front can land behind it: bring it forward once more.
+  await chrome.windows.update(win.id, { focused: true, drawAttention: false }).catch(() => undefined)
+  reader = { windows: [win.id] }
   return reader
 }
 
@@ -124,19 +113,6 @@ async function closeReader() {
   for (const id of new Set([...((reader && reader.windows) || []), ...readerWindows])) await chrome.windows.remove(id).catch(() => undefined)
   await chrome.storage.session.set({ readerWindows: [] })
   reader = null
-}
-
-/** Close the reader's windows as soon as reading is done (filing carries on without them). Only with a window for each. */
-async function doneWith(...slots) {
-  if (!reader || reader.windows.length < 2) return
-  for (const slot of slots) {
-    if (slot < reader.windows.length) await chrome.windows.remove(reader.windows[slot]).catch(() => undefined)
-  }
-}
-
-/** The reader window for one part of the refresh (the only one, when just one is open). */
-function readerWindowFor(slot) {
-  return reader.windows[Math.min(slot, reader.windows.length - 1)]
 }
 
 /** A page laid out for a narrow screen hides Outlook's folder list. Zoom that tab out (this tab only, per-tab zoom,
@@ -183,10 +159,10 @@ const ready = (async () => {
   }
 })().catch(() => undefined)
 
-/** A tab in a reader window with the network lock on before it loads anything. */
-async function lockedTab(url, filters, slot = 0) {
+/** A tab in the reader's window with the network lock on before it loads anything. */
+async function lockedTab(url, filters) {
   if (!reader) await openReader()
-  const tab = await chrome.tabs.create({ windowId: readerWindowFor(slot), url: 'about:blank', active: true })
+  const tab = await chrome.tabs.create({ windowId: reader.windows[0], url: 'about:blank', active: true })
   await lockTab(tab.id, filters)
   await chrome.tabs.update(tab.id, { url })
   return tab
@@ -445,72 +421,66 @@ async function readCalendar(tab, screenSource, lines, baseline, filings) {
            () => chrome.storage.local.set({ calendarSeen: [...calendarSeen, ...fresh].slice(-1500), calendarReadOn: today })) // only once filed
 }
 
-/** One round of reading Outlook: every folder's new mail, up to MAX_OPEN conversations a folder (oldest first), each
- *  folder filed as soon as it is read. The first round also reads the calendar and the scheduled emails. Returns how
- *  many new conversations are still waiting (a long backlog, as on a student's first sync): the next round carries on
- *  from where this one filed to. */
+/** Move the reader's tab to another Outlook page, by address. */
+async function goTo(tab, url) {
+  await chrome.tabs.update(tab.id, { url })
+  await loaded(tab.id)
+  await fitPage(tab.id)
+}
+
+/** One round of reading Outlook, in one tab: the calendar and the scheduled emails (first round only), then every
+ *  folder's new mail, up to MAX_OPEN conversations a folder (oldest first), each folder filed as soon as it is read.
+ *  Returns how many new conversations are still waiting (a long backlog, as on a student's first sync): the next round
+ *  carries on from where this one filed to. */
 async function syncOutlook(state, lines, first = true, last = true) {
-  const filings = [] // filed one at a time (see file), while the windows go on reading
+  const filings = [] // filed one at a time (see file), while the tab goes on reading
   outlookRun = { claimed: new Set(), n: 1, filings, lines }
   const msg = { type: 'outlook-collect', checkpoints: state.checkpoints.outlook || {}, baseline: state.baseline,
                 watch: (state.outlook || {}).watch || [], screen: (state.outlook || {}).screen || '' }
-  const tabs = []
   const started = Date.now()
-  let results = []
+  let tab = null
+  let result = null
   try {
     await report('outlook', 0, 'Opening Outlook')
-    // One window starts on Drafts (scheduled emails), the other on the calendar; then both read folders, each
-    // claiming the next folder not yet taken, so none is read twice. All opened by address.
-    tabs.push(await lockedTab(`https://outlook.cloud.microsoft/mail/${first ? 'drafts' : ''}`, OUTLOOK_LOCK, SLOT.outlook))
-    tabs.push(await lockedTab(`https://outlook.cloud.microsoft/${first ? 'calendar/view/week' : 'mail/'}`, OUTLOOK_LOCK, SLOT.calendar))
-    const settled = await Promise.allSettled([
-      (async () => {
-        const tab = tabs[0]
-        await loaded(tab.id)
-        await fitPage(tab.id)
-        if (first) {
-          const conversation = 'Scheduled to send (Drafts)' // read from the Drafts list without opening them
-          const sched = await ask(tab.id, { type: 'outlook-scheduled', since: (state.checkpoints.outlook || {})[conversation] || state.baseline })
-          if (sched.ok) fileSoon(filings, { source: 'outlook', conversation, group_chat: false, items: sched.items }, lines)
-          else lines.push(`Outlook scheduled: ${sched.error}`)
-        }
-        await report('outlook', 0.05, 'Reading your Outlook folders')
-        return askLong(tab.id, msg)
-      })(),
-      (async () => {
-        const tab = tabs[1]
-        await loaded(tab.id)
-        await fitPage(tab.id)
-        if (first) {
-          try {
-            await readCalendar(tab, (state.outlook || {}).screen || '', lines, state.baseline, filings)
-          } catch (e) {
-            lines.push(`Outlook calendar: ${e.message || e}`)
-          }
-          await chrome.tabs.update(tab.id, { url: 'https://outlook.cloud.microsoft/mail/' }) // by address
-          await loaded(tab.id)
-          await fitPage(tab.id)
-        }
-        return askLong(tab.id, msg)
-      })(),
-    ])
-    results = settled.map((r) => (r.status === 'fulfilled' ? r.value : { ok: false, error: String((r.reason && r.reason.message) || r.reason) }))
+    tab = await lockedTab(`https://outlook.cloud.microsoft/${first ? 'calendar/view/week' : 'mail/'}`, OUTLOOK_LOCK)
+    await loaded(tab.id)
+    await fitPage(tab.id)
+    if (first) {
+      try {
+        await readCalendar(tab, (state.outlook || {}).screen || '', lines, state.baseline, filings)
+      } catch (e) {
+        lines.push(`Outlook calendar: ${e.message || e}`)
+      }
+      await goTo(tab, 'https://outlook.cloud.microsoft/mail/drafts')
+      const conversation = 'Scheduled to send (Drafts)' // read from the Drafts list without opening them
+      const sched = await ask(tab.id, { type: 'outlook-scheduled', since: (state.checkpoints.outlook || {})[conversation] || state.baseline })
+      if (sched.ok) fileSoon(filings, { source: 'outlook', conversation, group_chat: false, items: sched.items }, lines)
+      else lines.push(`Outlook scheduled: ${sched.error}`)
+      await goTo(tab, 'https://outlook.cloud.microsoft/mail/')
+    }
+    await report('outlook', 0.05, 'Reading your Outlook folders')
+    result = await askLong(tab.id, msg)
+    if (!result.ok && /folder list didn't show|did not answer|did not start/.test(result.error || '')) {
+      // Outlook now and then opens without its folder list: load the page once more and read it again.
+      lines.push(`(Outlook opened without its folder list, so it was loaded again: ${result.error})`)
+      await chrome.tabs.reload(tab.id)
+      await loaded(tab.id)
+      await fitPage(tab.id)
+      result = await askLong(tab.id, msg)
+    }
+  } catch (e) {
+    result = { ok: false, error: String(e.message || e) }
   } finally {
     outlookRun = null
-    for (const tab of tabs) {
+    if (tab) {
       await chrome.tabs.remove(tab.id).catch(() => undefined)
       await unlockTab(tab.id, OUTLOOK_LOCK)
     }
   }
   const readIn = Date.now() - started
-  const read = results.filter((r) => r.ok).flatMap((r) => r.batches)
+  const read = result && result.ok ? result.batches : []
   const waiting = read.reduce((n, b) => n + (b.more || 0), 0)
-  // Reading is over: unless another round follows, the windows close now (filing doesn't need them).
-  if (!waiting || last) await doneWith(SLOT.outlook, SLOT.calendar)
-  // One window that couldn't start is only a problem when the other read nothing either (it takes every folder then).
-  for (const error of new Set(results.filter((r) => !r.ok).map((r) => r.error))) {
-    lines.push(read.length ? `(One Outlook window couldn't start, so the other read every folder: ${error})` : `Outlook: ${error}`)
-  }
+  if (!result || !result.ok) lines.push(`Outlook: ${(result && result.error) || 'nothing was read.'}`)
   if (read.length) {
     // What each folder showed, so a refresh that files nothing still says why.
     lines.push(`Outlook read ${read.length} folders: ` + read.map((b) => `${b.conversation} (${b.note || 'nothing new'})`).join('; '))
@@ -524,9 +494,8 @@ async function syncOutlook(state, lines, first = true, last = true) {
   }
   await report('outlook', 0.9, 'Filing the last of what Outlook had')
   await Promise.allSettled(filings)
-  const counts = results.map((r, i) => `window ${i + 1}: ${first && i === 1 ? 'the calendar and ' : ''}${r.ok ? r.batches.length : 0} folders`)
-  lines.push(`Outlook${first ? '' : ' catch-up round'} timing: read in ${took(readIn)} (${counts.join('; ')}); ` +
-             `filing finished ${took(Date.now() - started - readIn)} after reading did.`)
+  lines.push(`Outlook${first ? '' : ' catch-up round'} timing: read ${read.length} folders${first ? ' and the calendar' : ''} in ` +
+             `${took(readIn)}; filing finished ${took(Date.now() - started - readIn)} after reading did.`)
   return waiting
 }
 
@@ -543,7 +512,7 @@ async function syncOutlookFully(state, lines) {
       current = { ...(await api('/api/sync/state')), baseline: state.baseline }
     }
   } finally {
-    await doneWith(SLOT.outlook, SLOT.calendar)
+    await closeReader() // reading is over (filing goes on without the window)
   }
 }
 
@@ -665,11 +634,10 @@ async function syncAll() {
     // sync, the start of fall recruiting (start_from), so a new student's whole season comes in.
     if (state.start_from) await chrome.storage.local.set({ baseline: state.start_from })
     state.baseline = (await chrome.storage.local.get('baseline')).baseline
-    // Outlook only: two windows side by side, sharing out the folders. Slack and WhatsApp had too little news to be
-    // worth their windows.
+    // Outlook only, in one window. Slack and WhatsApp had too little news to be worth reading.
     caught = {}
     await lockWorkers()
-    await openReader(2)
+    await openReader()
     try {
       await syncOutlookFully(state, lines)
     } catch (e) {

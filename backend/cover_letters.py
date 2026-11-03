@@ -504,9 +504,12 @@ def mark_submitted(uid: int, bank: str, submitted: bool) -> dict:
     """Preview: the student says this letter went out, or that it didn't ("no", which outranks an application marked
     as sent). Letters sent are where drafts for other banks in the same group start."""
     init_db()
+    now = datetime.now().isoformat(timespec="seconds")
     with connect() as conn:
-        conn.execute("UPDATE cover_letters SET submitted_at = ? WHERE user_id = ? AND bank = ?",
-                     (datetime.now().isoformat(timespec="seconds") if submitted else "no", uid, bank))
+        conn.execute("UPDATE cover_letters SET submitted_at = ? WHERE user_id = ? AND bank = ?", (now if submitted else "no", uid, bank))
+        if submitted:  # the to-do to write or submit it is done
+            conn.execute("UPDATE interactions SET status = 'done', date = COALESCE(NULLIF(date, ''), ?) WHERE user_id = ? AND bank = ? "
+                         "AND kind = 'step' AND status = 'todo' AND LOWER(title) LIKE '%cover letter%'", (now[:10], uid, bank))
     return get(uid, bank)
 
 

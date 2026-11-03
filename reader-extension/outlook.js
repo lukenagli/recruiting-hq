@@ -351,8 +351,7 @@ chrome.runtime.onMessage.addListener((msg, _sender, reply) => {
     const full = (name) => !screen || ['Inbox', 'Sent Items'].includes(name) || (msg.watch || []).includes(name) || screen.test(name)
     const screenFor = (name) => (full(name) ? null : screen)
     for (const name of list) {
-      // Several Outlook tabs read side by side; each folder is read by whichever claims it first.
-      // Without a yes (the refresh was stopped), nothing more is read.
+      // Each folder is claimed before it is read: without a yes (the refresh was stopped), nothing more is read.
       if ((await chrome.runtime.sendMessage({ type: 'outlook-claim', name, n: list.length }).catch(() => false)) !== true) continue
       const since = msg.checkpoints[name] || msg.baseline
       const r = await readFolder(name, since, 10000, screenFor(name))

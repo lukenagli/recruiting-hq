@@ -685,6 +685,17 @@ async def catch_up_sheet(file: UploadFile, user: dict = Depends(current_user)):
 
 # ---- Preview: the Recruiting HQ Reader (read-only sync from email, Slack and WhatsApp) ----
 
+class RereadRequest(BaseModel):
+    since: str
+
+
+@app.post("/api/sync/reread")
+def sync_reread(req: RereadRequest, user: dict = Depends(preview_user)):
+    if not re.fullmatch(r"20\d\d-\d\d-\d\d", req.since):
+        raise HTTPException(status_code=400, detail="since must be YYYY-MM-DD")
+    return {"folders": sync.reread_from(user["id"], req.since)}
+
+
 @app.get("/api/sync/state")
 def sync_state(user: dict = Depends(preview_user)):
     # ai_left: the reader can't file anything once the day's AI allowance is used, so it doesn't start a run then.

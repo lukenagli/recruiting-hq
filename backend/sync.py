@@ -194,6 +194,16 @@ def first_start(uid: int) -> str:
     return "" if synced else FIRST_SYNC_FROM
 
 
+def reread_from(uid: int, since: str) -> int:
+    """Preview: the next refresh reads every Outlook folder again from `since` (YYYY-MM-DD), e.g. after the filing
+    rules changed. The calendar keeps its own record. Returns how many folders were moved back."""
+    ensure()
+    start = f"{since}T00:00:00"
+    with connect() as conn:
+        return conn.execute("UPDATE sync_state SET last_at = ?, last_keys = '' WHERE user_id = ? AND source = 'outlook' "
+                            "AND conversation != 'Calendar' AND last_at > ?", (start, uid, start)).rowcount
+
+
 def _watched_folders(uid: int) -> list[str]:
     """Outlook folders where filing has changed the tracker before: the reader reads these in full. Other folders
     (besides Inbox, Sent Items and folders named after a bank or recruiting) are screened by _screen."""
@@ -282,13 +292,20 @@ def _message(batch: Batch, items: list[Item], school: str) -> str:
                  "update the same entry with save_entry (never log a second one, never mark it done): with the new date and time "
                  "and status upcoming once a new time is agreed (a calendar invite or an accepted time), otherwise status todo "
                  "with date_note saying it is being rescheduled and the times I offered, if I offered any. The latest email in a "
-                 "thread decides. ")
+                 "thread decides. "
+                 "When an email I sent does what an open to-do or next step in the tracker says (I sent the coffee chat request "
+                 "or outreach, followed up, sent new times, asked for feedback, sent materials, submitted an application or a "
+                 "cover letter), find that to-do with lookup and mark the same entry done with save_entry (status done, date "
+                 "the email's date, a one-line summary of what I sent); never leave it open and never log it again. A coffee "
+                 "chat request I sent is done once sent: the chat itself is logged when a time is agreed. ")
     if batch.source == "outlook" and batch.conversation == "Calendar":
         head += ("These are events on my Outlook calendar, new or changed since the last refresh. A coffee chat, call, interview "
                  "or dinner with a banker or a second-year is scheduled for the date, time and place shown (\"Luke Nagli / Sami "
                  "Moufarrij - Coffee Chat\" is a chat with Sami Moufarrij): find that person's entry with lookup and update the "
                  "same entry with save_entry (date, time in date_note, place or call details in format; status upcoming while "
-                 "it is ahead, done once its date has passed), or log it if there is none. Use the bank the tracker has for "
+                 "it is ahead, done once its date has passed), or log it if there is none. Never mark done a chat the tracker "
+                 "shows as cancelled, postponed or being rescheduled (its status is todo, or its date note says so): an invite "
+                 "left on my calendar doesn't mean it happened, so leave that entry as it is unless the event has a new date. Use the bank the tracker has for "
                  "that person, or one the event names; if neither says which bank, save nothing for it (the invite email "
                  "will). An event starting \"Canceled:\" was canceled: set its entry to todo with date_note saying so. "
                  "Time blocks are not chats: when asking a banker for a coffee chat, students offer three 90-minute windows "
