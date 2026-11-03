@@ -304,7 +304,7 @@ def _message(batch: Batch, items: list[Item], school: str) -> str:
                  "my resume, booking a room, confirming a time): put the time and place on the chat. "
                  "Recruiters and campus recruiting contacts (who send invitations, deadlines and logistics) are points of "
                  "contact: keep them as people, but never add them to an event, step or chat unless I say I spoke with them "
-                 "there. Use connect_steps only for a referral or introduction, or for who decides an invitation, never for "
+                 "there. Use connect_steps only for a referral or introduction, never for "
                  "who sent an invite, offered help or gave advice. "
                  "When an email I sent does what an open to-do or next step in the tracker says (I sent the coffee chat request "
                  "or outreach, followed up, sent new times, asked for feedback, sent materials, submitted an application or a "

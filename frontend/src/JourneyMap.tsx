@@ -30,8 +30,9 @@ function isYale(p: Person) {
   return p.alum === 'student' || p.origin === 'classmate'
 }
 
-// Preview: the notes worth showing on the map are who referred or introduced you, and who decides an invitation.
-const KEY_NOTE = /refer|introduc|connected me|put me in touch|determin|decid/i
+// Preview: the notes worth showing on the map are who referred or introduced you, and the chat that came right before
+// an invitation (a fact, never a claim that the person decided it).
+const KEY_NOTE = /refer|introduc|connected me|put me in touch|determin|decid|before the invitation/i
 
 function build(detail: BankDetail, preview: boolean) {
   const byId = new Map(detail.contacts.map((p) => [p.id, p]))
@@ -116,8 +117,8 @@ function build(detail: BankDetail, preview: boolean) {
       // one plain sentence naming both ends, on the card it led to
       const [src, dst] = [nameOf(l.src), nameOf(l.dst)]
       const label = l.label || ''
-      const sentence = /determin|decid/i.test(label)
-        ? `${src} decides who is invited to the ${dst.replace(/^the /i, '')}`
+      const sentence = /determin|decid|before the invitation/i.test(label)
+        ? `Your chat with ${src} was the last one before the ${dst.replace(/^the /i, '')} invitation`
         : /refer/i.test(label)
           ? `${src} referred you to ${dst}`
           : `${src} introduced you to ${dst}`
