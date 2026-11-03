@@ -287,7 +287,9 @@ def _message(batch: Batch, items: list[Item], school: str) -> str:
     if batch.source == "outlook":
         head += ("When an email I sent or scheduled thanks someone for a coffee chat, a call or meeting them at an event, find that "
                  "chat or event with lookup and record it with record_thank_you (scheduled=True for a scheduled email), passing "
-                 "the email's own text from the greeting to the closing line as body. "
+                 "the email's own text from the greeting to the closing line as body. A thank-you's opening lines usually say "
+                 "the person's group or role (\"what led you to the Industrials group\", \"your summer in Healthcare\"): where "
+                 "the tracker doesn't have that person's title or group yet, save it with save_person. "
                  "When an email cancels, postpones or reschedules a chat, call or interview, find that entry with lookup and "
                  "update the same entry with save_entry (never log a second one, never mark it done): with the new date and time "
                  "and status upcoming once a new time is agreed (a calendar invite or an accepted time), otherwise status todo "

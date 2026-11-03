@@ -77,6 +77,7 @@ function build(detail: BankDetail, preview: boolean) {
   // People reached out to who have not met yet (awaiting a reply, or a referral not acted on).
   for (const p of bankSide) {
     if (placed.has(p.id)) continue
+    if (preview && !p.outreach) continue // preview: only people you actually reached out to (not a recruiter, not a cancelled chat)
     cards.push({
       id: `person:${p.id}`,
       kind: 'waiting',
@@ -98,7 +99,9 @@ function build(detail: BankDetail, preview: boolean) {
   const cardFor = (ref: string) => {
     const [kind, raw] = ref.split(':')
     const id = Number(raw)
-    return kind === 'person' ? cards.find((c) => c.personIds.includes(id)) : cards.find((c) => c.id === ref)
+    if (kind !== 'person') return cards.find((c) => c.id === ref)
+    // preview: a referral sits on your chat with that person, not on an event they also went to
+    return (preview && cards.find((c) => c.kind === 'chat' && c.personIds.includes(id))) || cards.find((c) => c.personIds.includes(id))
   }
   const nameOf = (ref: string) => {
     const [kind, raw] = ref.split(':')
