@@ -34,8 +34,6 @@ DEMO_PASSWORD = os.getenv("DEMO_PASSWORD", "TryRecruitingHQ-2026")
 # Real recruiting files stay on the owner's machine; the repo ships a made-up sample set.
 PRIVATE_BANKS_DIR = ROOT / "Recruiting Files" / "Interview Question Banks"
 SAMPLE_BANKS_DIR = ROOT / "data" / "sample" / "Interview Question Banks"
-NETWORKING_SHEET = ROOT / "Recruiting Files" / "IB Networking Sheet Yale.xlsx"
-NETWORK_EXTRAS = ROOT / "data" / "private" / "network_extras.json"
 RECRUITING_CALENDAR = ROOT / "data" / "private" / "recruiting_calendar.json"
 FRONTEND_ORIGINS = ["http://localhost:5173", "http://127.0.0.1:5173"]
 

@@ -23,7 +23,6 @@ from pydantic_ai.capabilities import WebSearch
 from pydantic_ai.usage import UsageLimits
 
 from .db import connect, init_db
-from .deals import CHECKLIST
 from .llm import Chosen, usage_dict
 
 MAX_FILE = 25_000_000

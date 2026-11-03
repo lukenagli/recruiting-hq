@@ -1,0 +1,4 @@
+# Only for working on the code (scripts/check_all.py), not needed to run the site.
+-r requirements.txt
+ruff
+httpx  # FastAPI's test client (scripts/smoke_test.py)

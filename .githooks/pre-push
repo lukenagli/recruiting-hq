@@ -1,0 +1,6 @@
+#!/bin/sh
+# Before every push: run all the project's checks (scripts/check_all.py) and stop the push if any fails, so a
+# broken build never reaches main (which deploys the live site). Turned on once per clone with:
+#   git config core.hooksPath .githooks
+if [ -x .venv/Scripts/python.exe ]; then PY=.venv/Scripts/python.exe; else PY=.venv/bin/python; fi
+exec "$PY" scripts/check_all.py

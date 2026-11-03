@@ -363,21 +363,7 @@ export default function Assistant({ userId, onChanged, inline = false }: { userI
             send()
           }}
         >
-          <textarea
-            ref={input}
-            rows={3}
-            value={draft}
-            placeholder={file ? 'Add a note about this file (optional)' : 'e.g. Had a coffee chat with Jordan Lee at Citi this morning. We talked about…'}
-            onPaste={onPaste}
-            onChange={(e) => setDraft(e.target.value)}
-            onInput={(e) => setDraft(e.currentTarget.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' && !e.shiftKey) {
-                e.preventDefault()
-                send()
-              }
-            }}
-          />
+          {box(3, 'e.g. Had a coffee chat with Jordan Lee at Citi this morning. We talked about…')}
           <div className="compose-buttons">
             {attach}
             <button type="submit" className="primary" disabled={busy}>
@@ -401,24 +387,7 @@ export default function Assistant({ userId, onChanged, inline = false }: { userI
         </div>
         {(recent.length > 0 || busy) && (
           <div className="assistant-thread home-thread" ref={thread}>
-            {recent.map((m, i) =>
-              m.role === 'user' ? (
-                <div key={i} className="msg user">
-                  <p>{m.text}</p>
-                </div>
-              ) : (
-                <Reply key={i} m={m} canUndo={!!m.changed && !m.undone && m.run_id === lastChange} onUndo={() => undo(m.run_id!)} onChanged={onChanged} />
-              ),
-            )}
-            {busy && (
-              <div className="msg assistant pending">
-                <span className="dots" aria-label="Working">
-                  <i />
-                  <i />
-                  <i />
-                </span>
-              </div>
-            )}
+            {bubbles(recent)}
           </div>
         )}
         {recorder}
@@ -464,24 +433,7 @@ export default function Assistant({ userId, onChanged, inline = false }: { userI
                 ))}
               </div>
             )}
-            {messages.map((m, i) =>
-              m.role === 'user' ? (
-                <div key={i} className="msg user">
-                  <p>{m.text}</p>
-                </div>
-              ) : (
-                <Reply key={i} m={m} canUndo={!!m.changed && !m.undone && m.run_id === lastChange} onUndo={() => undo(m.run_id!)} onChanged={onChanged} />
-              ),
-            )}
-            {busy && (
-              <div className="msg assistant pending">
-                <span className="dots" aria-label="Working">
-                  <i />
-                  <i />
-                  <i />
-                </span>
-              </div>
-            )}
+            {bubbles(messages)}
           </div>
 
           {dragging && <div className="drop-hint">Drop the file to attach it</div>}
@@ -494,21 +446,7 @@ export default function Assistant({ userId, onChanged, inline = false }: { userI
             }}
           >
             {attach}
-            <textarea
-              ref={input}
-              rows={1}
-              value={draft}
-              placeholder={file ? 'Add a note about this file (optional)' : 'What happened? Paste an email or drop a file'}
-              onPaste={onPaste}
-              onChange={(e) => setDraft(e.target.value)}
-              onInput={(e) => setDraft(e.currentTarget.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' && !e.shiftKey) {
-                  e.preventDefault()
-                  send()
-                }
-              }}
-            />
+            {box(1, 'What happened? Paste an email or drop a file')}
             <button type="submit" className="primary" disabled={busy}>
               Send
             </button>

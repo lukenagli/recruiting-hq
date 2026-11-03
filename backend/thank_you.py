@@ -197,12 +197,6 @@ def _save(uid, interaction_id, person, bank, first, send_at, send_note, body, is
 
 # ---------------- The user's own template ----------------
 
-STANDARD_TEMPLATE = (
-    "[First name],\n\nI just want to thank you again for meeting with me [when].\n\n"
-    "I enjoyed hearing more about what led you to [Bank] and [something specific about their path or work there]. "
-    "I also liked learning about [a second topic from the conversation].\n\n"
-    "Thank you again for your time and insight. I really enjoyed our conversation and hope we can stay in touch throughout the process."
-)
 SLOT = re.compile(r"\[([^\[\]\n]{1,120})\]")
 KNOWN_SLOTS = {
     "first": ("first name", "their first name", "name", "contact first name", "contact name", "recipient", "banker name",

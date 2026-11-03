@@ -198,7 +198,7 @@ function listScroller() {
 }
 
 function paneText() {
-  const pane = document.querySelector('[aria-label="Reading Pane"], #ReadingPaneContainerId, [data-app-section="ReadingPane"]') || document.querySelector('[role="main"]')
+  const pane = document.querySelector(`${RHQ_READING_PANE}, [data-app-section="ReadingPane"]`) || document.querySelector('[role="main"]')
   return pane ? pane.innerText : ''
 }
 

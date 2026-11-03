@@ -12,7 +12,6 @@ kept. Run it again any time a file changes.
 Needs an admin account on the site. Asks for your email and password there (never saved).
 """
 import getpass
-import io
 import json
 import re
 import sys

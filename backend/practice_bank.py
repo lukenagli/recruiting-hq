@@ -26,10 +26,6 @@ def _m(x: float) -> str:
     return f"${x:,.0f}M" if float(x).is_integer() else f"${x:,.1f}M"
 
 
-def _pct(x: float) -> str:
-    return f"{x:g}%"
-
-
 # ---------------- Accounting ----------------
 
 def depreciation_up(r: random.Random) -> Problem:

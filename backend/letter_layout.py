@@ -160,10 +160,6 @@ def _footer_top(doc) -> int | None:
     return min(tops) if tops else None
 
 
-def fits(doc) -> bool:
-    return _used(doc) <= _room(doc) - ROOM.pt
-
-
 def fit_one_page(doc) -> float:
     """Keep the letter on one page by bringing in the margins only as far as it needs, so they still look like the
     template's: the bottom one down to just above the contact footer, then the top one by at most TOP_GIVE. The

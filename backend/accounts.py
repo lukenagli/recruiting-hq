@@ -18,7 +18,7 @@ import time
 from collections import defaultdict
 from datetime import datetime, timedelta
 
-from . import config, mailer
+from . import mailer
 from .db import connect, init_db
 
 SESSION_DAYS = 365
