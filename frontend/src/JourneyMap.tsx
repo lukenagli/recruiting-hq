@@ -112,7 +112,17 @@ function build(detail: BankDetail, preview: boolean) {
     if (preview && !KEY_NOTE.test(l.label || '')) continue
     const from = cardFor(l.src)
     const to = cardFor(l.dst)
-    if (from && to) {
+    if (from && to && preview) {
+      // one plain sentence naming both ends, on the card it led to
+      const [src, dst] = [nameOf(l.src), nameOf(l.dst)]
+      const label = l.label || ''
+      const sentence = /determin|decid/i.test(label)
+        ? `${src} decides who is invited to the ${dst.replace(/^the /i, '')}`
+        : /refer/i.test(label)
+          ? `${src} referred you to ${dst}`
+          : `${src} introduced you to ${dst}`
+      notes.set(to, [...(notes.get(to) ?? []), sentence])
+    } else if (from && to) {
       notes.set(to, [...(notes.get(to) ?? []), `${l.label || 'led here'}: ${nameOf(l.src)}`])
       notes.set(from, [...(notes.get(from) ?? []), `→ ${l.label || 'led to'} ${nameOf(l.dst)}`])
     }

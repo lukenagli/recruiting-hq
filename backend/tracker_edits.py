@@ -13,6 +13,7 @@ from .db import connect, init_db
 
 ENTRY_FIELDS = {"title", "kind", "date", "date_note", "format", "status", "summary", "thank_you"}
 PERSON_FIELDS = {"title", "grp", "subgroup", "alum", "outreach", "notes", "email", "origin"}
+APPLICATION_FIELDS = {"applied", "deadline", "notes", "office"}
 
 
 class EditError(ValueError):
@@ -56,6 +57,11 @@ def _op(conn, uid: int, op: dict) -> str:
             raise EditError(f"No note {op['id']}.")
         conn.execute("DELETE FROM links WHERE id = ? AND user_id = ?", (int(op["id"]), uid))
         return f"Removed the note {row['label']!r}"
+    if kind == "relabel_link":
+        if not conn.execute("SELECT 1 FROM links WHERE id = ? AND user_id = ?", (int(op["id"]), uid)).fetchone():
+            raise EditError(f"No note {op['id']}.")
+        conn.execute("UPDATE links SET label = ? WHERE id = ? AND user_id = ?", (nz.clean(op["label"]), int(op["id"]), uid))
+        return f"Relabelled a note: {op['label']}"
     if kind == "unlink_person":
         entry, person = _entry(conn, uid, int(op["entry_id"])), _person(conn, uid, int(op["person_id"]))
         conn.execute("DELETE FROM interaction_people WHERE interaction_id = ? AND person_id = ?", (entry["id"], person["id"]))
@@ -80,6 +86,17 @@ def _op(conn, uid: int, op: dict) -> str:
         for col, val in changes.items():
             conn.execute(f"UPDATE {table} SET {col} = ? WHERE id = ? AND user_id = ?", (val, row["id"], uid))
         return f"Updated {row['title'] if kind == 'update_entry' else row['name']}: {', '.join(changes)}"
+    if kind == "update_application":
+        changes = {k: nz.clean(v) for k, v in op.get("fields", {}).items()}
+        bad = set(changes) - APPLICATION_FIELDS
+        if bad:
+            raise EditError(f"Can't change {sorted(bad)} on an application.")
+        bank = nz.bank(op["bank"])
+        if not conn.execute("SELECT 1 FROM my_banks WHERE user_id = ? AND bank = ?", (uid, bank)).fetchone():
+            raise EditError(f"No application at {bank}.")
+        for col, val in changes.items():
+            conn.execute(f"UPDATE my_banks SET {col} = ? WHERE user_id = ? AND bank = ?", (val, uid, bank))
+        return f"Updated the {bank} application: {', '.join(changes)}"
     raise EditError(f"Unknown edit {kind!r}.")
 
 
