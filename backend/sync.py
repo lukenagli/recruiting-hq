@@ -301,7 +301,7 @@ def _message(batch: Batch, items: list[Item], school: str) -> str:
                  "the date I sent it); a follow-up to it updates that step. When a time is agreed, turn that same step into the "
                  "chat (save_entry with its entry_id: kind coffee_chat, title \"Coffee chat with <name>\", the date, status "
                  "upcoming) instead of logging a second entry. Scheduling itself is never an entry (sending a calendar invite or "
-                 "my resume, booking a room, confirming a time): put the time and place on the chat. "
+                 "my resume, booking a room, confirming a time): put the time and place on the chat. Neither is admin: application portals, Workday or HireVue setup, questionnaires, forms, trainings, a thank-you I sent (it goes on the chat with record_thank_you). "
                  "Recruiters and campus recruiting contacts (who send invitations, deadlines and logistics) are points of "
                  "contact: keep them as people, but never add them to an event, step or chat unless I say I spoke with them "
                  "there. Use connect_steps only for a referral or introduction, never for "
