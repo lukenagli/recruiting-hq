@@ -7,7 +7,8 @@ check rejects, in every script that runs on those sites:
   - typing or editing: setting .value / textContent / innerText / innerHTML, execCommand, insertText, contentEditable;
   - keys and synthetic events: dispatchEvent, KeyboardEvent, InputEvent, key names, .focus(), .submit(), .requestSubmit();
   - clipboard and paste;
-  - any .click() outside rhqSafeClick, rhqSafeExpand (a folder's expand arrow) and rhqSafeWeek (the calendar's
+  - any .click() outside rhqSafeClick, rhqSafeExpand (a folder's expand arrow), rhqSafeShowMessage (a folded email's
+    date, in the open conversation) and rhqSafeWeek (the calendar's
     next- and previous-week arrows) in safe.js;
   - network calls (fetch / XMLHttpRequest / sendBeacon) from page scripts: only the background talks to Recruiting HQ;
 checks the manifest asks for no permission that could act on pages (scripting, debugger, tabs, cookies...), and that
@@ -31,7 +32,7 @@ FORBIDDEN = {
     r"\bfetch\s*\(|XMLHttpRequest|sendBeacon|WebSocket": "talks to the network from the page",
     r"window\.open|location\s*=|location\.href\s*=|\.assign\s*\(": "navigates the page",
 }
-SAFE_DEF = re.compile(r"function rhqSafe(Click|Expand|Week)\(.*?\n}\n", re.S)
+SAFE_DEF = re.compile(r"function rhqSafe(Click|Expand|Week|ShowMessage)\(.*?\n}\n", re.S)
 BAD_PERMISSIONS = {"scripting", "debugger", "tabs", "cookies", "webRequest", "declarativeNetRequestWithHostAccess", "nativeMessaging",
                    "clipboardWrite", "clipboardRead", "management", "userScripts"}
 

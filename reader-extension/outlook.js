@@ -1,5 +1,6 @@
 // Recruiting HQ Reader, Outlook page script. READ ONLY: it opens folders and emails by clicking them in the
-// folder tree and message list (through rhqSafeClick) and reads the text Outlook shows. It never types, never
+// folder tree and message list (through rhqSafeClick), unfolds a thread's earlier emails by their date
+// (rhqSafeShowMessage) and reads the text Outlook shows. It never types, never
 // presses keys, never opens a reply or compose box, and never clicks anything in an email.
 
 const PANE_DATE = /(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun) (\d{1,2}\/\d{1,2}\/\d{4}) (\d{1,2}:\d{2} [AP]M)/g
@@ -109,7 +110,7 @@ async function readFolder(name, since, patience = 10000, screen = null) {
   const rows = screen ? all.filter((r) => screen.test(r.label)) : all
   const out = []
   for (const { id, at } of rows.slice(0, MAX_OPEN)) {
-    const text = ((await openConversation(id)) || '').trim()
+    const text = ((await openConversation(id, since)) || '').trim()
     if (!document.querySelector('[role="listbox"] [role="option"]')) {
       throw new Error("Outlook's reading pane is turned off, so emails open over the list. In Outlook, choose View > Layout > " +
                       'Reading pane > Show on the right, then refresh again.')
@@ -117,7 +118,7 @@ async function readFolder(name, since, patience = 10000, screen = null) {
     const dates = [...text.matchAll(PANE_DATE)].map((d) => rhqIso(rhqParse(d[1], d[2])))
     const when = at || dates.sort().slice(-1)[0]
     if (!when || when <= since) continue
-    out.push({ key: `${id}|${when}`, at: when, author: '', text: text.slice(0, 8000) })
+    out.push({ key: `${id}|${when}`, at: when, author: '', text: text.slice(0, 20000) }) // a whole thread, unfolded
   }
   const more = Math.max(0, rows.length - MAX_OPEN)
   // A screened folder whose matching emails were all opened: everything up to its newest email has been looked at.
@@ -227,8 +228,29 @@ async function thankYouRows(sinceDay) {
   return [...found]
 }
 
-/** Open one conversation from the list (the list is redrawn after each one, so it is found again from the top). */
-async function openConversation(id) {
+/** In the open conversation, unfold the folded emails newer than `since` (at most 20), so their whole text is read
+ *  rather than the line or two Outlook shows of them. Older ones were read in full on an earlier refresh, when each
+ *  was the thread's newest. */
+async function unfoldNewer(since) {
+  const pane = since && document.querySelector(RHQ_READING_PANE)
+  if (!pane) return
+  const tried = new Set()
+  const when = (item) => {
+    const stamp = [...item.querySelectorAll('[role="heading"]')].map((h) => h.textContent.trim()).find((t) => RHQ_STAMP.test(t))
+    const m = stamp && /(\d{1,2}\/\d{1,2}\/\d{4})\s(\d{1,2}:\d{2}\s?[AP]M)/i.exec(stamp)
+    return m ? rhqIso(rhqParse(m[1], m[2])) : ''
+  }
+  for (let n = 0; n < 20; n++) {
+    const next = [...pane.querySelectorAll('div[aria-expanded="false"]')].find((item) => !tried.has(item) && when(item) > since)
+    if (!next) return
+    tried.add(next)
+    if (rhqSafeShowMessage(next)) await rhqWaitFor(() => next.getAttribute('aria-expanded') === 'true' || !next.isConnected, 3000)
+  }
+}
+
+/** Open one conversation from the list (the list is redrawn after each one, so it is found again from the top), with
+ *  its emails newer than `since` unfolded. */
+async function openConversation(id, since = '') {
   if (!listScroller()) return null
   const find = () => [...document.querySelectorAll('[role="listbox"] [role="option"]')].find((r) => r.getAttribute('data-convid') === id)
   // Conversations are opened oldest first, so the next one is usually on screen or just above the last: look there
@@ -254,6 +276,7 @@ async function openConversation(id) {
     if (paneText() !== before && paneText().length > 40) break
   }
   await rhqSleep(600)
+  await unfoldNewer(since)
   return paneText()
 }
 
@@ -276,7 +299,7 @@ async function thankYous(since) {
       rhqSafeClick(folderNode(name), 'outlook-folders')
       await rhqSleep(2500)
     }
-    const text = await openConversation(id)
+    const text = await openConversation(id, since)
     if (text) emails.push({ label, text: text.slice(0, 60000) })
   }
   return emails

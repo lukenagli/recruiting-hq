@@ -1,8 +1,9 @@
 // Recruiting HQ Reader: the ONLY way any of its page scripts may click.
 //
-// The reader must never send, reply, react or type anything. Page scripts only read text, scroll, and open a
-// conversation or email by clicking it in a list, the same as clicking it to read it. This guard makes sure a click
-// can only ever land on such a list item:
+// The reader must never send, reply, react or type anything. Page scripts only read text, scroll, open a
+// conversation or email by clicking it in a list, the same as clicking it to read it, unfold the earlier emails of the
+// open conversation by their date (rhqSafeShowMessage), and turn the calendar's week (rhqSafeWeek). This guard makes
+// sure a list click can only ever land on such a list item:
 //   - the element must sit inside one of the allowed lists (Outlook's folder tree or message list), never inside a
 //     compose box, toolbar or message area;
 //   - it must not be, or contain, a button, link, text box or anything editable;
@@ -80,6 +81,28 @@ function rhqSafeExpand(item) {
   if ([...arrow.querySelectorAll('*')].some((c) => !['SPAN', 'I', 'svg', 'path'].includes(c.tagName))) return false
   if (RHQ_FORBIDDEN.test(`${arrow.getAttribute('aria-label') || ''} ${arrow.getAttribute('title') || ''}`)) return false
   arrow.click()
+  return true
+}
+
+// The reading pane, where an opened conversation shows (never the message list or the folder tree).
+const RHQ_READING_PANE = '#ReadingPaneContainerId, [aria-label="Reading Pane"]'
+// An email's date as its header in a conversation shows it ("Wed 10/28/2026 9:03 AM"), and nothing else.
+const RHQ_STAMP = /^(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun) \d{1,2}\/\d{1,2}\/\d{4}\s\d{1,2}:\d{2}\s?[AP]M$/i
+
+/** Unfold one folded email in the open conversation so its whole text shows: Outlook shows only a thread's newest email
+ *  in full and folds the earlier ones to a line or two. The only thing it presses is that email's date, plain text in
+ *  its folded header (never a button, a link or the sender's name, which opens a contact card), which Outlook takes as
+ *  "unfold". Unfolding an email changes nothing in it. */
+function rhqSafeShowMessage(item) {
+  if (rhqComposeOpen()) throw new RhqStop('Stopped: a compose or reply box was open, so the reader did nothing more.')
+  if (!item || !item.matches('div[aria-expanded="false"]') || !item.closest(RHQ_READING_PANE)) return false
+  if (item.closest('[role="listbox"], [role="tree"], [role="dialog"], [role="toolbar"], form, footer, [contenteditable="true"], textarea, [role="textbox"]')) return false
+  if (item.querySelector('[contenteditable="true"], textarea, input, [role="textbox"]')) return false
+  const dates = [...item.querySelectorAll('[role="heading"]')].filter((h) => !h.children.length && RHQ_STAMP.test(h.textContent.trim()))
+  if (dates.length !== 1) return false
+  const date = dates[0]
+  if (date.closest('button, a[href], [role="button"], [role="link"], [role="menuitem"], [role="option"]')) return false
+  date.click()
   return true
 }
 
