@@ -777,7 +777,7 @@ def sync_state(user: dict = Depends(reader_user)):
     # start_from: an account's first sync goes back to the start of fall recruiting, not just to when it was set up.
     return {**sync.state(user["id"]), "ai_left": max(0, budget.allowance(user["id"]) - budget.used_today(user["id"])),
             "outlook_only": True, "start_from": sync.first_start(user["id"]), "combine": True,
-            "calendar_from": sync.calendar_from(user["id"])}
+            "calendar_from": sync.calendar_from(user["id"]), "test_scan": bool(user.get("test_of"))}
 
 
 @app.get("/api/reader/questions")

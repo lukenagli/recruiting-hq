@@ -305,6 +305,7 @@ chrome.runtime.onMessage.addListener((msg, sender, reply) => {
 // Reading runs side by side, but what was read is still filed one batch at a time, so two batches never change
 // the tracker at once. Once the day's AI allowance runs out, nothing more is sent: it is read again next time.
 let filing = Promise.resolve()
+let runBaseline = '' // this refresh's starting line (a test scan's own, not the one kept in storage)
 let outOfAI = false
 function file(batch, lines) {
   const run = filing.then(() => fileNow(batch, lines))
@@ -314,7 +315,7 @@ function file(batch, lines) {
 
 async function fileNow(batch, lines) {
   if (outOfAI || (!batch.items.length && !batch.seen_until)) return
-  const { baseline } = await chrome.storage.local.get('baseline')
+  const baseline = runBaseline || (await chrome.storage.local.get('baseline')).baseline
   try {
     const out = await api('/api/sync/ingest', { ...batch, baseline })
     if (batch.items.length) lines.push(`${batch.source} · ${batch.conversation}: ${out.new} new, ${out.filed} filed. ${out.note || ''}`.trim())
@@ -364,7 +365,7 @@ function releaseHeld(filings, lines) {
 
 async function fileManyNow(batches, lines) {
   if (outOfAI) return
-  const { baseline } = await chrome.storage.local.get('baseline')
+  const baseline = runBaseline || (await chrome.storage.local.get('baseline')).baseline
   try {
     const out = await api('/api/sync/ingest-many', { batches: batches.map((b) => ({ ...b, baseline })) })
     out.results.forEach((r, i) => {
@@ -723,8 +724,11 @@ async function syncAll() {
     }
     // Where reading starts for a folder with no checkpoint: set when the key was first saved, or, on an account's first
     // sync, the start of fall recruiting (start_from), so a new student's whole season comes in.
-    if (state.start_from) await chrome.storage.local.set({ baseline: state.start_from })
-    state.baseline = (await chrome.storage.local.get('baseline')).baseline
+    // A test scan (an admin trying a first scan into a test tracker) keeps its starting line to itself.
+    if (state.start_from && !state.test_scan) await chrome.storage.local.set({ baseline: state.start_from })
+    state.baseline = state.test_scan ? state.start_from || (await chrome.storage.local.get('baseline')).baseline
+      : (await chrome.storage.local.get('baseline')).baseline
+    runBaseline = state.baseline || ''
     // Outlook only, in one window. Slack and WhatsApp had too little news to be worth reading.
     caught = {}
     await lockWorkers()
