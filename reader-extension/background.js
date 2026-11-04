@@ -390,7 +390,7 @@ function localNow() {
 // like recruiting leave the browser: ones naming a bank, someone in the tracker or the process (the same screen the
 // email folders use, from Recruiting HQ), recruiting words, or two people's names joined ("Luke Nagli / Sami
 // Moufarrij", "Jane Lee <> John Kim"). Everything else is read on screen and dropped here.
-const CALENDAR_WORDS = /coffee|\bchat\b|interview|super ?day|super ?week|networking|recruit|info(rmation)? session|first round|second round|hirevue|\bscreen(er|ing)?\b/i
+const CALENDAR_WORDS = /coffee|\bchat\b|\bcall\b|zoom|teams|catch[ -]?up|\bintro\b|informational|dinner|lunch|breakfast|drinks|interview|super ?day|super ?week|networking|recruit|info(rmation)? session|first round|second round|hirevue|\bscreen(er|ing)?\b/i
 const TWO_NAMES = /[A-Z][a-z'’-]+ [A-Z][a-z'’-]+\s*(\/|<>|<->|\||&|\+| x | and | - )\s*[A-Z][a-z'’-]+ [A-Z][a-z'’-]+/
 // Holds are not chats. When asking a banker for a coffee chat, students offer three 90-minute windows and block them on
 // their own calendar so nothing double-books; the chat itself is a separate, usually 30-minute meeting. A hold word in
@@ -436,11 +436,13 @@ function eventDay(label) {
  *  AHEAD_DAYS for the chats coming up. Events already filed are remembered here, so only new or changed ones are sent
  *  (a rescheduled chat is a changed event). Returns once the calendar is read; its filing is added to `filings`, so the
  *  window goes on to the email folders without waiting for it. */
-async function readCalendar(tab, screenSource, lines, baseline, filings) {
+async function readCalendar(tab, screenSource, lines, baseline, filings, firstScan = '') {
   const { calendarReadOn } = await chrome.storage.local.get('calendarReadOn')
   const today = localNow().slice(0, 10)
   const lastWeek = calendarReadOn && new Date(new Date(calendarReadOn).getTime() - 7 * DAY).toISOString().slice(0, 10)
-  const from = [String(baseline || '').slice(0, 10), lastWeek || ''].sort().pop() || today // the later of the two
+  // An account's first scan reads the calendar back to where it starts (September), whatever this reader read before
+  // for another account; after that, from a week before the last read.
+  const from = firstScan ? String(firstScan).slice(0, 10) : [String(baseline || '').slice(0, 10), lastWeek || ''].sort().pop() || today
   const until = new Date(new Date(today).getTime() + AHEAD_DAYS * DAY).toISOString().slice(0, 10)
   const back = Math.max(0, Math.ceil((new Date(today) - new Date(from)) / (7 * DAY)))
   const out = await ask(tab.id, { type: 'outlook-calendar', back, ahead: 1 })
@@ -456,7 +458,7 @@ async function readCalendar(tab, screenSource, lines, baseline, filings) {
   const holds = looksLike.filter((e) => isHold(eventShape(e)))
   const recruiting = looksLike.filter((e) => !holds.includes(e))
   const { calendarSeen = [] } = await chrome.storage.local.get('calendarSeen')
-  const fresh = recruiting.filter((e) => !calendarSeen.includes(e))
+  const fresh = firstScan ? recruiting : recruiting.filter((e) => !calendarSeen.includes(e))
   lines.push(`Outlook calendar: ${out.events.length} events from ${from.slice(5)} to ${until.slice(5)}, ${recruiting.length} about recruiting` +
              (holds.length ? ` (and ${holds.length} time block${holds.length > 1 ? 's' : ''} held for offered times, left out)` : '') +
              `, ${fresh.length} new or changed.`)
@@ -499,7 +501,7 @@ async function syncOutlook(state, lines, first = true, last = true) {
     await fitPage(tab.id)
     if (first) {
       try {
-        await readCalendar(tab, (state.outlook || {}).screen || '', lines, state.baseline, filings)
+        await readCalendar(tab, (state.outlook || {}).screen || '', lines, state.baseline, filings, state.start_from || '')
       } catch (e) {
         lines.push(`Outlook calendar: ${e.message || e}`)
       }
@@ -542,11 +544,6 @@ async function syncOutlook(state, lines, first = true, last = true) {
   if (skipped.length) {
     lines.push(`Outlook skipped ${skipped.length} folder${skipped.length > 1 ? 's' : ''} where no recruiting email has turned up: ${skipped.join(', ')}.`)
   }
-  if (result && result.ok && result.listed) {
-    // Recruiting HQ keeps track of which folders hold recruiting mail, to skip the ones that never do.
-    await api('/api/sync/folders', { listed: result.listed, read: result.read || [], skipped })
-      .catch((e) => lines.push(`Outlook folders: not recorded (${e.message || e}).`))
-  }
   // What wasn't handed over while reading (a folder on its second try, or an Outlook tab left from an older reader).
   for (const { more, note, filing, ...b } of read) {
     if (!filing && (b.items.length || b.seen_until)) fileMail(filings, b, lines)
@@ -557,6 +554,12 @@ async function syncOutlook(state, lines, first = true, last = true) {
   }
   await report('outlook', 0.9, 'Filing the last of what Outlook had')
   await Promise.allSettled(filings)
+  if (result && result.ok && result.listed) {
+    // Recruiting HQ keeps track of which folders hold recruiting mail, to skip the ones that never do. A folder only
+    // counts as looked through once what was read there is filed (not when the day's AI allowance ran out).
+    await api('/api/sync/folders', { listed: result.listed, read: outOfAI ? [] : result.read || [], skipped })
+      .catch((e) => lines.push(`Outlook folders: not recorded (${e.message || e}).`))
+  }
   lines.push(`Outlook${first ? '' : ' catch-up round'} timing: read ${read.length} folders${first ? ' and the calendar' : ''} in ` +
              `${took(readIn)}; filing finished ${took(Date.now() - started - readIn)} after reading did.`)
   return waiting

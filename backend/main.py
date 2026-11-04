@@ -813,8 +813,11 @@ def reader_ai(user: dict) -> llm.Chosen:
     """The model for a reader filing: the account's own, or for a test tracker its owner's (under the test tracker's own
     daily allowance, as a new student's would be)."""
     if user.get("test_of"):
-        budget.check(user["id"])
-        return ai_for(user["test_of"])
+        budget.check(user["id"])  # the test tracker's allowance, not the owner's
+        try:
+            return llm.model_for(user["test_of"])
+        except llm.NoModelError as err:
+            raise HTTPException(status_code=428, detail=str(err)) from None
     return ai_for(user)
 
 
