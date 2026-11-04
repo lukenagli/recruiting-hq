@@ -350,9 +350,9 @@ def record_folders(uid: int, listed: list[str], read: list[dict], skipped: list[
     account that has refreshed before counts as looked through since the season began."""
     ensure()
     now = datetime.now().isoformat(timespec="seconds")
-    if budget.used_today(uid) >= budget.allowance(uid):
-        # The day's allowance ran out during this refresh: what was read may not have been filed, so no folder counts
-        # as looked through (it would be skipped as holding no recruiting mail). Its checkpoint brings it back next time.
+    if budget.filing_stuck(uid):
+        # Filing stopped during this refresh: what was read may not have been filed, so no folder counts as looked
+        # through (it would be skipped as holding no recruiting mail). Its checkpoint brings it back next time.
         read = []
     with connect() as conn:
         known = {r["folder"] for r in conn.execute("SELECT folder FROM outlook_folders WHERE user_id = ?", (uid,))}
@@ -767,7 +767,7 @@ async def ingest_many(user: dict, chosen: Chosen, batches: list[Batch]) -> dict:
     school = schools.for_user(uid)["short"] or "my school"
     out_of_ai = False
     for k, run in enumerate(runs):
-        if k and budget.used_today(uid) >= budget.allowance(uid):  # ai_for checked before the first
+        if k and budget.filing_stuck(uid):  # only the guard against a fault: filing has no daily allowance
             out_of_ai = True
             for later in runs[k:]:
                 for w, _, _ in later:

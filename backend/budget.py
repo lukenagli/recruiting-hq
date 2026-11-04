@@ -1,46 +1,61 @@
-"""Per-user daily token budget, so no single account (or a bug looping on one) can drain the course key."""
-import sqlite3
-from datetime import date, timedelta
+"""Per-user daily token budget, so no single account (or a bug looping on one) can drain the course key.
+
+The reader filing email (preview) is counted apart: it has no daily allowance, only FILING_TOKEN_GUARD against a bug,
+and what it uses doesn't count against the rest of the site's allowance.
+"""
+from datetime import date
 
 from fastapi import HTTPException
 
 from . import config
 from .db import connect, init_db
 
-CATCH_UP_DAYS = 2
+FILING = "(user_message LIKE 'New messages from %' OR agent = 'fact_tidier')"
 
 
-def used_today(user_id: int) -> int:
+def used_today(user_id: int, filing: bool | None = None) -> int:
+    """Tokens used today: everything (None), only the reader's filing (True), or everything else (False)."""
     init_db()
+    which = "" if filing is None else f" AND {FILING}" if filing else f" AND NOT {FILING}"
     with connect(read_only=True) as conn:
         row = conn.execute(
-            "SELECT COALESCE(SUM(input_tokens + output_tokens), 0) FROM agent_runs WHERE user_id = ? AND started_at >= ?",
+            f"SELECT COALESCE(SUM(input_tokens + output_tokens), 0) FROM agent_runs WHERE user_id = ? AND started_at >= ?{which}",
             (user_id, date.today().isoformat()),
         ).fetchone()
     return row[0]
 
 
-def allowance(user_id: int) -> int:
-    """Today's allowance: DAILY_TOKEN_BUDGET, or (preview) CATCH_UP_TOKEN_BUDGET on the first two days an account's
-    reader refreshes, when its first scan reads everything since September in one go."""
+def _preview(user_id: int) -> bool:
     from . import accounts
 
-    init_db()
-    with connect(read_only=True) as conn:
-        try:
-            first = conn.execute("SELECT MIN(at) FROM sync_log WHERE user_id = ?", (user_id,)).fetchone()[0]
-        except sqlite3.OperationalError:  # no refresh has run on this site yet
-            first = None
-    if first and first[:10] >= (date.today() - timedelta(days=CATCH_UP_DAYS - 1)).isoformat() and accounts.in_preview_uid(user_id):
-        return max(config.DAILY_TOKEN_BUDGET, config.CATCH_UP_TOKEN_BUDGET)
+    return accounts.in_preview_uid(user_id)
+
+
+def allowance(user_id: int) -> int:
     return config.DAILY_TOKEN_BUDGET
+
+
+def used_for_allowance(user_id: int) -> int:
+    """What counts against the daily allowance: for preview accounts, everything but the reader's filing."""
+    return used_today(user_id, filing=False) if _preview(user_id) else used_today(user_id)
 
 
 def check(user_id: int) -> None:
     """Stop before calling the model if this account has used its tokens for today."""
-    used, cap = used_today(user_id), allowance(user_id)
+    used, cap = used_for_allowance(user_id), allowance(user_id)
     if used >= cap:
         raise HTTPException(
             status_code=429,
             detail=f"You have used today's AI allowance ({used:,} of {cap:,} tokens). It resets at midnight.",
         )
+
+
+def filing_stuck(user_id: int) -> bool:
+    """The reader's guard: only true if filing today has gone far past anything a real scan needs (a bug looping)."""
+    return used_today(user_id, filing=True) >= config.FILING_TOKEN_GUARD
+
+
+def check_filing(user_id: int) -> None:
+    if filing_stuck(user_id):
+        raise HTTPException(status_code=429, detail="Filing stopped for today: far more email than any scan needs was filed, "
+                                                    "which looks like a fault. It carries on tomorrow.")

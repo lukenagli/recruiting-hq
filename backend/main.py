@@ -153,7 +153,7 @@ def reader_download():
 
 @app.get("/api/home")
 def home(user: dict = Depends(current_user)):
-    return {**network.home(user["id"]), "ai_used_today": budget.used_today(user["id"]), "ai_budget": budget.allowance(user["id"])}
+    return {**network.home(user["id"]), "ai_used_today": budget.used_for_allowance(user["id"]), "ai_budget": budget.allowance(user["id"])}
 
 
 @app.get("/api/banks")
@@ -775,7 +775,7 @@ def sync_state(user: dict = Depends(reader_user)):
     # ai_left: the reader can't file anything once the day's AI allowance is used, so it doesn't start a run then.
     # outlook_only: every reader reads Outlook only (Slack and WhatsApp had too little news to be worth the windows).
     # start_from: an account's first sync goes back to the start of fall recruiting, not just to when it was set up.
-    return {**sync.state(user["id"]), "ai_left": max(0, budget.allowance(user["id"]) - budget.used_today(user["id"])),
+    return {**sync.state(user["id"]), "ai_left": 0 if budget.filing_stuck(user["id"]) else 1,
             "outlook_only": True, "start_from": sync.first_start(user["id"]), "combine": True,
             "calendar_from": sync.calendar_from(user["id"]), "test_scan": bool(user.get("test_of"))}
 
@@ -822,15 +822,13 @@ def sync_thank_yous(req: ThankYouEmails, user: dict = Depends(preview_user)):
 
 
 def reader_ai(user: dict) -> llm.Chosen:
-    """The model for a reader filing: the account's own, or for a test tracker its owner's (under the test tracker's own
-    daily allowance, as a new student's would be)."""
-    if user.get("test_of"):
-        budget.check(user["id"])  # the test tracker's allowance, not the owner's
-        try:
-            return llm.model_for(user["test_of"])
-        except llm.NoModelError as err:
-            raise HTTPException(status_code=428, detail=str(err)) from None
-    return ai_for(user)
+    """The model for a reader filing: the account's own, or for a test tracker its owner's. Filing has no daily allowance:
+    a first scan uses what it takes."""
+    budget.check_filing(user["id"])  # no daily allowance for filing, only the guard against a fault
+    try:
+        return llm.model_for(user["test_of"] if user.get("test_of") else user)
+    except llm.NoModelError as err:
+        raise HTTPException(status_code=428, detail=str(err)) from None
 
 
 @app.post("/api/sync/ingest")
