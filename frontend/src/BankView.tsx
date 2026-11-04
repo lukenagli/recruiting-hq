@@ -270,6 +270,17 @@ const OVERVIEW_FIELDS: [string, string, boolean][] = [
   ['Recruiting process', 'Recruiting process', true],
 ]
 
+/** "You: 5 coffee chats, 2 events, 1 interview" from the entries that have happened. */
+function yourChats(entries: { kind: string; status: string }[]): string {
+  const done = entries.filter((e) => e.status === 'done')
+  const n = (kind: string) => done.filter((e) => e.kind === kind).length
+  const parts = ([['coffee_chat', 'coffee chat'], ['event', 'event'], ['interview', 'interview']] as const)
+    .map(([k, word]) => [n(k), word] as const)
+    .filter(([count]) => count > 0)
+    .map(([count, word]) => `${count} ${word}${count === 1 ? '' : 's'}`)
+  return parts.length ? `You so far: ${parts.join(', ')}` : ''
+}
+
 export default function BankView({ bank, initial = '' }: { bank: string; initial?: string }) {
   const { data, error, reload } = useApi<BankDetail>(`/api/banks/${encodeURIComponent(bank)}`)
   const school = useSchool()
@@ -315,12 +326,17 @@ export default function BankView({ bank, initial = '' }: { bank: string; initial
         </div>
         {OVERVIEW_FIELDS.map(([field, label, onlyWhenKnown]) => {
           const items = data.facts.filter((f) => f.category === field)
-          if (onlyWhenKnown && items.length === 0) return null
+          // Preview: how far you've got, counted from your own entries rather than repeated in the facts.
+          const mine = preview && field === 'Recruiting process' ? yourChats(data.interactions) : ''
+          if (onlyWhenKnown && items.length === 0 && !mine) return null
           return (
-            <div className={`ov-item ${items.length ? '' : 'unknown'}`} key={field}>
+            <div className={`ov-item ${items.length || mine ? '' : 'unknown'}`} key={field}>
               <small>{label}</small>
+              {mine && <span className="ov-mine">{mine}</span>}
               {items.length === 0 ? (
+                mine ? null : (
                 <span className="muted">Not known yet</span>
+                )
               ) : (
                 items.map((f) => (
                   <span key={f.id} title={f.source ? `From ${f.source}` : undefined}>

@@ -80,6 +80,14 @@ def clean(value) -> str:
     return re.sub(r"\s+", " ", str(value)).strip() if value is not None else ""
 
 
+def clean_text(value) -> str:
+    """Notes and summaries: spaces tidied like clean, but paragraphs (blank lines) and line breaks kept."""
+    if value is None:
+        return ""
+    lines = [re.sub(r"[ \t\f\v]+", " ", line).strip() for line in str(value).replace("\r", "").split("\n")]
+    return re.sub(r"\n{3,}", "\n\n", "\n".join(lines)).strip()
+
+
 def _lookup(value, table: dict, default_unknown: bool = True) -> str:
     text = clean(value)
     if text.lower() in _BLANKS:

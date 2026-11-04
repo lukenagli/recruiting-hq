@@ -1438,3 +1438,4 @@ main h1 { text-shadow: 0 2px 16px rgba(4, 10, 26, 0.5); }
 
 /* A chat or event note keeps the paragraphs it was written in. */
 .convo > p, .panel > p { white-space: pre-line; }
+.ov-mine { font-weight: 600; }
