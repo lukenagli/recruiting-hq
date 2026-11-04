@@ -1,7 +1,6 @@
 import { useState } from 'react'
 import { API_URL, del, post, upload } from './api'
 import type { SetupState } from './api'
-import { usePreview } from './ui'
 
 /** The cover letter Word file new letters are written into. Used in Setup and in Settings. */
 export function CoverTemplate({ state, onChange }: { state: SetupState; onChange: (s: SetupState) => void }) {
@@ -56,7 +55,6 @@ export function CoverTemplate({ state, onChange }: { state: SetupState; onChange
 /** The four Finance Club email templates, each editable. */
 /** `publish`: show "make these the standard for every account" (the Admin page only, never Settings or setup). */
 export function EmailTemplates({ state, onChange, publish = false }: { state: SetupState; onChange: (s: SetupState) => void; publish?: boolean }) {
-  const preview = usePreview()
   const [texts, setTexts] = useState<Record<string, string>>(state.email_templates)
   const [open, setOpen] = useState<string>(state.email_kinds[0]?.kind ?? '')
   const [busy, setBusy] = useState(false)
@@ -84,8 +82,7 @@ export function EmailTemplates({ state, onChange, publish = false }: { state: Se
       <h3>Email templates</h3>
       <p className="fine">
         These start as the club's standard templates. Edit them to match exactly what you send. Parts in [square brackets] change for each email;
-        everything else is kept word for word.{' '}
-        {preview ? 'Thank-yous are' : <>The assistant drafts any of these for you ("draft an outreach email to …"), and thank-yous are</>}{' '}
+        everything else is kept word for word. The assistant drafts any of these for you ("draft an outreach email to …"), and thank-yous are
         drafted automatically after you log a chat.
       </p>
       <div className="email-tabs">

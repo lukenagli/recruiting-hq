@@ -377,7 +377,7 @@ chrome.runtime.onMessage.addListener((msg, _sender, reply) => {
         await rhqWaitFor(() => document.querySelector('[role="listbox"] [role="option"]'), 20000)
         await rhqSleep(1000)
       }
-      const again = await readFolder(b.conversation, msg.checkpoints[b.conversation] || msg.baseline, 20000, screenFor(b.conversation))
+      const again = await readFolder(b.conversation, msg.checkpoints[b.conversation] || msg.baseline, 10000, screenFor(b.conversation))
       b.items = again.items
       b.more = again.more
       b.seen_until = again.seen_until

@@ -114,7 +114,7 @@ export default function Start() {
             After that, banks invite some students to dinners. An invite usually means the bank wants to see more of you, so treat it like
             an interview.
           </p>
-          <p className="muted">Refresh reads who you met from your email, or add a chat yourself with Add a coffee chat on the home page; either way they go on that bank's map.</p>
+          <p className="muted">Tell the assistant who you met at each event and it adds them to that bank's map.</p>
         </Step>
 
         <Step

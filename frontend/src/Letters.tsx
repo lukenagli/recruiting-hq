@@ -101,7 +101,7 @@ export default function Letters({ bank }: { bank: string }) {
               </a>
             ))}
           </div>
-          {data.length === 0 && <p className="muted">No banks yet. Add banks {preview ? 'on' : 'through the assistant or'} the Recruiting Map.</p>}
+          {data.length === 0 && <p className="muted">No banks yet. Add banks through the assistant or the Recruiting Map.</p>}
           {current && <CoverLetterEditor key={current} bank={current} />}
         </>
       )}

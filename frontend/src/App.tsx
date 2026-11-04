@@ -182,8 +182,8 @@ export default function App() {
       {backdrop && <div className="page-backdrop" style={{ backgroundImage: `url(/bg-${backdrop}.jpg)` }} aria-hidden />}
       {/* Re-keying the page after the assistant changes something makes it reload its data. */}
       <main key={version} className={preview ? 'preview-on' : undefined}>{page}</main>
-      {/* preview: no assistant (Refresh and the forms do its work) */}
-      {!isHome && !preview && section !== 'tour' && section !== 'catch-up' && <Assistant key={user.id} userId={user.id} onChanged={() => setVersion((v) => v + 1)} />}
+      {/* preview: the assistant opens only from the home page's update bar (no corner button, no panel on other pages) */}
+      {(preview ? isHome : !isHome) && section !== 'tour' && section !== 'catch-up' && <Assistant key={user.id} userId={user.id} onChanged={() => setVersion((v) => v + 1)} />}
     </SchoolContext.Provider>
     </PreviewContext.Provider>
   )

@@ -397,7 +397,7 @@ export default function Assistant({ userId, onChanged, inline = false }: { userI
 
   return (
     <>
-      {!open && (
+      {!open && !preview && (
         <button className="assistant-fab" onClick={() => setOpen(true)} aria-label="Open the assistant">
           <svg viewBox="0 0 24 24" aria-hidden><path d="M4 5h16v10H8l-4 4z" /></svg>
           Assistant
