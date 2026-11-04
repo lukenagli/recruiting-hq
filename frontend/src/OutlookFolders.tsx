@@ -68,14 +68,21 @@ function Folder({ f, onChanged }: { f: FolderInfo; onChanged: () => void }) {
 export default function OutlookFolders() {
   const { data, error, reload } = useApi<{ folders: FolderInfo[] }>('/api/sync/folders')
   const box = useRef<HTMLElement>(null)
+  const loaded = !!data
   useEffect(() => {
-    if (!data || !/folders/.test(window.location.hash)) return
-    // after the sections above it have loaded, so it isn't pushed back down
+    if (!loaded || !/folders/.test(window.location.hash)) return
+    // once, after the sections above it have loaded, so it isn't pushed back down (not again after each change)
     const t = setTimeout(() => box.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 600)
     return () => clearTimeout(t)
-  }, [data])
+  }, [loaded])
+  // The order is set when the list first loads and kept while you change folders: a folder that moved to another
+  // group on each change would jump away, and the page would follow it.
+  const order = useRef<string[]>([])
   if (!data) return <Loading error={error} />
-  const folders = [...data.folders].sort((a, b) => ORDER[a.plan] - ORDER[b.plan] || a.name.localeCompare(b.name))
+  if (!order.current.length)
+    order.current = [...data.folders].sort((a, b) => ORDER[a.plan] - ORDER[b.plan] || a.name.localeCompare(b.name)).map((f) => f.name)
+  const rank = (name: string) => (order.current.includes(name) ? order.current.indexOf(name) : order.current.length)
+  const folders = [...data.folders].sort((a, b) => rank(a.name) - rank(b.name) || a.name.localeCompare(b.name))
   const n = (p: FolderInfo['plan']) => folders.filter((f) => f.plan === p).length
   return (
     <section className="outlook-folders" ref={box} id="outlook-folders">

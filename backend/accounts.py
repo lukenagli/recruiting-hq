@@ -87,12 +87,16 @@ def set_early_access(emails: list[str]) -> list[str]:
 
 
 def set_admin(by_uid: int, uid: int, admin: bool) -> dict:
-    """The admin gives another account admin rights, or takes them back. An admin is in the preview, sees this panel
-    and runs on the course's AI key. Nobody changes their own rights (no locking yourself out), the demo account
-    never becomes an admin, and the site always keeps at least one admin."""
+    """The admin gives another account admin rights, or takes them back. An admin is in the preview and sees this
+    panel, but uses their own AI key (only the site owner and the demo run on the course key). Nobody changes their
+    own rights (no locking yourself out), nobody takes the owner's, the demo account never becomes an admin, and the
+    site always keeps at least one admin."""
     from .config import DEMO_EMAIL
+    from .db import owner_id
     if uid == by_uid:
         raise AccountError("You can't change your own admin rights.")
+    if not admin and uid == owner_id():
+        raise AccountError("The site owner's admin rights can't be taken away.")
     with connect() as conn:
         user = conn.execute("SELECT id, email, name, is_admin FROM users WHERE id = ? AND password_hash != ''", (uid,)).fetchone()
         if user is None:

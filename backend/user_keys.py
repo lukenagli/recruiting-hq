@@ -14,7 +14,7 @@ import openai
 from cryptography.fernet import Fernet, InvalidToken
 
 from . import config
-from .db import connect, init_db
+from .db import connect, init_db, owner_id
 
 PROVIDERS = {"portkey": "Yale class key (Portkey)", "anthropic": "Claude (Anthropic)", "openai": "OpenAI"}
 
@@ -103,9 +103,9 @@ def status(uid: int) -> dict:
     """What the settings page shows. Never includes the key itself."""
     init_db()
     with connect(read_only=True) as conn:
-        row = conn.execute("SELECT api_provider, api_key_hint, is_admin, email FROM users WHERE id = ?", (uid,)).fetchone()
+        row = conn.execute("SELECT api_provider, api_key_hint, email FROM users WHERE id = ?", (uid,)).fetchone()
     own = bool(row and row["api_provider"] and stored(uid))
-    course = bool(row and config.on_course_key(row["is_admin"], row["email"]))
+    course = bool(row and config.on_course_key(uid == owner_id(), row["email"]))
     return {
         "provider": row["api_provider"] if own else "",
         "provider_label": PROVIDERS.get(row["api_provider"], "") if own else "",

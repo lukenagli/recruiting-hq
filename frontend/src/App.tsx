@@ -136,7 +136,7 @@ export default function App() {
   return (
     <PreviewContext.Provider value={!!user.preview}>
     <SchoolContext.Provider value={school ?? fallback}>
-      <header className="topbar">
+      <header className={user.preview ? 'topbar preview-bar' : 'topbar'}>
         <a className="brand" href="#/">
           <BrandMark preview={!!user.preview} /> Recruiting HQ
         </a>
@@ -152,16 +152,16 @@ export default function App() {
             </a>
           )}
           <a href="#/prep" className={section === 'prep' ? 'active' : ''}>
-            Interview Prep
+            <span className="nav-long">Interview </span>Prep
           </a>
           <a href="#/map" className={section === 'map' || section === 'bank' ? 'active' : ''}>
-            Recruiting Map
+            <span className="nav-long">Recruiting </span>Map
           </a>
           <a href="#/deals" className={section === 'deals' ? 'active' : ''}>
-            My Deals
+            <span className="nav-long">My </span>Deals
           </a>
           <a href="#/letters" className={section === 'letters' ? 'active' : ''}>
-            Cover Letters
+            <span className="nav-long">Cover </span>Letters
           </a>
           {preview ? (
             <a href="#/settings" className={`nav-gear ${section === 'settings' ? 'active' : ''}`} aria-label="Settings" title={`Settings · signed in as ${user.email}`}>

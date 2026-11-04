@@ -18,7 +18,7 @@ PORTKEY_BASE_URL = os.getenv("PORTKEY_BASE_URL", "https://api.portkey.ai/v1")
 DB_PATH = Path(os.getenv("APP_DB_PATH") or ROOT / "data" / "app.db")
 FRONTEND_DIST = ROOT / "frontend" / "dist"
 # Models for people who bring their own key. The course key (Portkey) only ever runs MODEL_NAME above and
-# is used only by the site's admin account; everyone else pays for their own usage with their own key.
+# is used only by the site owner's account and the demo; everyone else, other admins too, pays with their own key.
 CLAUDE_MODEL = "claude-opus-5-5"
 USER_OPENAI_MODEL = os.getenv("USER_OPENAI_MODEL", MODEL_NAME)
 # Encrypts the API keys people save. Set APP_SECRET on the hosted site; locally a random one is kept in data/.
@@ -45,9 +45,10 @@ def banks_dir() -> Path:
     return PRIVATE_BANKS_DIR
 
 
-def on_course_key(is_admin, email: str) -> bool:
-    """Accounts that run on the site owner's course key: the admin and the demo account."""
-    return PORTKEY_API_KEY_SET and (bool(is_admin) or (email or "").lower() == DEMO_EMAIL)
+def on_course_key(is_owner, email: str) -> bool:
+    """Accounts that run on the site owner's course key: the owner (db.owner_id) and the demo account. Other admins
+    use their own key like everyone else."""
+    return PORTKEY_API_KEY_SET and (bool(is_owner) or (email or "").lower() == DEMO_EMAIL)
 
 
 def portkey_api_key() -> str:

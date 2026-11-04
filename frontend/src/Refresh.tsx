@@ -31,6 +31,15 @@ export function ReaderProgress({ status }: { status: ReaderStatus | null }) {
   )
 }
 
+/** A phone or tablet (touch, no mouse): the reader, a Chrome extension, only runs on a computer. */
+const phone = () => {
+  try {
+    return window.matchMedia('(hover: none) and (pointer: coarse)').matches
+  } catch {
+    return false
+  }
+}
+
 function send(type: 'ping' | 'sync' | 'capiq' | 'thanks') {
   window.postMessage({ source: 'rhq-page', type }, window.origin)
 }
@@ -165,6 +174,7 @@ export default function Refresh({ onDone }: { onDone?: () => void }) {
       </div>
     )
   if (!checked && !installed) return null
+  if (!installed && preview && phone()) return null
   if (!installed)
     return (
       <div className="refresh">

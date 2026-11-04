@@ -16,7 +16,7 @@ from pydantic_ai.providers.anthropic import AnthropicProvider
 from pydantic_ai.providers.openai import OpenAIProvider
 from pydantic_ai.settings import ModelSettings
 
-from . import config, user_keys
+from . import config, db, user_keys
 
 
 class NoModelError(Exception):
@@ -51,7 +51,7 @@ def model_for(user: dict) -> Chosen:
         if provider == "portkey":
             return Chosen(OpenAIResponsesModel(config.MODEL_NAME, provider=OpenAIProvider(openai_client=_portkey(key))), "portkey")
         return Chosen(OpenAIResponsesModel(config.USER_OPENAI_MODEL, provider=OpenAIProvider(api_key=key)), "openai")
-    if config.on_course_key(user.get("is_admin"), user.get("email", "")):
+    if config.on_course_key(user.get("id") == db.owner_id(), user.get("email", "")):
         return Chosen(get_model(), "course")
     raise NoModelError("To use the AI features, add your Yale class key (Portkey), or your own Claude or OpenAI key, in Settings. Your usage is billed to your key.")
 

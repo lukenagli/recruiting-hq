@@ -1405,3 +1405,33 @@ main h1 { text-shadow: 0 2px 16px rgba(4, 10, 26, 0.5); }
 .setup-card .folder-actions select, .setup-card .folder-reread input { width: auto; font: inherit; font-size: 13.5px; padding: 3px 6px; border-radius: 6px; border: 1px solid var(--line); }
 .folder-reread { display: inline-flex; flex-wrap: wrap; gap: 6px 10px; align-items: center; }
 .folder-done { color: #166534; }
+
+/* Preview: a map step not reached yet is class "todo", which also picked up the to-do card's padding and squeezed its bar */
+.preview-on .pm-step.todo { position: static; margin: 0; padding: 0; }
+
+/* Preview, phones: the menu gets its own row under the logo, with short names, so every page (and Settings) fits
+   on screen instead of hiding off the right edge; the map rows and the coffee-chat form fit the screen width. */
+@media (max-width: 760px) {
+  .topbar.preview-bar { flex-wrap: wrap; height: auto; padding-bottom: 0; row-gap: 0; }
+  .topbar.preview-bar .brand { height: 46px; }
+  .topbar.preview-bar nav { order: 3; flex: 1 0 100%; justify-content: space-between; overflow-x: visible; gap: 0;
+    border-top: 1px solid rgba(255, 255, 255, 0.08); }
+  .topbar.preview-bar nav a { padding: 3px 8px; border-top-width: 5px; border-bottom-width: 5px; font-size: 14.5px; }
+  .topbar.preview-bar nav .nav-gear { width: 40px; }
+  .topbar.preview-bar .nav-long { display: none; }
+  body:has(.preview-bar) .assistant-panel { top: calc(92px + env(safe-area-inset-top)); }
+
+  .preview-on .pm-row { grid-template-columns: minmax(0, 1fr) 16px; padding: 12px 14px; }
+  .preview-on .pm-bank, .preview-on .pm-middle, .preview-on .pm-next { min-width: 0; }
+  .preview-on .pm-middle { gap: 10px; }
+  .preview-on .pm-progress { min-width: 0; grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .preview-on .pm-step { min-width: 0; }
+  .preview-on .pm-step span { white-space: normal; line-height: 1.2; }
+  .preview-on .pm-applied { flex: none; }
+
+  .add-chat label { min-width: 0; flex-basis: 100%; }
+  .add-chat input, .add-chat select, .add-chat textarea { width: 100%; min-width: 0; }
+
+  .update-links { flex-wrap: wrap; gap: 8px 16px; margin-left: 8px; }
+  .update-links button { white-space: nowrap; }
+}
