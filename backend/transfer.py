@@ -8,6 +8,8 @@ The shared tables (question banks, application tracker, calendar) are only expor
 """
 import base64
 import json
+import os
+import tempfile
 
 from . import stars
 from .db import connect, init_db
@@ -17,9 +19,13 @@ OWN_TABLES = ("people", "interactions", "links", "my_banks", "bank_facts", "deal
               "agent_runs", "cover_letters", "prep_attempts", "deal_documents", "star_stories")
 
 
-def export_all(uid: int, include_shared: bool) -> dict:
-    init_db()
-    stars.ensure()
+# Not exported: the copy of the whole tracker each assistant run keeps so it can be undone. It grows with every
+# refresh (it was most of a busy account's export, enough to run the hosted server out of memory), and an import
+# drops it anyway, because its ids belong to the old database.
+LEFT_OUT = {"agent_runs": {"snapshot"}}
+
+
+def _queries(uid: int, include_shared: bool) -> dict:
     mine = "SELECT id FROM interactions WHERE user_id = ?"
     queries = {
         "people": ("SELECT * FROM people WHERE user_id = ?", (uid,)),
@@ -42,14 +48,50 @@ def export_all(uid: int, include_shared: bool) -> dict:
     }
     if include_shared:
         queries.update({t: (f"SELECT * FROM {t}", ()) for t in SHARED})
+    return queries
+
+
+def _rows(conn, table: str, sql: str, params: tuple):
+    """One table's rows, one at a time, ready for JSON (files as base64 text)."""
+    skip = LEFT_OUT.get(table, set())
+    if skip:
+        keep = [r[1] for r in conn.execute(f"PRAGMA table_info({table})") if r[1] not in skip]
+        sql = sql.replace("SELECT *", f"SELECT {', '.join(keep)}", 1)
+    for r in conn.execute(sql, params):
+        row = dict(r)
+        if table == "deal_documents":  # the original files travel as text inside the JSON
+            row["data"] = base64.b64encode(row["data"]).decode()
+        elif table == "user_profiles" and isinstance(row.get("cover_template"), (bytes, bytearray)):
+            row["cover_template"] = "b64:" + base64.b64encode(row["cover_template"]).decode()
+        yield row
+
+
+def export_all(uid: int, include_shared: bool) -> dict:
+    init_db()
+    stars.ensure()
     with connect(read_only=True) as conn:
-        out = {t: [dict(r) for r in conn.execute(sql, params)] for t, (sql, params) in queries.items()}
-    for d in out["deal_documents"]:  # the original files travel as text inside the JSON
-        d["data"] = base64.b64encode(d["data"]).decode()
-    for prof in out["user_profiles"]:
-        if isinstance(prof.get("cover_template"), (bytes, bytearray)):
-            prof["cover_template"] = "b64:" + base64.b64encode(prof["cover_template"]).decode()
-    return out
+        return {t: list(_rows(conn, t, sql, params)) for t, (sql, params) in _queries(uid, include_shared).items()}
+
+
+def export_to_file(uid: int, include_shared: bool) -> str:
+    """The same export written to a temporary file a row at a time, so a big account never has to fit in the
+    server's memory (the whole JSON at once took the hosted site down). The caller deletes the file."""
+    init_db()
+    stars.ensure()
+    fd, path = tempfile.mkstemp(prefix="rhq-export-", suffix=".json")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as out, connect(read_only=True) as conn:
+            out.write("{")
+            for n, (table, (sql, params)) in enumerate(_queries(uid, include_shared).items()):
+                out.write(f'{", " if n else ""}{json.dumps(table)}: [')
+                for i, row in enumerate(_rows(conn, table, sql, params)):
+                    out.write((", " if i else "") + json.dumps(row))
+                out.write("]")
+            out.write("}")
+    except BaseException:
+        os.unlink(path)
+        raise
+    return path
 
 
 def _insert(conn, table: str, row: dict, columns: set[str], drop_id: bool = True) -> int:

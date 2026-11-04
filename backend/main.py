@@ -1,16 +1,18 @@
 """HTTP API. Every route below the account routes runs for the signed-in user only (see auth.py)."""
 import json
+import os
 import re
 import tempfile
-from datetime import datetime
+from datetime import date, datetime
 from pathlib import Path
 
 from fastapi import Depends, FastAPI, Form, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse, JSONResponse, Response
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 from pydantic_ai import Agent
+from starlette.background import BackgroundTask
 
 from . import banks as banks_info
 from . import tracker_edits
@@ -967,8 +969,11 @@ def download_cover_letter(bank: str, user: dict = Depends(current_user)):
 
 @app.get("/api/export")
 def export_my_tracker(user: dict = Depends(current_user)):
-    """Download your whole tracker as JSON (a backup you keep)."""
-    return transfer.export_all(user["id"], include_shared=user["is_admin"])
+    """Download your whole tracker as JSON (a backup you keep). Written to a file first, then sent from it, so a big
+    account doesn't run the server out of memory; the file is deleted once it's sent."""
+    path = transfer.export_to_file(user["id"], include_shared=user["is_admin"])
+    return FileResponse(path, media_type="application/json", filename=f"recruiting-hq-{date.today().isoformat()}.json",
+                        background=BackgroundTask(os.unlink, path))
 
 
 @app.post("/api/import")
