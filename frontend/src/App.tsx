@@ -138,7 +138,7 @@ export default function App() {
     <SchoolContext.Provider value={school ?? fallback}>
       <header className={user.preview ? 'topbar preview-bar' : 'topbar'}>
         <a className="brand" href="#/">
-          <BrandMark preview={!!user.preview} /> Recruiting HQ
+          <BrandMark preview={!!user.preview} /> {user.preview ? <span>Recruiting <span className="brand-hq">HQ</span></span> : 'Recruiting HQ'}
         </a>
         {user.preview && (
           <span className="preview-badge" title="Your account sees changes being tried out before they go to everyone">

@@ -1439,3 +1439,12 @@ main h1 { text-shadow: 0 2px 16px rgba(4, 10, 26, 0.5); }
 /* A chat or event note keeps the paragraphs it was written in. */
 .convo > p, .panel > p { white-space: pre-line; }
 .ov-mine { font-weight: 600; }
+
+/* Preview: the wordmark's "HQ" in the icon's gold; on phones the whole logo shows, the skyline icon a little larger. */
+.preview-bar .brand-hq { color: #ffc45a; }
+@media (max-width: 760px) {
+  .topbar.preview-bar .brand { font-size: 18px; gap: 10px; height: 54px; letter-spacing: 0.2px; padding-right: 0; }
+  .topbar.preview-bar .brand-mark.brand-icon { width: 36px; height: 36px; border-radius: 10px;
+    box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.22), 0 4px 16px rgba(255, 160, 90, 0.28); }
+  body:has(.preview-bar) .assistant-panel { top: calc(100px + env(safe-area-inset-top)); }
+}
