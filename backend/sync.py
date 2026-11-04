@@ -590,8 +590,6 @@ def _brief(uid: int, text: str) -> str:
                 met.add(p["id"])
                 hits[p["bank"]] += 3
         banks = [b for b, n in hits.most_common() if n][:5]
-        if not banks:
-            return ""
         out, size, left = [], 0, []
         for b in banks:
             app = conn.execute("SELECT applied, deadline, status, notes FROM my_banks WHERE user_id = ? AND bank = ?", (uid, b)).fetchone()
@@ -623,10 +621,19 @@ def _brief(uid: int, text: str) -> str:
             out.append(block)
             size += len(block)
     others = [p for p in people if p["id"] in met and p["bank"] not in banks]
+    with connect(read_only=True) as conn:
+        open_qs = conn.execute("SELECT id, question FROM reader_questions WHERE user_id = ? AND done = 0 ORDER BY id DESC LIMIT 12",
+                               (uid,)).fetchall()
     if others:
         out.append("== Others named\n" + "\n".join(f"  person {p['id']}: {p['name']}, {p['title'] or ''}, {p['bank']}" for p in others))
     if left:
         out.append(f"(Not shown, call lookup for them: {', '.join(left)}.)")
+    if open_qs:
+        out.append("== Questions I haven't answered yet (from earlier emails). If these messages answer one, for example a "
+                   "thank-you that names the person's bank, file what the question was about and close it with settle_question:\n"
+                   + "\n".join(f"  question {q['id']}: {q['question']}" for q in open_qs))
+    if not out:
+        return ""
     return ("What my tracker already has for the banks and people these messages mention. Use these ids with save_entry, "
             "save_person and record_thank_you, and update what is here instead of adding it again; call lookup only for a "
             "bank or person not listed. Save a fact only if the overview doesn't already say it.\n" + "\n".join(out))

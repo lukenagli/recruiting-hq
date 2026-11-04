@@ -230,7 +230,7 @@ async def _only_when_filing(ctx: RunContext[Deps], tool_def):
     return tool_def if ctx.deps.filing else None
 
 
-ONLY_FOR_FILING = {"ask_student"}
+ONLY_FOR_FILING = {"ask_student", "settle_question"}
 
 
 def _short(text, limit: int = 300) -> str:
@@ -997,6 +997,22 @@ def ask_student(ctx: RunContext[Deps], question: str) -> dict:
             conn.execute("INSERT INTO reader_questions (user_id, asked_at, question) VALUES (?, ?, ?)",
                          (ctx.deps.user_id, _dt.now().isoformat(timespec="seconds"), q))
     return _done(ctx, "ask_student", {"question": q}, {"ok": True, "did": "Asked the student on their home page"})
+
+
+@tool
+def settle_question(ctx: RunContext[Deps], question_id: int, how: str) -> dict:
+    """Close one of the student's open questions that these messages answered, once what it was about is filed.
+
+    Args:
+        question_id: The question's number, as listed.
+        how: What answered it, e.g. "The Sep 8 thank-you says he is at Barclays; logged the Sep 7 chat there."
+    """
+    with connect() as conn:
+        n = conn.execute("UPDATE reader_questions SET done = 1 WHERE id = ? AND user_id = ? AND done = 0",
+                         (question_id, ctx.deps.user_id)).rowcount
+    if not n:
+        return _refuse(ctx, "settle_question", {"question_id": question_id}, "No open question with that number.")
+    return _done(ctx, "settle_question", {"question_id": question_id, "how": nz.clean(how)[:200]}, {"ok": True, "did": "Closed the question"})
 
 
 @tool
