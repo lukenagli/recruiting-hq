@@ -14,7 +14,7 @@ assistant it hands messages to: no email, chat or messaging tool exists in this 
 import hashlib
 import json
 import re
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 
 from pydantic import BaseModel, Field
 from pydantic_ai import Agent, NativeOutput
@@ -58,6 +58,18 @@ CREATE TABLE IF NOT EXISTS sync_log (
     new           INTEGER NOT NULL,
     filed         INTEGER NOT NULL,
     note          TEXT
+);
+-- What the reader has learned about each Outlook folder (how the student files their mail), and their own say.
+CREATE TABLE IF NOT EXISTS outlook_folders (
+    user_id       INTEGER NOT NULL,
+    folder        TEXT NOT NULL,
+    first_seen    TEXT NOT NULL,
+    last_seen     TEXT NOT NULL,                -- last refresh that saw it in the folder list
+    covered_from  TEXT NOT NULL DEFAULT '',     -- how far back its mail has been looked through
+    last_read     TEXT NOT NULL DEFAULT '',     -- last refresh that opened it ('' never)
+    mode          TEXT NOT NULL DEFAULT 'auto', -- auto | always | skip (the student's choice wins)
+    reread        INTEGER NOT NULL DEFAULT 0,   -- 1: read in full on the next refresh (asked to re-read it)
+    PRIMARY KEY (user_id, folder)
 );
 """
 
@@ -178,7 +190,8 @@ def state(uid: int) -> dict:
         elif chat["app"] == "whatsapp" and chat["name"] not in whatsapp:
             whatsapp.append(chat["name"])
     return {"checkpoints": out, "season_start": SEASON_START, "log": log, "has_key": has_key, "config": config,
-            "outlook": {"watch": _watched_folders(uid), "screen": _screen(uid)}}
+            "outlook": {"watch": sorted(_watched_folders(uid)), "screen": _screen(uid),
+                        "plan": {f["name"]: f["plan"] for f in folder_plan(uid)}}}
 
 
 FIRST_SYNC_FROM = "2026-09-01T00:00:00"  # a new reader catches up on everything since fall recruiting began
@@ -204,14 +217,139 @@ def reread_from(uid: int, since: str) -> int:
                             "AND conversation != 'Calendar' AND last_at > ?", (start, uid, start)).rowcount
 
 
-def _watched_folders(uid: int) -> list[str]:
-    """Outlook folders where filing has changed the tracker before: the reader reads these in full. Other folders
-    (besides Inbox, Sent Items and folders named after a bank or recruiting) are screened by _screen."""
+def _watched_folders(uid: int) -> dict[str, str]:
+    """Outlook folders where filing has changed the tracker before, with the last time it did: the reader reads these
+    in full. Other folders (besides Inbox, Sent Items and folders named after a bank or recruiting) are screened by
+    _screen, or skipped once the reader has learned they never hold recruiting mail (folder_plan)."""
     with connect(read_only=True) as conn:
-        rows = conn.execute("""SELECT DISTINCT user_message FROM agent_runs WHERE user_id = ? AND snapshot IS NOT NULL
-                               AND user_message LIKE 'New messages from my Outlook email, %'""", (uid,)).fetchall()
-    found = (re.match(r"New messages from my Outlook email, (['\"])(.*?)\1, read by", r["user_message"]) for r in rows)
-    return sorted({m[2] for m in found if m})
+        rows = conn.execute("""SELECT user_message, MAX(started_at) AS at FROM agent_runs WHERE user_id = ? AND snapshot IS NOT NULL
+                               AND user_message LIKE 'New messages from my Outlook email, %' GROUP BY user_message""", (uid,)).fetchall()
+    out: dict[str, str] = {}
+    for r in rows:
+        m = re.match(r"New messages from my Outlook email, (['\"])(.*?)\1, read by", r["user_message"])
+        if m and m[2] != "Calendar":
+            out[m[2]] = max(out.get(m[2], ""), r["at"] or "")
+    return out
+
+
+ALWAYS_READ = ("Inbox", "Sent Items")
+LEARN_DAYS = 21  # a folder is skipped only once this much of its mail has been looked through with no recruiting in it
+CHECK_DAYS = 7   # a skipped folder is still looked at about once a week, in case that changes
+MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+
+
+def _day(iso: str) -> str:
+    """'2026-09-01T00:00:00' -> 'Sep 1'."""
+    if not iso:
+        return ""
+    y, m, d = (int(x) for x in iso[:10].split("-"))
+    return f"{MONTHS[m - 1]} {d}"
+
+
+def _word_start(text: str, m: re.Match) -> bool:
+    """A folder named after a bank or recruiting says so at the start of a word: "UBS" and "Recruiting" yes, "Clubs" no."""
+    return bool(m.group()) and (m.start() == 0 or not text[m.start() - 1].isalnum())
+
+
+def folder_plan(uid: int, today: str = "") -> list[dict]:
+    """How the next refresh treats each Outlook folder the reader has seen: plan full (read every new email), screen
+    (open only emails that look like recruiting) or skip (not opened at all), with the reason in plain words.
+    The student's own setting wins; then recruiting found there; then what the reader has learned."""
+    ensure()
+    now = datetime.fromisoformat(today or datetime.now().isoformat(timespec="seconds"))
+    with connect(read_only=True) as conn:
+        rows = [dict(r) for r in conn.execute("SELECT * FROM outlook_folders WHERE user_id = ? ORDER BY folder", (uid,))]
+    if not rows:
+        return []
+    latest = max(r["last_seen"] for r in rows)  # the last refresh stamps every folder it saw with the same time
+    watched, screen = _watched_folders(uid), _screen(uid)
+    try:
+        named = re.compile(screen, re.I)
+    except re.error:
+        named = None
+    out = []
+    for r in rows:
+        if r["last_seen"] < latest:  # no longer in the folder list (deleted or renamed)
+            continue
+        name = r["folder"]
+        read_at = datetime.fromisoformat(r["last_read"]) if r["last_read"] else None
+        span = (read_at - datetime.fromisoformat(r["covered_from"])).days if read_at and r["covered_from"] else 0
+        if name in ALWAYS_READ:
+            plan, reason = "full", "always read: new contacts and your own replies land here"
+        elif r["mode"] == "always":
+            plan, reason = "full", "always read, as you set it"
+        elif r["mode"] == "skip":
+            plan, reason = "skip", "skipped, as you set it"
+        elif r["reread"]:
+            plan, reason = "full", "read in full on the next refresh, as you asked"
+        elif name in watched:
+            plan, reason = "full", f"recruiting email found here (last filed {_day(watched[name])})"
+        elif named and any(_word_start(name, m) for m in named.finditer(name)):
+            plan, reason = "full", "named after a bank or recruiting"
+        elif read_at is None:
+            plan, reason = "screen", "new folder: checked on the next refresh"
+        elif span < LEARN_DAYS:
+            plan, reason = "screen", f"still learning: checked each refresh (looked through back to {_day(r['covered_from'])})"
+        elif (now - read_at).days >= CHECK_DAYS:
+            plan, reason = "screen", f"weekly check: no recruiting email here since {_day(r['covered_from'])}"
+        else:
+            plan, reason = "skip", (f"skipped: no recruiting email here since {_day(r['covered_from'])}; "
+                                    f"next check {_day((read_at + timedelta(days=CHECK_DAYS)).isoformat())}")
+        out.append({"name": name, "plan": plan, "reason": reason, "mode": r["mode"], "last_read": r["last_read"]})
+    return out
+
+
+def record_folders(uid: int, listed: list[str], read: list[dict], skipped: list[str]) -> dict:
+    """After an Outlook round: every folder in the list, which were opened (and from how far back), which skipped.
+    Before this record existed every folder was looked through on every refresh, so a folder first recorded on an
+    account that has refreshed before counts as looked through since the season began."""
+    ensure()
+    now = datetime.now().isoformat(timespec="seconds")
+    with connect() as conn:
+        known = {r["folder"] for r in conn.execute("SELECT folder FROM outlook_folders WHERE user_id = ?", (uid,))}
+        earlier = conn.execute("SELECT 1 FROM sync_log WHERE user_id = ? AND source = 'outlook' AND at < ? LIMIT 1",
+                               (uid, now[:10])).fetchone() is not None
+        for name in {n.strip() for n in listed if isinstance(n, str) and n.strip()}:
+            if name in known:
+                conn.execute("UPDATE outlook_folders SET last_seen = ? WHERE user_id = ? AND folder = ?", (now, uid, name))
+            else:
+                conn.execute("INSERT INTO outlook_folders (user_id, folder, first_seen, last_seen, covered_from) VALUES (?, ?, ?, ?, ?)",
+                             (uid, name, now, now, FIRST_SYNC_FROM if earlier else ""))
+        for r in read:
+            name, since = str(r.get("name", "")), str(r.get("since", "") or "")[:19]
+            row = conn.execute("SELECT covered_from FROM outlook_folders WHERE user_id = ? AND folder = ?", (uid, name)).fetchone()
+            if row is None:
+                continue
+            covered = min(x for x in (row["covered_from"], since, now) if x)
+            conn.execute("UPDATE outlook_folders SET last_read = ?, covered_from = ?, reread = 0 WHERE user_id = ? AND folder = ?",
+                         (now, covered, uid, name))
+    return {"ok": True, "skipped": len(skipped)}
+
+
+def set_folder_mode(uid: int, folder: str, mode: str) -> dict:
+    """The student's own say for one folder: auto (let it learn), always (read in full) or skip (never opened)."""
+    if mode not in ("auto", "always", "skip"):
+        raise ValueError("mode must be auto, always or skip")
+    ensure()
+    with connect() as conn:
+        n = conn.execute("UPDATE outlook_folders SET mode = ? WHERE user_id = ? AND folder = ?", (mode, uid, folder)).rowcount
+    if not n:
+        raise ValueError(f"No folder {folder!r} yet: it shows here after a refresh sees it.")
+    return {"ok": True}
+
+
+def reread_folder(uid: int, folder: str, since: str) -> dict:
+    """Read one folder again from `since` (YYYY-MM-DD), in full, on the next refresh: for an email that was missed."""
+    ensure()
+    now = datetime.now().isoformat(timespec="seconds")
+    with connect() as conn:
+        n = conn.execute("UPDATE outlook_folders SET reread = 1 WHERE user_id = ? AND folder = ?", (uid, folder)).rowcount
+        if not n:
+            raise ValueError(f"No folder {folder!r} yet: it shows here after a refresh sees it.")
+        conn.execute("""INSERT INTO sync_state (user_id, source, conversation, last_at, last_keys, updated_at) VALUES (?, 'outlook', ?, ?, '', ?)
+                        ON CONFLICT(user_id, source, conversation) DO UPDATE SET last_at = excluded.last_at, last_keys = '',
+                        updated_at = excluded.updated_at""", (uid, folder, f"{since}T00:00:00", now))
+    return {"ok": True}
 
 
 def _js_escape(text: str) -> str:

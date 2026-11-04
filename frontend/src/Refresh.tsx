@@ -151,6 +151,13 @@ export default function Refresh({ onDone }: { onDone?: () => void }) {
     return []
   }))]
 
+  // What the last refresh looked through and what it skipped, so a missed email can be traced to its folder.
+  const readNames = [...new Set(lines.filter((l) => l.startsWith('Outlook read ')).flatMap((l) =>
+    l.replace(/^Outlook read \d+ folders: /, '').split('; ').map((f) => f.replace(/ \(.*$/, ''))))]
+  const skippedNames = [...new Set(lines.filter((l) => l.startsWith('Outlook skipped ')).flatMap((l) =>
+    l.replace(/^Outlook skipped .*?: /, '').replace(/\.$/, '').split(', ')))]
+  const list = (names: string[]) => (names.length > 6 ? `${names.slice(0, 6).join(', ')} and ${names.length - 6} more` : names.join(', '))
+
   if (stale)
     return (
       <div className="refresh">
@@ -221,6 +228,13 @@ export default function Refresh({ onDone }: { onDone?: () => void }) {
         </button>
       )}
       {!busy && !confirming && status!.last && <small className="muted refresh-last">Last refreshed {status!.last.at}</small>}
+      {preview && !busy && !confirming && readNames.length > 0 && (
+        <p className="muted refresh-folders">
+          Last refresh looked through {readNames.length} folder{readNames.length > 1 ? 's' : ''} ({list(readNames)})
+          {skippedNames.length > 0 && <> and skipped {skippedNames.length} where no recruiting email has turned up ({list(skippedNames)})</>}.{' '}
+          <a href="#/settings?folders">See or change which folders it reads</a>
+        </p>
+      )}
       {!busy && !confirming && unread.length > 0 && (
         <p className="notice error refresh-unread">
           <strong>Not read last time:</strong> {unread.join('; ')}. Refresh again, and leave the reader's windows in front until they close.

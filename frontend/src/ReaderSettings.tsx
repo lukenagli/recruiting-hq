@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { API_URL, post } from './api'
+import OutlookFolders from './OutlookFolders'
 import Refresh from './Refresh'
 import { fmtDate, useApi } from './ui'
 
@@ -66,6 +67,7 @@ export default function ReaderSettings() {
         <button className="link danger-link" onClick={turnOff}>Turn the reader off</button>
       )}
       {data.has_key && <Refresh onDone={reload} />}
+      {data.has_key && <OutlookFolders key={data.log[0]?.at ?? ''} />}
       {data.log.length > 0 && (
         <>
           <h4>Recent syncs</h4>

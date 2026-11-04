@@ -445,7 +445,8 @@ async function syncOutlook(state, lines, first = true, last = true) {
   const filings = [] // filed one at a time (see file), while the tab goes on reading
   outlookRun = { claimed: new Set(), n: 1, filings, lines }
   const msg = { type: 'outlook-collect', checkpoints: state.checkpoints.outlook || {}, baseline: state.baseline,
-                watch: (state.outlook || {}).watch || [], screen: (state.outlook || {}).screen || '' }
+                watch: (state.outlook || {}).watch || [], screen: (state.outlook || {}).screen || '',
+                plan: (state.outlook || {}).plan || {} }
   const started = Date.now()
   let tab = null
   let result = null
@@ -494,6 +495,15 @@ async function syncOutlook(state, lines, first = true, last = true) {
   if (read.length) {
     // What each folder showed, so a refresh that files nothing still says why.
     lines.push(`Outlook read ${read.length} folders: ` + read.map((b) => `${b.conversation} (${b.note || 'nothing new'})`).join('; '))
+  }
+  const skipped = (result && result.ok && result.skipped) || []
+  if (skipped.length) {
+    lines.push(`Outlook skipped ${skipped.length} folder${skipped.length > 1 ? 's' : ''} where no recruiting email has turned up: ${skipped.join(', ')}.`)
+  }
+  if (result && result.ok && result.listed) {
+    // Recruiting HQ keeps track of which folders hold recruiting mail, to skip the ones that never do.
+    await api('/api/sync/folders', { listed: result.listed, read: result.read || [], skipped })
+      .catch((e) => lines.push(`Outlook folders: not recorded (${e.message || e}).`))
   }
   // What wasn't handed over while reading (a folder on its second try, or an Outlook tab left from an older reader).
   for (const { more, note, filing, ...b } of read) {

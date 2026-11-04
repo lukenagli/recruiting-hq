@@ -1388,3 +1388,20 @@ main h1 { text-shadow: 0 2px 16px rgba(4, 10, 26, 0.5); }
 .add-chat-msg { color: #fff; font-size: 13.5px; background: rgba(10, 20, 50, 0.7); padding: 3px 10px; border-radius: 999px; }
 .update-links .add-chat-open { font-size: 15px; font-weight: 600; }
 .update-links .add-chat-open span { color: #9cc2ff; font-size: 16px; }
+
+/* Preview: which Outlook folders the reader reads, checks or skips */
+.refresh-folders { margin: 6px 0 0; font-size: 13px; }
+.outlook-folders { margin-top: 18px; }
+.folder-list { list-style: none; padding: 0; margin: 8px 0 0; display: grid; gap: 6px; }
+.folder-row { display: grid; gap: 4px; padding: 9px 12px; border: 1px solid var(--line); border-radius: 10px; }
+.folder-main { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; }
+.folder-main small { flex-basis: 100%; }
+.folder-plan { font-size: 11.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; padding: 1px 8px; border-radius: 999px; }
+.folder-plan.plan-full { background: #dcfce7; color: #166534; }
+.folder-plan.plan-screen { background: #e0e7ff; color: #3730a3; }
+.folder-plan.plan-skip { background: #f1f5f9; color: #475569; }
+.folder-row.plan-skip strong { color: var(--muted, #64748b); }
+.folder-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; }
+.setup-card .folder-actions select, .setup-card .folder-reread input { width: auto; font: inherit; font-size: 13.5px; padding: 3px 6px; border-radius: 6px; border: 1px solid var(--line); }
+.folder-reread { display: inline-flex; flex-wrap: wrap; gap: 6px 10px; align-items: center; }
+.folder-done { color: #166534; }

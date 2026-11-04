@@ -347,18 +347,29 @@ chrome.runtime.onMessage.addListener((msg, _sender, reply) => {
     const batches = []
     const list = folders()
     // Read in full: Inbox, Sent Items, folders named after a bank or recruiting, and folders where recruiting news
-    // was found before (msg.watch, from Recruiting HQ). Every other folder is still checked, but screened.
+    // was found before (msg.watch, from Recruiting HQ). Every other folder is checked, but screened, until Recruiting
+    // HQ has learned it never holds recruiting mail: then msg.plan says skip, and it isn't opened at all (it's still
+    // checked about once a week, and the student can set any folder to always read or skip).
     let screen = null
     try {
       screen = msg.screen ? new RegExp(msg.screen, 'i') : null
     } catch {
       screen = null // an unreadable pattern: read everything in full, as before
     }
-    const full = (name) => !screen || ['Inbox', 'Sent Items'].includes(name) || (msg.watch || []).includes(name) || screen.test(name)
+    const plan = msg.plan || {} // folder -> full | screen | skip; a folder it hasn't seen yet isn't in it
+    // Recruiting HQ's plan decides a folder it knows; a folder it hasn't seen yet is read as before.
+    const full = (name) => !screen || ['Inbox', 'Sent Items'].includes(name) ||
+      (name in plan ? plan[name] === 'full' : (msg.watch || []).includes(name) || screen.test(name))
     const screenFor = (name) => (full(name) ? null : screen)
+    const skipped = []
+    const toRead = list.filter((n) => plan[n] !== 'skip' || ['Inbox', 'Sent Items'].includes(n)).length
     for (const name of list) {
+      if (plan[name] === 'skip' && !['Inbox', 'Sent Items'].includes(name)) {
+        skipped.push(name)
+        continue
+      }
       // Each folder is claimed before it is read: without a yes (the refresh was stopped), nothing more is read.
-      if ((await chrome.runtime.sendMessage({ type: 'outlook-claim', name, n: list.length }).catch(() => false)) !== true) continue
+      if ((await chrome.runtime.sendMessage({ type: 'outlook-claim', name, n: toRead }).catch(() => false)) !== true) continue
       const since = msg.checkpoints[name] || msg.baseline
       const r = await readFolder(name, since, 10000, screenFor(name))
       const b = { source: 'outlook', conversation: name, group_chat: false, ...r }
@@ -383,6 +394,9 @@ chrome.runtime.onMessage.addListener((msg, _sender, reply) => {
       b.seen_until = again.seen_until
       b.note = `${again.note} (second try)`
     }
-    return { ok: true, batches }
+    // What was looked through, and from how far back, so Recruiting HQ learns where this student keeps recruiting mail.
+    const read = batches.filter((b) => b.note && !/didn't load|not in the folder list|refused/.test(b.note))
+      .map((b) => ({ name: b.conversation, since: msg.checkpoints[b.conversation] || msg.baseline || '' }))
+    return { ok: true, batches, listed: list, read, skipped }
   })
 })

@@ -9,7 +9,7 @@ from fastapi import Depends, FastAPI, Form, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from pydantic_ai import Agent
 
 from . import banks as banks_info
@@ -715,6 +715,52 @@ def sync_reread(req: RereadRequest, user: dict = Depends(preview_user)):
     if not re.fullmatch(r"20\d\d-\d\d-\d\d", req.since):
         raise HTTPException(status_code=400, detail="since must be YYYY-MM-DD")
     return {"folders": sync.reread_from(user["id"], req.since)}
+
+
+class FolderRecord(BaseModel):
+    listed: list[str] = Field(default_factory=list, max_length=500)
+    read: list[dict] = Field(default_factory=list, max_length=500)
+    skipped: list[str] = Field(default_factory=list, max_length=500)
+
+
+@app.post("/api/sync/folders")
+def sync_folders_record(req: FolderRecord, user: dict = Depends(preview_user)):
+    """From the reader after each Outlook round: which folders it saw, opened and skipped (how it learns your filing)."""
+    return sync.record_folders(user["id"], req.listed, req.read, req.skipped)
+
+
+@app.get("/api/sync/folders")
+def sync_folders(user: dict = Depends(preview_user)):
+    """Each Outlook folder: read in full, screened or skipped on the next refresh, and why."""
+    return {"folders": sync.folder_plan(user["id"])}
+
+
+class FolderMode(BaseModel):
+    folder: str
+    mode: str
+
+
+@app.post("/api/sync/folders/mode")
+def sync_folder_mode(req: FolderMode, user: dict = Depends(preview_user)):
+    try:
+        return sync.set_folder_mode(user["id"], req.folder, req.mode)
+    except ValueError as err:
+        raise HTTPException(status_code=400, detail=str(err)) from None
+
+
+class FolderReread(BaseModel):
+    folder: str
+    since: str
+
+
+@app.post("/api/sync/folders/reread")
+def sync_folder_reread(req: FolderReread, user: dict = Depends(preview_user)):
+    if not re.fullmatch(r"20\d\d-\d\d-\d\d", req.since):
+        raise HTTPException(status_code=400, detail="since must be YYYY-MM-DD")
+    try:
+        return sync.reread_folder(user["id"], req.folder, req.since)
+    except ValueError as err:
+        raise HTTPException(status_code=400, detail=str(err)) from None
 
 
 @app.get("/api/sync/state")
