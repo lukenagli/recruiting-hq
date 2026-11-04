@@ -780,6 +780,17 @@ def sync_state(user: dict = Depends(reader_user)):
             "calendar_from": sync.calendar_from(user["id"])}
 
 
+@app.get("/api/reader/questions")
+def reader_questions(user: dict = Depends(preview_user)):
+    """What the reader couldn't file without you (which bank a chat was with, say)."""
+    return sync.questions(user["id"])
+
+
+@app.post("/api/reader/questions/{qid}/done")
+def reader_question_done(qid: int, user: dict = Depends(preview_user)):
+    return sync.question_done(user["id"], qid)
+
+
 @app.post("/api/sync/key")
 def sync_key(user: dict = Depends(preview_user)):
     """A sign-in key for the reader extension, shown once; making a new one turns the old one off."""
@@ -1157,6 +1168,8 @@ def test_scan_action(req: TestScanAction, user: dict = Depends(admin_user)):
         return test_scan.start(user)
     if req.action == "stop":
         return test_scan.stop(user)
+    if req.action == "resume":
+        return test_scan.resume(user)
     if req.action == "delete":
         return test_scan.delete(user)
     raise HTTPException(status_code=400, detail="action must be start, stop or delete")

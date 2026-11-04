@@ -106,6 +106,14 @@ def stop(owner: dict) -> dict:
     return status(owner)
 
 
+def resume(owner: dict) -> dict:
+    """Carry on with the same test tracker (after a stop, or the next day once the allowance has reset)."""
+    ensure()
+    with connect() as conn:
+        conn.execute("UPDATE test_scans SET active = 1 WHERE owner_id = ?", (owner["id"],))
+    return status(owner)
+
+
 def delete(owner: dict) -> dict:
     ensure()
     with connect() as conn:
@@ -194,10 +202,36 @@ def _days(a: str, b: str) -> int:
         return 99
 
 
+def _same_person(a: str, b: str) -> bool:
+    a, b = _name(a).split(), _name(b).split()
+    if not a or not b:
+        return False
+    if a == b:
+        return True
+    if len(a) == 1 or len(b) == 1:  # a first name alone (from a calendar invite)
+        return _first(a[0], b[0])
+    return a[-1] == b[-1] and _first(a[0], b[0])
+
+
+def _first(x: str, y: str) -> bool:
+    """Eben / Ebenezer, Matt / Matthew (one starts the other), Michael / Micheal (a letter or two off); not Michael / Michelle."""
+    if x.startswith(y) or y.startswith(x):
+        return min(len(x), len(y)) >= 3
+    prev = list(range(len(y) + 1))
+    for i, cx in enumerate(x, 1):
+        cur = [i]
+        for j, cy in enumerate(y, 1):
+            cur.append(min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (cx != cy)))
+        prev = cur
+    return prev[-1] <= 2 and abs(len(x) - len(y)) <= 1
+
+
 def _same_entry(a: dict, b: dict) -> bool:
     if nz.bank(a["bank"]) != nz.bank(b["bank"]):
         return False
-    shared = {_name(x) for x in a["people"]} & {_name(x) for x in b["people"]}
+    shared = any(_same_person(x, y) for x in a["people"] for y in b["people"])
+    if a["kind"] == b["kind"] == "event" and _days(a["date"], b["date"]) <= 1:
+        return True
     near = _days(a["date"], b["date"]) <= 3 if a["date"] and b["date"] else False
     title = _name(a["title"]) == _name(b["title"])
     kinds = a["kind"] == b["kind"] or {a["kind"], b["kind"]} <= {"step", "event"}
@@ -212,22 +246,16 @@ def compare(owner: dict) -> dict:
     with connect(read_only=True) as conn:
         mine, test = _tracker(conn, owner["id"]), _tracker(conn, row["sandbox_id"])
         p_origin, e_origin = _origins(conn, owner["id"])
-    key = lambda p: (nz.bank(p["bank"]), _name(p["name"]))  # noqa: E731
-    test_people = {key(p): p for p in test["people"].values()}
-    surname = {(nz.bank(p["bank"]), _name(p["name"]).split()[-1]): p for p in test["people"].values() if _name(p["name"])}
     people_missing, people_found = [], 0
     for p in mine["people"].values():
-        k = key(p)
-        hit = test_people.get(k) or (surname.get((k[0], k[1].split()[-1])) if k[1] else None)
+        hit = next((t for t in test["people"].values() if nz.bank(t["bank"]) == nz.bank(p["bank"]) and _same_person(p["name"], t["name"])), None)
         if hit:
             people_found += 1
         else:
             people_missing.append({"name": p["name"], "bank": p["bank"], "title": p["title"], "origin": p["origin"],
                                    "came_from": p_origin.get(p["id"], "")})
-    mine_keys = {key(p) for p in mine["people"].values()}
-    mine_surnames = {(k[0], k[1].split()[-1]) for k in mine_keys if k[1]}
-    people_extra = [{"name": p["name"], "bank": p["bank"], "title": p["title"]} for p in test["people"].values()
-                    if key(p) not in mine_keys and (key(p)[0], key(p)[1].split()[-1] if key(p)[1] else "") not in mine_surnames]
+    people_extra = [{"name": t["name"], "bank": t["bank"], "title": t["title"]} for t in test["people"].values()
+                    if not any(nz.bank(p["bank"]) == nz.bank(t["bank"]) and _same_person(p["name"], t["name"]) for p in mine["people"].values())]
     used, entries_missing, entries_found, differences = set(), [], 0, []
     for e in mine["entries"]:
         hit = next((t for t in test["entries"] if t["id"] not in used and _same_entry(e, t)), None)

@@ -1448,3 +1448,10 @@ main h1 { text-shadow: 0 2px 16px rgba(4, 10, 26, 0.5); }
     box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.22), 0 4px 16px rgba(255, 160, 90, 0.28); }
   body:has(.preview-bar) .assistant-panel { top: calc(100px + env(safe-area-inset-top)); }
 }
+
+/* Preview: the reader's questions on the home page */
+.reader-questions { margin-bottom: 16px; }
+.reader-questions ul { list-style: none; padding: 0; margin: 8px 0 0; }
+.reader-questions li { display: flex; gap: 12px; justify-content: space-between; align-items: baseline; padding: 8px 0; border-top: 1px solid var(--line); }
+.reader-questions .rq-actions { display: flex; gap: 12px; flex: none; }
+@media (max-width: 760px) { .reader-questions li { flex-direction: column; gap: 4px; } }

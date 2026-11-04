@@ -245,7 +245,7 @@ type ScanStatus = {
 function TestScan() {
   const { data, reload } = useApi<ScanStatus>('/api/admin/test-scan')
   const [busy, setBusy] = useState(false)
-  async function act(action: 'start' | 'stop' | 'delete') {
+  async function act(action: 'start' | 'stop' | 'resume' | 'delete') {
     setBusy(true)
     try {
       await post('/api/admin/test-scan', { action })
@@ -273,6 +273,7 @@ function TestScan() {
       <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center' }}>
         {!data.active && <button className="primary" disabled={busy} onClick={() => act('start')}>{data.exists ? 'Start over' : 'Start a test scan'}</button>}
         {data.active && <button className="primary" disabled={busy} onClick={() => act('stop')}>Stop: back to my tracker</button>}
+        {data.exists && !data.active && <button disabled={busy} onClick={() => act('resume')}>Carry on with this test</button>}
         {data.exists && !data.active && <button className="link danger-link" disabled={busy} onClick={() => act('delete')}>Delete the test tracker</button>}
       </div>
     </section>

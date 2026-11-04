@@ -213,7 +213,8 @@ def tool(fn):
                 raise
             return _refuse(ctx, fn.__name__, kwargs, f"That would duplicate something already in the tracker ({exc}). Look it up and "
                                                       "update the existing one instead.")
-    return agent.tool(safe, prepare=_not_when_filing if fn.__name__ in NOT_FOR_FILING else None)
+    prepare = _not_when_filing if fn.__name__ in NOT_FOR_FILING else _only_when_filing if fn.__name__ in ONLY_FOR_FILING else None
+    return agent.tool(safe, prepare=prepare)
 
 
 # Tools filing email never needs (drafting, deals, removing or merging whole banks): left out of those runs, since every
@@ -223,6 +224,13 @@ NOT_FOR_FILING = {"email_template", "list_banks", "remove_bank", "merge_banks", 
 
 async def _not_when_filing(ctx: RunContext[Deps], tool_def):
     return None if ctx.deps.filing else tool_def
+
+
+async def _only_when_filing(ctx: RunContext[Deps], tool_def):
+    return tool_def if ctx.deps.filing else None
+
+
+ONLY_FOR_FILING = {"ask_student"}
 
 
 def _short(text, limit: int = 300) -> str:
@@ -969,6 +977,26 @@ def save_fact(ctx: RunContext[Deps], bank: str, category: str, fact: str, source
     finally:
         conn.close()
     return _done(ctx, "save_fact", args, {"ok": True, "did": f"Added to the {bank} fact sheet: {fact[:70]}"})
+
+
+@tool
+def ask_student(ctx: RunContext[Deps], question: str) -> dict:
+    """Ask the student something only they know, shown on their home page: for a chat, interview or event that can't be
+    filed without it (which bank the person is at, whether it happened). One short question naming the person and date.
+
+    Args:
+        question: e.g. "Which bank is Matthew Rube at? You agreed on a coffee chat for Sep 7."
+    """
+    from datetime import datetime as _dt
+
+    q = nz.clean(question)[:300]
+    if not q:
+        return _refuse(ctx, "ask_student", {"question": question}, "Empty question.")
+    with connect() as conn:
+        if not conn.execute("SELECT 1 FROM reader_questions WHERE user_id = ? AND question = ?", (ctx.deps.user_id, q)).fetchone():
+            conn.execute("INSERT INTO reader_questions (user_id, asked_at, question) VALUES (?, ?, ?)",
+                         (ctx.deps.user_id, _dt.now().isoformat(timespec="seconds"), q))
+    return _done(ctx, "ask_student", {"question": q}, {"ok": True, "did": "Asked the student on their home page"})
 
 
 @tool

@@ -33,7 +33,7 @@ function dayLabel(iso: string, today: string) {
   return `${DAYS[new Date(y, m - 1, d).getDay()]}, ${MONTHS[m - 1].slice(0, 3)} ${d}`
 }
 
-function ask(detail: { text?: string; record?: 'recap' | 'conversation' }) {
+function ask(detail: { text?: string; record?: 'recap' | 'conversation'; draft?: string }) {
   window.dispatchEvent(new CustomEvent(ASK_EVENT, { detail }))
 }
 
@@ -250,6 +250,33 @@ function Todos({ d, out, onChanged }: { d: HomeData; out: Set<string>; onChanged
   )
 }
 
+/** What the reader couldn't file without the student: answering opens the assistant with the question filled in. */
+function ReaderQuestions() {
+  const { data, reload } = useApi<{ id: number; asked_at: string; question: string }[]>('/api/reader/questions')
+  if (!data || data.length === 0) return null
+  async function done(id: number) {
+    await post(`/api/reader/questions/${id}/done`, {})
+    reload()
+  }
+  return (
+    <section className="dash-card reader-questions">
+      <h2>The reader needs you <span className="count">{data.length}</span></h2>
+      <p className="muted">It found these in your email and calendar but couldn't file them without you.</p>
+      <ul>
+        {data.map((q) => (
+          <li key={q.id}>
+            <span>{q.question}</span>
+            <span className="rq-actions">
+              <button type="button" className="link" onClick={() => { ask({ draft: `About "${q.question}": ` }); done(q.id) }}>Answer</button>
+              <button type="button" className="link muted" onClick={() => done(q.id)}>Dismiss</button>
+            </span>
+          </li>
+        ))}
+      </ul>
+    </section>
+  )
+}
+
 function Pipeline({ banks, today }: { banks: BankSummary[]; today: string }) {
   const live = banks.filter((b) => b.application.status !== 'out')
   const out = banks.filter((b) => b.application.status === 'out')
@@ -394,6 +421,7 @@ export default function HomeNext({ name }: { name: string }) {
             onAdded={(msg) => { setAdded(msg); setAdding(false); api.reload(); banks.reload() }} />
         )}
         <Refresh onDone={() => { api.reload(); banks.reload() }} />
+        <ReaderQuestions />
         {ai.data && !ai.data.ready && (
           <a className="notice key-callout" href="#/settings">
             <strong>One thing first:</strong> paste your Yale class (Portkey) key in Settings to turn on the assistant.

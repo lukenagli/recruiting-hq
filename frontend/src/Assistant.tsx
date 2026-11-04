@@ -140,9 +140,10 @@ export default function Assistant({ userId, onChanged, inline = false }: { userI
   useEffect(() => {
     if (inline) return
     const onAsk = (e: Event) => {
-      const { text = '', record = '' } = (e as CustomEvent<{ text?: string; record?: 'recap' | 'conversation' }>).detail ?? {}
+      const { text = '', record = '', draft = '' } = (e as CustomEvent<{ text?: string; record?: 'recap' | 'conversation'; draft?: string }>).detail ?? {}
       setOpen(true)
       if (record) setRecording(record)
+      else if (draft) setDraft(draft) // filled in for the student to finish, not sent
       else if (text.trim()) sendRef.current(text)
     }
     window.addEventListener(ASK_EVENT, onAsk)

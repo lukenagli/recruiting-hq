@@ -74,6 +74,14 @@ CREATE TABLE IF NOT EXISTS outlook_folders (
     reread        INTEGER NOT NULL DEFAULT 0,   -- 1: read in full on the next refresh (asked to re-read it)
     PRIMARY KEY (user_id, folder)
 );
+-- What the reader couldn't file without the student (which bank a chat was with, say), shown on their home page.
+CREATE TABLE IF NOT EXISTS reader_questions (
+    id        INTEGER PRIMARY KEY,
+    user_id   INTEGER NOT NULL,
+    asked_at  TEXT NOT NULL,
+    question  TEXT NOT NULL,
+    done      INTEGER NOT NULL DEFAULT 0
+);
 -- Emails already handed to the model (mail_trim.fingerprint), from any folder: a thread that sits in two folders, or
 -- comes back with one new reply, only sends what wasn't filed yet.
 CREATE TABLE IF NOT EXISTS sync_seen (
@@ -394,6 +402,20 @@ def reread_folder(uid: int, folder: str, since: str) -> dict:
     return {"ok": True}
 
 
+def questions(uid: int) -> list[dict]:
+    ensure()
+    with connect(read_only=True) as conn:
+        return [dict(r) for r in conn.execute(
+            "SELECT id, asked_at, question FROM reader_questions WHERE user_id = ? AND done = 0 ORDER BY id DESC LIMIT 20", (uid,))]
+
+
+def question_done(uid: int, qid: int) -> dict:
+    ensure()
+    with connect() as conn:
+        conn.execute("UPDATE reader_questions SET done = 1 WHERE id = ? AND user_id = ?", (qid, uid))
+    return {"ok": True}
+
+
 def _js_escape(text: str) -> str:
     return re.sub(r"[.*+?^${}()|[\]\\/]", lambda m: "\\" + m[0], text)
 
@@ -516,6 +538,9 @@ def _message(batch: Batch, items: list[Item], school: str, tags: list[str] | Non
         head += ("Each email is marked with the folder it was read from. End your reply with one line \"Folders used: \" and "
                  "the folders of the emails you saved something from, or \"none\". ")
     if batch.source == "outlook":
+        head += ("When a chat, interview or event can't be filed without something only I know (which bank the person is at, "
+                 "whether it happened), ask me with ask_student, one short question naming the person and the date, instead of "
+                 "guessing, dropping it or asking in your reply. ")
         head += ("Work in as few steps as you can: each step resends everything. What lookup would show for the banks and people "
                  "named is below, so make all your saves together, as several tool calls in one response, and call lookup "
                  "only for someone or something that isn't there. ")
