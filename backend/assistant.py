@@ -137,6 +137,7 @@ class Deps:
     user_name: str = ""
     steps: list = field(default_factory=list)
     snapshot: str | None = None
+    filing: bool = False  # the reader filing email: a smaller tool set and shorter lookups (each request resends them)
 
 
 def _snapshot(conn, uid: int) -> str:
@@ -209,7 +210,21 @@ def tool(fn):
                 raise
             return _refuse(ctx, fn.__name__, kwargs, f"That would duplicate something already in the tracker ({exc}). Look it up and "
                                                       "update the existing one instead.")
-    return agent.tool(safe)
+    return agent.tool(safe, prepare=_not_when_filing if fn.__name__ in NOT_FOR_FILING else None)
+
+
+# Tools filing email never needs (drafting, deals, removing or merging whole banks): left out of those runs, since every
+# tool's description is sent again with each request.
+NOT_FOR_FILING = {"email_template", "list_banks", "remove_bank", "merge_banks", "save_deal_point"}
+
+
+async def _not_when_filing(ctx: RunContext[Deps], tool_def):
+    return None if ctx.deps.filing else tool_def
+
+
+def _short(text, limit: int = 300) -> str:
+    text = text or ""
+    return text if len(text) <= limit else text[:limit].rstrip() + "..."
 
 
 @agent.instructions
@@ -265,7 +280,17 @@ def lookup(ctx: RunContext[Deps], query: str) -> dict:
                    FROM interactions i WHERE i.user_id = ? AND i.bank = ? ORDER BY i.date""", (uid, b)):
                 entries.append(dict(r))
         app = [dict(r) for r in conn.execute("SELECT * FROM my_banks WHERE user_id = ? AND bank = ? COLLATE NOCASE", (uid, bank))]
+        facts = [f"{r['category']}: {r['fact']}" for r in conn.execute(
+            "SELECT category, fact FROM bank_facts WHERE user_id = ? AND bank = ? COLLATE NOCASE ORDER BY category, id", (uid, bank))] \
+            if ctx.deps.filing else []
+    if ctx.deps.filing:
+        for p in people:
+            p["notes"] = _short(p["notes"])
+        for e in entries:
+            e["summary"] = _short(e["summary"])
     result = {"found": bool(people or entries or app), "people": people, "entries": entries, "application": app}
+    if facts:
+        result["overview_facts"] = facts
     ctx.deps.steps.append({"tool": "lookup", "args": args, "result": {"found": result["found"], "people": len(people), "entries": len(entries)}})
     return result
 
@@ -979,7 +1004,7 @@ def save_deal_point(ctx: RunContext[Deps], deal: str, section: str, label: str, 
 
 
 async def run(user: dict, chosen: Chosen, message: str, history: list[dict], transcript: bool = False,
-              attachment: BinaryContent | None = None) -> dict:
+              attachment: BinaryContent | None = None, filing: bool = False) -> dict:
     """`attachment` is a scanned PDF or an image for the model to read itself (files with text arrive in `message`)."""
     init_db()
     message = message.strip()
@@ -997,7 +1022,7 @@ async def run(user: dict, chosen: Chosen, message: str, history: list[dict], tra
     if sc["school"]:
         prompt = (f"About the student: {schools.LEVELS[sc['level']]} student at {sc['school_full']}. A current student there who has "
                   f"already been through recruiting is a '{sc['peer']}'; yale='yes' in save_person means an alum of their school.\n\n{prompt}")
-    deps, started = Deps(user_id=user["id"], user_name=user["name"]), datetime.now().isoformat(timespec="seconds")
+    deps, started = Deps(user_id=user["id"], user_name=user["name"], filing=filing), datetime.now().isoformat(timespec="seconds")
     usage, outcome = None, "ok"
     try:
         result = await agent.run([prompt, attachment] if attachment else prompt, model=chosen.model, model_settings=chosen.settings, deps=deps,

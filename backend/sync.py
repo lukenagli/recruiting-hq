@@ -14,14 +14,16 @@ assistant it hands messages to: no email, chat or messaging tool exists in this 
 import hashlib
 import json
 import re
+from collections import Counter
 from datetime import date, datetime, timedelta
 
 from pydantic import BaseModel, Field
 from pydantic_ai import Agent, NativeOutput
 from pydantic_ai.usage import UsageLimits
 
-from . import accounts, assistant, deal_docs, schools, shared
+from . import accounts, assistant, budget, deal_docs, fact_tidy, mail_trim, schools, shared
 from . import banks as bank_info
+from . import normalize as nz
 from .db import connect, init_db
 from .llm import Chosen, usage_dict
 
@@ -70,6 +72,14 @@ CREATE TABLE IF NOT EXISTS outlook_folders (
     mode          TEXT NOT NULL DEFAULT 'auto', -- auto | always | skip (the student's choice wins)
     reread        INTEGER NOT NULL DEFAULT 0,   -- 1: read in full on the next refresh (asked to re-read it)
     PRIMARY KEY (user_id, folder)
+);
+-- Emails already handed to the model (mail_trim.fingerprint), from any folder: a thread that sits in two folders, or
+-- comes back with one new reply, only sends what wasn't filed yet.
+CREATE TABLE IF NOT EXISTS sync_seen (
+    user_id  INTEGER NOT NULL,
+    print    TEXT NOT NULL,
+    at       TEXT NOT NULL,
+    PRIMARY KEY (user_id, print)
 );
 """
 
@@ -213,6 +223,7 @@ def reread_from(uid: int, since: str) -> int:
     ensure()
     start = f"{since}T00:00:00"
     with connect() as conn:
+        conn.execute("DELETE FROM sync_seen WHERE user_id = ?", (uid,))
         return conn.execute("UPDATE sync_state SET last_at = ?, last_keys = '' WHERE user_id = ? AND source = 'outlook' "
                             "AND conversation != 'Calendar' AND last_at > ?", (start, uid, start)).rowcount
 
@@ -222,14 +233,29 @@ def _watched_folders(uid: int) -> dict[str, str]:
     in full. Other folders (besides Inbox, Sent Items and folders named after a bank or recruiting) are screened by
     _screen, or skipped once the reader has learned they never hold recruiting mail (folder_plan)."""
     with connect(read_only=True) as conn:
-        rows = conn.execute("""SELECT user_message, MAX(started_at) AS at FROM agent_runs WHERE user_id = ? AND snapshot IS NOT NULL
-                               AND user_message LIKE 'New messages from my Outlook email, %' GROUP BY user_message""", (uid,)).fetchall()
+        rows = conn.execute("""SELECT SUBSTR(user_message, 1, 3000) AS head, MAX(started_at) AS at, reply FROM agent_runs WHERE user_id = ?
+                               AND snapshot IS NOT NULL AND user_message LIKE 'New messages from my Outlook email, %'
+                               GROUP BY head, reply""", (uid,)).fetchall()
     out: dict[str, str] = {}
     for r in rows:
-        m = re.match(r"New messages from my Outlook email, (['\"])(.*?)\1, read by", r["user_message"])
-        if m and m[2] != "Calendar":
-            out[m[2]] = max(out.get(m[2], ""), r["at"] or "")
+        for name in _run_folders(r["head"], r["reply"] or ""):
+            if name != "Calendar":
+                out[name] = max(out.get(name, ""), r["at"] or "")
     return out
+
+
+def _run_folders(head: str, reply: str) -> list[str]:
+    """The folders a filing run's emails came from. A run over several folders ends its reply with "Folders used:",
+    the ones it saved something from; without that line, all of them."""
+    m = re.match(r"New messages from my Outlook email, (['\"])(.*?)\1, read by", head)
+    if m:
+        return [m[2]]
+    m = re.match(r"New messages from my Outlook email, folders (.*?), read by", head)
+    if not m:
+        return []
+    names = [x[1] for x in re.findall(r"(['\"])(.*?)\1", m[1])]
+    used = re.search(r"Folders used:\s*(.*)", reply)
+    return [n for n in names if n in used[1]] if used else names
 
 
 ALWAYS_READ = ("Inbox", "Sent Items")
@@ -346,6 +372,7 @@ def reread_folder(uid: int, folder: str, since: str) -> dict:
         n = conn.execute("UPDATE outlook_folders SET reread = 1 WHERE user_id = ? AND folder = ?", (uid, folder)).rowcount
         if not n:
             raise ValueError(f"No folder {folder!r} yet: it shows here after a refresh sees it.")
+        conn.execute("DELETE FROM sync_seen WHERE user_id = ?", (uid,))
         conn.execute("""INSERT INTO sync_state (user_id, source, conversation, last_at, last_keys, updated_at) VALUES (?, 'outlook', ?, ?, '', ?)
                         ON CONFLICT(user_id, source, conversation) DO UPDATE SET last_at = excluded.last_at, last_keys = '',
                         updated_at = excluded.updated_at""", (uid, folder, f"{since}T00:00:00", now))
@@ -411,9 +438,12 @@ def _sync_used_today(uid: int) -> int:
             "AND user_message LIKE 'New messages from %'", (uid, date.today().isoformat())).fetchone()[0]
 
 
-def _message(batch: Batch, items: list[Item], school: str) -> str:
+def _message(batch: Batch, items: list[Item], school: str, tags: list[str] | None = None, brief: str = "") -> str:
+    """`tags`: each item's folder, for a run over several folders; `brief`: the tracker as it stands for what they mention."""
     where = {"outlook": "my Outlook email", "slack": "Slack", "whatsapp": "WhatsApp"}.get(batch.source, batch.source)
-    head = (f"New messages from {where}, {batch.conversation!r}, read by the Recruiting HQ Reader (it only reads; nothing is ever "
+    folders = list(dict.fromkeys(tags)) if tags else [batch.conversation]
+    named = repr(folders[0]) if len(folders) == 1 else "folders " + ", ".join(repr(f) for f in folders)
+    head = (f"New messages from {where}, {named}, read by the Recruiting HQ Reader (it only reads; nothing is ever "
             f"sent). This recruiting season began {SEASON_START}: anything about an earlier season, or a file from an earlier "
             "year, is background only, never a current deadline, step or contact.\n"
             "File only what concerns my own investment banking recruiting and the finance club: my chats, invitations, "
@@ -467,14 +497,102 @@ def _message(batch: Batch, items: list[Item], school: str) -> str:
     head += ("When a bank tells me I'm not moving forward (a rejection, \"unable to offer\", \"not able to move forward\", "
              "\"other candidates\", a declined informational or coffee chat request), call save_application for that bank "
              "with out_of_process=True and the reason and date in notes, and say so; only when it really says that. ")
+    if len(folders) > 1:
+        head += ("Each email is marked with the folder it was read from. End your reply with one line \"Folders used: \" and "
+                 "the folders of the emails you saved something from, or \"none\". ")
     head += "Do not draft emails. If nothing is worth saving, save nothing and say so.\n\n"
-    lines = [f"[{i.at}] {i.author}: {i.text.strip()}" for i in items]
+    if brief:
+        head += brief + "\n\nThe messages:\n"
+    tag = (lambda n: f"({tags[n]}) ") if len(folders) > 1 else (lambda n: "")
+    lines = [f"[{i.at}] {tag(n)}{i.author}: {i.text.strip()}" for n, i in enumerate(items)]
     return head + "\n".join(lines)
+
+
+def _short(text, limit: int) -> str:
+    text = " ".join((text or "").split())
+    return text if len(text) <= limit else text[:limit].rstrip() + "..."
+
+
+def _bank_patterns() -> list[tuple[re.Pattern, str]]:
+    names = {b.lower(): b for b in bank_info.DOMAINS}
+    names.update({a: b for a, b in nz._BANKS.items() if len(a) >= 3})
+    names.update({d.split(".")[0]: b for b, d in bank_info.DOMAINS.items() if d and len(d.split(".")[0]) >= 4})
+    # short names only as whole words; long ones also inside an email address (guggenheimsecurities.com)
+    return [(re.compile(rf"(?<![a-z]){re.escape(a)}" + (r"(?![a-z])" if len(a) < 5 else ""), re.I), b) for a, b in names.items()]
+
+
+BANK_PATTERNS = _bank_patterns()
+BRIEF_CHARS = 9_000
+
+
+def _brief(uid: int, text: str) -> str:
+    """The tracker as it stands for the banks and people `text` mentions, in the shape lookup gives (ids included), so
+    the model can update them straight away instead of spending a round trip on lookup. '' when nothing matches."""
+    low = text.lower()
+    with connect(read_only=True) as conn:
+        people = [dict(r) for r in conn.execute("SELECT id, name, title, bank, grp, email, alum, notes FROM people WHERE user_id = ?", (uid,))]
+        tracked = {r[0] for r in conn.execute("SELECT bank FROM my_banks WHERE user_id = ? UNION SELECT bank FROM people WHERE user_id = ? "
+                                              "UNION SELECT bank FROM interactions WHERE user_id = ?", (uid, uid, uid))}
+        hits: Counter = Counter()
+        for pat, bank in BANK_PATTERNS:
+            if bank in tracked:
+                hits[bank] += len(pat.findall(text))
+        met = set()
+        for p in people:
+            name, parts = (p["name"] or "").lower(), (p["name"] or "").lower().split()
+            if ((len(name) >= 5 and name in low) or (p["email"] and p["email"].lower() in low)
+                    or (len(parts) >= 2 and len(parts[-1]) >= 4 and re.search(rf"\b{re.escape(parts[0])}\b", low)
+                        and re.search(rf"\b{re.escape(parts[-1])}\b", low))):
+                met.add(p["id"])
+                hits[p["bank"]] += 3
+        banks = [b for b, n in hits.most_common() if n][:5]
+        if not banks:
+            return ""
+        out, size, left = [], 0, []
+        for b in banks:
+            app = conn.execute("SELECT applied, deadline, status, notes FROM my_banks WHERE user_id = ? AND bank = ?", (uid, b)).fetchone()
+            about = ", ".join(x for x in (app and app["applied"] and f"applied {app['applied']}", app and app["deadline"] and f"deadline {app['deadline']}",
+                                          app and app["status"] == "out" and "out of process",
+                                          app and app["notes"] and f"notes: {_short(app['notes'], 160)}") if x) if app else ""
+            lines = [f"== {b}" + (f" (application: {about})" if about else "" if app else " (not on my bank list yet)")]
+            for p in (p for p in people if p["bank"] == b):
+                bits = [p["name"], p["title"], p["grp"] and f"group {p['grp']}", p["email"], p["alum"] and f"alum: {p['alum']}",
+                        p["notes"] and f"notes: {_short(p['notes'], 140)}"]
+                lines.append(f"  person {p['id']}: " + ", ".join(x for x in bits if x))
+            for e in conn.execute(
+                    """SELECT i.id, i.kind, i.title, i.date, i.date_note, i.status, i.format, i.thank_you, i.summary,
+                              (SELECT GROUP_CONCAT(p.name, ', ') FROM interaction_people ip JOIN people p ON p.id = ip.person_id
+                               WHERE ip.interaction_id = i.id) AS people
+                       FROM interactions i WHERE i.user_id = ? AND i.bank = ? ORDER BY i.date""", (uid, b)):
+                bits = [f"{e['kind']} {e['title']!r}", e["date"] or "no date", e["date_note"], e["status"], e["format"],
+                        e["people"] and f"with {e['people']}", e["thank_you"] and f"thank-you {e['thank_you']}",
+                        e["summary"] and f"summary: {_short(e['summary'], 140)}"]
+                lines.append(f"  entry {e['id']}: " + ", ".join(x for x in bits if x))
+            facts = [f"{r['category']}: {r['fact']}" for r in conn.execute(
+                "SELECT category, fact FROM bank_facts WHERE user_id = ? AND bank = ? AND category != 'Talking points' ORDER BY category, id", (uid, b))]
+            if facts:
+                lines.append("  overview facts already saved: " + _short(" | ".join(facts), 900))
+            block = "\n".join(lines)
+            if size + len(block) > BRIEF_CHARS:
+                left.append(b)
+                continue
+            out.append(block)
+            size += len(block)
+    others = [p for p in people if p["id"] in met and p["bank"] not in banks]
+    if others:
+        out.append("== Others named\n" + "\n".join(f"  person {p['id']}: {p['name']}, {p['title'] or ''}, {p['bank']}" for p in others))
+    if left:
+        out.append(f"(Not shown, call lookup for them: {', '.join(left)}.)")
+    return ("What my tracker already has for the banks and people these messages mention. Use these ids with save_entry, "
+            "save_person and record_thank_you, and update what is here instead of adding it again; call lookup only for a "
+            "bank or person not listed. Save a fact only if the overview doesn't already say it.\n" + "\n".join(out))
 
 
 async def ingest(user: dict, chosen: Chosen, batch: Batch) -> dict:
     """File the messages in `batch` that are newer than this conversation's checkpoint."""
     ensure()
+    if batch.source == "outlook" and batch.conversation != "Calendar":
+        return (await ingest_many(user, chosen, [batch]))["results"][0]
     uid, now = user["id"], datetime.now().isoformat(timespec="seconds")
     with connect(read_only=True) as conn:
         row = conn.execute("SELECT last_at, last_keys FROM sync_state WHERE user_id = ? AND source = ? AND conversation = ?",
@@ -514,7 +632,9 @@ async def ingest(user: dict, chosen: Chosen, batch: Batch) -> dict:
             chunk.append(i)
             size += len(i.text) + 60
         if chunk:
-            out = await assistant.run(user, chosen, _message(batch, chunk, sc["short"] or "my school"), [], transcript=True)
+            brief = _brief(uid, "\n".join(i.text for i in chunk)) if batch.source == "outlook" else ""
+            out = await assistant.run(user, chosen, _message(batch, chunk, sc["short"] or "my school", brief=brief), [], transcript=True,
+                                      filing=batch.source == "outlook")
             filed += len(chunk)
             note = out["reply"][:400]
     top = max((i.at for i in fresh), default="")
@@ -530,6 +650,107 @@ async def ingest(user: dict, chosen: Chosen, batch: Batch) -> dict:
     if not batch.items:  # only moved a screened folder's checkpoint on
         return {"ok": True, "received": 0, "new": 0, "filed": 0, "note": ""}
     return _log(uid, now, batch, len(batch.items), len(fresh), filed, note or ("Nothing new." if not fresh else "Nothing relevant."))
+
+
+def _checkpoint(uid: int, now: str, batch: Batch, fresh: list[Item], last_at: str) -> None:
+    top = max((i.at for i in fresh), default="")
+    if batch.seen_until[:10] >= SEASON_START and batch.seen_until > max(top, last_at or ""):
+        top = batch.seen_until  # a screened folder: the emails passed over up to here needn't be looked at again
+    if top and (fresh or top > (last_at or "")):
+        keys = "|".join(_key(i) for i in fresh if i.at == top)
+        with connect() as conn:
+            conn.execute("""INSERT INTO sync_state (user_id, source, conversation, last_at, last_keys, updated_at) VALUES (?, ?, ?, ?, ?, ?)
+                            ON CONFLICT(user_id, source, conversation) DO UPDATE SET last_at = excluded.last_at,
+                            last_keys = excluded.last_keys, updated_at = excluded.updated_at""",
+                         (uid, batch.source, batch.conversation, top, keys, now))
+
+
+async def ingest_many(user: dict, chosen: Chosen, batches: list[Batch]) -> dict:
+    """File the new mail of several Outlook folders together (the reader sends small folders in one go). Cheaper than
+    one run per folder, without leaving anything out:
+    - emails already filed (from any folder) are left out, and quoted copies of emails still in the thread are cut
+      (mail_trim);
+    - the tracker as it stands for the banks and people they mention goes along, so the model needn't look it up;
+    - one model run per MAX_CHARS of email, across folders.
+    A folder's checkpoint only moves on once all of its email was filed: if the day's AI allowance runs out partway,
+    the rest is read again next time (and what was filed isn't sent twice)."""
+    ensure()
+    uid, now = user["id"], datetime.now().isoformat(timespec="seconds")
+    results: list[dict | None] = [None] * len(batches)
+    with connect(read_only=True) as conn:
+        filed_before = {r[0] for r in conn.execute("SELECT print FROM sync_seen WHERE user_id = ?", (uid,))}
+    work = []
+    for n, batch in enumerate(batches):
+        if batch.source != "outlook" or batch.conversation == "Calendar":
+            results[n] = await ingest(user, chosen, batch)
+            continue
+        with connect(read_only=True) as conn:
+            row = conn.execute("SELECT last_at, last_keys FROM sync_state WHERE user_id = ? AND source = ? AND conversation = ?",
+                               (uid, batch.source, batch.conversation)).fetchone()
+        last_at, last_keys = (row["last_at"], set(row["last_keys"].split("|"))) if row else (batch.baseline, set())
+        fresh = sorted((i for i in batch.items if i.at[:10] >= SEASON_START and (i.at > last_at or (i.at == last_at and _key(i) not in last_keys))),
+                       key=lambda i: i.at)
+        relevant = [i for i in fresh if RELEVANT.search(i.text) or EMAIL_WORDS.search(i.text)]
+        items, repeats = [], 0
+        for i in relevant:
+            text, prints = mail_trim.trim(i.text, filed_before)
+            if text:
+                items.append((i.model_copy(update={"text": text}), prints))
+                filed_before |= set(prints)  # the same thread from another folder in this request isn't sent twice
+            else:
+                repeats += 1
+        work.append({"n": n, "batch": batch, "last_at": last_at, "fresh": fresh, "items": items, "repeats": repeats, "filed": 0,
+                     "done": True, "note": ""})
+    runs, cur, size = [], [], 0
+    for w in work:
+        for item, prints in w["items"]:
+            if cur and size + len(item.text) > MAX_CHARS:
+                runs.append(cur)
+                cur, size = [], 0
+            cur.append((w, item, prints))
+            size += len(item.text) + 80
+    if cur:
+        runs.append(cur)
+    school = schools.for_user(uid)["short"] or "my school"
+    out_of_ai = False
+    for k, run in enumerate(runs):
+        if k and budget.used_today(uid) >= budget.allowance(uid):  # ai_for checked before the first
+            out_of_ai = True
+            for later in runs[k:]:
+                for w, _, _ in later:
+                    w["done"] = False
+            break
+        items = [item for _, item, _ in run]
+        tags = [w["batch"].conversation for w, _, _ in run]
+        brief = _brief(uid, "\n".join(i.text for i in items))
+        out = await assistant.run(user, chosen, _message(run[0][0]["batch"], items, school, tags=tags, brief=brief), [],
+                                  transcript=True, filing=True)
+        for w, _, _ in run:
+            w["filed"] += 1
+            w["note"] = out["reply"][:400]
+        if out.get("usage") is not None:  # the run finished: these emails needn't be sent again
+            with connect() as conn:
+                conn.executemany("INSERT OR IGNORE INTO sync_seen (user_id, print, at) VALUES (?, ?, ?)",
+                                 [(uid, p, now) for _, _, prints in run for p in prints])
+    if runs and accounts.in_preview_uid(uid):  # banks whose overview grew get it rewritten short
+        try:
+            await fact_tidy.tidy_some(uid, chosen)
+        except Exception:  # noqa: BLE001 - filing already happened
+            pass
+    for w in work:
+        batch, fresh = w["batch"], w["fresh"]
+        if not w["done"]:
+            results[w["n"]] = _log(uid, now, batch, len(batch.items), len(fresh), w["filed"],
+                                   "Today's AI allowance ran out partway; the rest is read again on the next refresh.")
+            continue
+        _checkpoint(uid, now, batch, fresh, w["last_at"])
+        if not batch.items:  # only moved a screened folder's checkpoint on
+            results[w["n"]] = {"ok": True, "received": 0, "new": 0, "filed": 0, "note": ""}
+            continue
+        note = w["note"] or ("Nothing new." if not fresh else "Already filed from another folder." if w["repeats"] and not w["items"]
+                             else "Nothing relevant.")
+        results[w["n"]] = _log(uid, now, batch, len(batch.items), len(fresh), w["filed"], note)
+    return {"ok": True, "results": results, "out_of_ai": out_of_ai}
 
 
 async def _club_feed(uid: int, chosen: Chosen, batch: Batch, items: list[Item]) -> tuple[int, str]:

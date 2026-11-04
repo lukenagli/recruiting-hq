@@ -298,7 +298,7 @@ chrome.runtime.onMessage.addListener((msg, sender, reply) => {
   if (sender.id !== chrome.runtime.id || msg.type !== 'outlook-read') return
   if (!outlookRun) return reply(false)
   const { more, note, filing, ...batch } = msg.batch
-  if (batch.items.length || batch.seen_until) fileSoon(outlookRun.filings, batch, outlookRun.lines)
+  if (batch.items.length || batch.seen_until) fileMail(outlookRun.filings, batch, outlookRun.lines)
   reply(true)
 })
 
@@ -331,6 +331,47 @@ function fileSoon(filings, batch, lines, then = () => undefined) {
   filings.push(file(batch, lines).then((filed) => filed && then()).catch((e) => {
     if (!/ 429 /.test(String(e.message))) lines.push(`Outlook ${batch.conversation}: ${e.message || e}`)
   }))
+}
+
+// Small folders are held and sent together, so Recruiting HQ files them in one model run instead of one each (every
+// run resends the same instructions). Recruiting HQ says when it can take them (state.combine); the calendar always
+// goes on its own. Held mail is sent once about HOLD_CHARS of it is waiting, and at the end of each round.
+const HOLD_CHARS = 60000
+let held = { on: false, batches: [], chars: 0 }
+
+function fileMail(filings, batch, lines) {
+  if (!held.on || batch.conversation === 'Calendar') return fileSoon(filings, batch, lines)
+  held.batches.push(batch)
+  held.chars += batch.items.reduce((n, i) => n + i.text.length, 0)
+  if (held.chars >= HOLD_CHARS || held.batches.length >= 15) releaseHeld(filings, lines)
+}
+
+function releaseHeld(filings, lines) {
+  const batches = held.batches
+  held = { ...held, batches: [], chars: 0 }
+  if (!batches.length) return
+  const run = filing.then(() => fileManyNow(batches, lines))
+  filing = run.catch(() => undefined)
+  filings.push(run.catch((e) => {
+    if (!/ 429 /.test(String(e.message))) lines.push(`Outlook ${batches.map((b) => b.conversation).join(', ')}: ${e.message || e}`)
+  }))
+}
+
+async function fileManyNow(batches, lines) {
+  if (outOfAI) return
+  const { baseline } = await chrome.storage.local.get('baseline')
+  try {
+    const out = await api('/api/sync/ingest-many', { batches: batches.map((b) => ({ ...b, baseline })) })
+    out.results.forEach((r, i) => {
+      const b = batches[i]
+      if (b.items.length && r) lines.push(`${b.source} · ${b.conversation}: ${r.new} new, ${r.filed} filed. ${r.note || ''}`.trim())
+    })
+    if (out.out_of_ai) outOfAI = true
+    return true
+  } catch (e) {
+    if (/ 429 /.test(String(e.message))) outOfAI = true
+    throw e
+  }
 }
 
 /** "2m 05s" */
@@ -444,6 +485,7 @@ async function goTo(tab, url) {
 async function syncOutlook(state, lines, first = true, last = true) {
   const filings = [] // filed one at a time (see file), while the tab goes on reading
   outlookRun = { claimed: new Set(), n: 1, filings, lines }
+  held = { on: !!state.combine, batches: [], chars: 0 }
   const msg = { type: 'outlook-collect', checkpoints: state.checkpoints.outlook || {}, baseline: state.baseline,
                 watch: (state.outlook || {}).watch || [], screen: (state.outlook || {}).screen || '',
                 plan: (state.outlook || {}).plan || {} }
@@ -464,7 +506,7 @@ async function syncOutlook(state, lines, first = true, last = true) {
       await goTo(tab, 'https://outlook.cloud.microsoft/mail/drafts')
       const conversation = 'Scheduled to send (Drafts)' // read from the Drafts list without opening them
       const sched = await ask(tab.id, { type: 'outlook-scheduled', since: (state.checkpoints.outlook || {})[conversation] || state.baseline })
-      if (sched.ok) fileSoon(filings, { source: 'outlook', conversation, group_chat: false, items: sched.items }, lines)
+      if (sched.ok) fileMail(filings, { source: 'outlook', conversation, group_chat: false, items: sched.items }, lines)
       else lines.push(`Outlook scheduled: ${sched.error}`)
       await goTo(tab, 'https://outlook.cloud.microsoft/mail/')
     }
@@ -507,8 +549,9 @@ async function syncOutlook(state, lines, first = true, last = true) {
   }
   // What wasn't handed over while reading (a folder on its second try, or an Outlook tab left from an older reader).
   for (const { more, note, filing, ...b } of read) {
-    if (!filing && (b.items.length || b.seen_until)) fileSoon(filings, b, lines)
+    if (!filing && (b.items.length || b.seen_until)) fileMail(filings, b, lines)
   }
+  releaseHeld(filings, lines) // the round's last held folders
   for (const b of read) {
     if (b.more && last) lines.push(`Outlook ${b.conversation}: ${b.more} more new email${b.more > 1 ? 's' : ''}, read on the next refresh.`)
   }

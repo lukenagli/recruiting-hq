@@ -1,10 +1,13 @@
 """Per-user daily token budget, so no single account (or a bug looping on one) can drain the course key."""
-from datetime import date
+import sqlite3
+from datetime import date, timedelta
 
 from fastapi import HTTPException
 
 from . import config
 from .db import connect, init_db
+
+CATCH_UP_DAYS = 2
 
 
 def used_today(user_id: int) -> int:
@@ -17,11 +20,27 @@ def used_today(user_id: int) -> int:
     return row[0]
 
 
+def allowance(user_id: int) -> int:
+    """Today's allowance: DAILY_TOKEN_BUDGET, or (preview) CATCH_UP_TOKEN_BUDGET on the first two days an account's
+    reader refreshes, when its first scan reads everything since September in one go."""
+    from . import accounts
+
+    init_db()
+    with connect(read_only=True) as conn:
+        try:
+            first = conn.execute("SELECT MIN(at) FROM sync_log WHERE user_id = ?", (user_id,)).fetchone()[0]
+        except sqlite3.OperationalError:  # no refresh has run on this site yet
+            first = None
+    if first and first[:10] >= (date.today() - timedelta(days=CATCH_UP_DAYS - 1)).isoformat() and accounts.in_preview_uid(user_id):
+        return max(config.DAILY_TOKEN_BUDGET, config.CATCH_UP_TOKEN_BUDGET)
+    return config.DAILY_TOKEN_BUDGET
+
+
 def check(user_id: int) -> None:
     """Stop before calling the model if this account has used its tokens for today."""
-    used = used_today(user_id)
-    if used >= config.DAILY_TOKEN_BUDGET:
+    used, cap = used_today(user_id), allowance(user_id)
+    if used >= cap:
         raise HTTPException(
             status_code=429,
-            detail=f"You have used today's AI allowance ({used:,} of {config.DAILY_TOKEN_BUDGET:,} tokens). It resets at midnight.",
+            detail=f"You have used today's AI allowance ({used:,} of {cap:,} tokens). It resets at midnight.",
         )

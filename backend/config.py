@@ -27,6 +27,8 @@ APP_SECRET_FILE = ROOT / "data" / ".app_secret"
 PORTKEY_API_KEY_SET = bool(os.getenv("PORTKEY_API_KEY", "").strip())
 # Most tokens (input + output) one account may use per day across all AI features.
 DAILY_TOKEN_BUDGET = int(os.getenv("DAILY_TOKEN_BUDGET", "400000"))
+# Preview: an account's first two days of refreshes, while its first scan catches up on everything since September.
+CATCH_UP_TOKEN_BUDGET = int(os.getenv("CATCH_UP_TOKEN_BUDGET", "1200000"))
 # The shared demo account for the teaching staff (backend/demo.py). It runs on the course key like the admin, under the
 # same daily budget, and is not a Yale address, so it never sees the Finance Club's own material.
 DEMO_EMAIL = "demo@recruiting-hq.demo"

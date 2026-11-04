@@ -1435,3 +1435,6 @@ main h1 { text-shadow: 0 2px 16px rgba(4, 10, 26, 0.5); }
   .update-links { flex-wrap: wrap; gap: 8px 16px; margin-left: 8px; }
   .update-links button { white-space: nowrap; }
 }
+
+/* A chat or event note keeps the paragraphs it was written in. */
+.convo > p, .panel > p { white-space: pre-line; }

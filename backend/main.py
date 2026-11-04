@@ -16,7 +16,7 @@ from starlette.background import BackgroundTask
 
 from . import banks as banks_info
 from . import tracker_edits
-from . import accounts, assistant, attachments, auth, budget, capiq, catch_up, config, cover_letters, deal_docs, deal_recs, deal_sources, deals, importer, legal, llm, market, network, onboarding, practice, profile, schools, reference, research, shared, stars, sync, templates, thank_backfill, thank_you, transfer, user_keys
+from . import accounts, assistant, attachments, auth, budget, capiq, catch_up, config, cover_letters, deal_docs, deal_recs, deal_sources, deals, importer, legal, llm, market, network, onboarding, practice, profile, schools, reference, research, shared, stars, sync, templates, test_scan, thank_backfill, thank_you, transfer, user_keys
 from .auth import admin_user, current_user
 from .db import connect, init_db
 from .llm import get_model, usage_dict
@@ -153,7 +153,7 @@ def reader_download():
 
 @app.get("/api/home")
 def home(user: dict = Depends(current_user)):
-    return {**network.home(user["id"]), "ai_used_today": budget.used_today(user["id"]), "ai_budget": config.DAILY_TOKEN_BUDGET}
+    return {**network.home(user["id"]), "ai_used_today": budget.used_today(user["id"]), "ai_budget": budget.allowance(user["id"])}
 
 
 @app.get("/api/banks")
@@ -319,6 +319,11 @@ def preview_user(user: dict = Depends(current_user)) -> dict:
     if not accounts.in_preview(user):
         raise HTTPException(status_code=404, detail="Not found")
     return user
+
+
+def reader_user(user: dict = Depends(preview_user)) -> dict:
+    """Whose tracker the reader fills: the signed-in account's, or, while its owner runs a test scan, the test tracker's."""
+    return test_scan.target(user)
 
 
 @app.get("/api/deals/recommended")
@@ -726,7 +731,7 @@ class FolderRecord(BaseModel):
 
 
 @app.post("/api/sync/folders")
-def sync_folders_record(req: FolderRecord, user: dict = Depends(preview_user)):
+def sync_folders_record(req: FolderRecord, user: dict = Depends(reader_user)):
     """From the reader after each Outlook round: which folders it saw, opened and skipped (how it learns your filing)."""
     return sync.record_folders(user["id"], req.listed, req.read, req.skipped)
 
@@ -766,12 +771,12 @@ def sync_folder_reread(req: FolderReread, user: dict = Depends(preview_user)):
 
 
 @app.get("/api/sync/state")
-def sync_state(user: dict = Depends(preview_user)):
+def sync_state(user: dict = Depends(reader_user)):
     # ai_left: the reader can't file anything once the day's AI allowance is used, so it doesn't start a run then.
     # outlook_only: every reader reads Outlook only (Slack and WhatsApp had too little news to be worth the windows).
     # start_from: an account's first sync goes back to the start of fall recruiting, not just to when it was set up.
-    return {**sync.state(user["id"]), "ai_left": max(0, config.DAILY_TOKEN_BUDGET - budget.used_today(user["id"])),
-            "outlook_only": True, "start_from": sync.first_start(user["id"])}
+    return {**sync.state(user["id"]), "ai_left": max(0, budget.allowance(user["id"]) - budget.used_today(user["id"])),
+            "outlook_only": True, "start_from": sync.first_start(user["id"]), "combine": True}
 
 
 @app.post("/api/sync/key")
@@ -804,11 +809,32 @@ def sync_thank_yous(req: ThankYouEmails, user: dict = Depends(preview_user)):
     return thank_backfill.save(user["id"], req.emails, user["name"])
 
 
+def reader_ai(user: dict) -> llm.Chosen:
+    """The model for a reader filing: the account's own, or for a test tracker its owner's (under the test tracker's own
+    daily allowance, as a new student's would be)."""
+    if user.get("test_of"):
+        budget.check(user["id"])
+        return ai_for(user["test_of"])
+    return ai_for(user)
+
+
 @app.post("/api/sync/ingest")
-async def sync_ingest(batch: sync.Batch, user: dict = Depends(preview_user)):
+async def sync_ingest(batch: sync.Batch, user: dict = Depends(reader_user)):
     if batch.source not in ("outlook", "slack", "whatsapp") or len(batch.items) > 400:
         raise HTTPException(status_code=400, detail="Unknown source or too many messages at once.")
-    return await sync.ingest(user, ai_for(user), batch)
+    return await sync.ingest(user, reader_ai(user), batch)
+
+
+class Batches(BaseModel):
+    batches: list[sync.Batch] = Field(max_length=60)
+
+
+@app.post("/api/sync/ingest-many")
+async def sync_ingest_many(req: Batches, user: dict = Depends(reader_user)):
+    """Reader 1.19: several Outlook folders' new mail at once, filed together (fewer, fuller model runs)."""
+    if any(b.source != "outlook" for b in req.batches) or sum(len(b.items) for b in req.batches) > 400:
+        raise HTTPException(status_code=400, detail="Outlook folders only, and at most 400 emails at once.")
+    return await sync.ingest_many(user, reader_ai(user), req.batches)
 
 
 @app.post("/api/assistant/undo")
@@ -1109,6 +1135,45 @@ def admin_overview(user: dict = Depends(admin_user)):
 
 class EarlyAccess(BaseModel):
     emails: list[str]
+
+
+@app.get("/api/admin/test-scan")
+def test_scan_status(user: dict = Depends(admin_user)):
+    """A test of a new student's first scan, run on your own Outlook into a test tracker."""
+    return test_scan.status(user)
+
+
+class TestScanAction(BaseModel):
+    action: str  # start | stop | delete
+
+
+@app.post("/api/admin/test-scan")
+def test_scan_action(req: TestScanAction, user: dict = Depends(admin_user)):
+    if req.action == "start":
+        return test_scan.start(user)
+    if req.action == "stop":
+        return test_scan.stop(user)
+    if req.action == "delete":
+        return test_scan.delete(user)
+    raise HTTPException(status_code=400, detail="action must be start, stop or delete")
+
+
+@app.get("/api/admin/trim-check")
+def trim_check(user: dict = Depends(admin_user)):
+    """How much of your past filing runs' email the new trimming would have cut (counts only, nothing changed)."""
+    from . import mail_trim
+
+    with connect(read_only=True) as conn:
+        rows = [r[0] for r in conn.execute("SELECT user_message FROM agent_runs WHERE user_id = ? AND user_message LIKE "
+                                           "'New messages from my Outlook email, %' AND user_message NOT LIKE '%''Calendar''%' ORDER BY id",
+                                           (user["id"],))]
+    return mail_trim.check(rows)
+
+
+@app.get("/api/admin/test-scan/compare")
+def test_scan_compare(user: dict = Depends(admin_user)):
+    """What the test scan found against your own tracker: who and what it missed, and what it added."""
+    return test_scan.compare(user)
 
 
 @app.post("/api/admin/early-access")

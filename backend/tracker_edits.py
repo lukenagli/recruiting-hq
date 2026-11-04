@@ -100,6 +100,27 @@ def _op(conn, uid: int, op: dict) -> str:
         return f"Updated the {bank} application: {', '.join(changes)}"
     if kind == "add_chat":
         return add_chat(conn, uid, op)
+    if kind == "add_questions":  # what was asked in a chat: {entry_id, asked_me: [...], i_asked: [...]}
+        entry = _entry(conn, uid, int(op["entry_id"]))
+        n = 0
+        for direction in ("asked_me", "i_asked"):
+            for q in op.get(direction, []):
+                q = nz.clean(q)
+                if q and not conn.execute("SELECT 1 FROM interaction_questions WHERE interaction_id = ? AND direction = ? AND question = ?",
+                                          (entry["id"], direction, q)).fetchone():
+                    conn.execute("INSERT INTO interaction_questions (interaction_id, direction, question) VALUES (?, ?, ?)",
+                                 (entry["id"], direction, q))
+                    n += 1
+        return f"Added {n} question{'s' if n != 1 else ''} to {entry['title']}"
+    if kind == "set_facts":  # one topic of a bank's overview, rewritten: {bank, category, lines: [...]}
+        from . import fact_tidy
+        from .assistant import FACT_CATEGORIES
+
+        bank, category = nz.bank(op["bank"]), op.get("category", "")
+        if category not in FACT_CATEGORIES:
+            raise EditError(f"category must be one of {FACT_CATEGORIES}.")
+        n = fact_tidy.replace(conn, uid, bank, category, op.get("lines", []), nz.clean(op.get("source", "")))
+        return f"Set the {bank} {category} to {n} line{'s' if n != 1 else ''}"
     raise EditError(f"Unknown edit {kind!r}.")
 
 
