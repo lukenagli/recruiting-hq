@@ -1066,6 +1066,19 @@ def set_early_access(req: EarlyAccess, user: dict = Depends(admin_user)):
     return accounts.set_early_access(req.emails)
 
 
+class AdminRights(BaseModel):
+    admin: bool
+
+
+@app.post("/api/admin/users/{uid}/admin")
+def set_admin(uid: int, req: AdminRights, user: dict = Depends(admin_user)):
+    """Give another account admin rights, or take them back."""
+    try:
+        return accounts.set_admin(user["id"], uid, req.admin)
+    except accounts.AccountError as err:
+        raise HTTPException(status_code=400, detail=str(err)) from None
+
+
 class BankDefaults(BaseModel):
     banks: dict[str, dict]
 

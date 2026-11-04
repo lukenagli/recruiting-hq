@@ -86,6 +86,25 @@ def set_early_access(emails: list[str]) -> list[str]:
     return clean
 
 
+def set_admin(by_uid: int, uid: int, admin: bool) -> dict:
+    """The admin gives another account admin rights, or takes them back. An admin is in the preview, sees this panel
+    and runs on the course's AI key. Nobody changes their own rights (no locking yourself out), the demo account
+    never becomes an admin, and the site always keeps at least one admin."""
+    from .config import DEMO_EMAIL
+    if uid == by_uid:
+        raise AccountError("You can't change your own admin rights.")
+    with connect() as conn:
+        user = conn.execute("SELECT id, email, name, is_admin FROM users WHERE id = ? AND password_hash != ''", (uid,)).fetchone()
+        if user is None:
+            raise AccountError("No such account.")
+        if admin and user["email"].lower() == DEMO_EMAIL:
+            raise AccountError("The demo account can't be an admin.")
+        if not admin and user["is_admin"] and conn.execute("SELECT COUNT(*) FROM users WHERE is_admin = 1 AND password_hash != ''").fetchone()[0] <= 1:
+            raise AccountError("The site needs at least one admin.")
+        conn.execute("UPDATE users SET is_admin = ? WHERE id = ?", (1 if admin else 0, uid))
+    return {"ok": True, "id": uid, "is_admin": admin}
+
+
 def in_preview_uid(uid: int) -> bool:
     with connect(read_only=True) as conn:
         user = conn.execute("SELECT is_admin, email FROM users WHERE id = ?", (uid,)).fetchone()

@@ -11,7 +11,7 @@ type DirectoryChat = { name: string; app: 'slack' | 'whatsapp'; groups: string[]
 type FeedItem = { id: number; source: string; posted_at: string; kind: string; bank: string; happens_on: string; title: string; detail: string }
 type Overview = {
   users: { id: number; name: string; email: string; is_admin: number; created_at: string; own_key: number; banks: number; people: number
-    interactions: number; last_active: string; last_sync?: string }[]
+    interactions: number; last_active: string; last_sync?: string; is_demo?: boolean }[]
   bank_defaults: Record<string, BankFields>
   club_chats: string[]
   chat_directory: DirectoryChat[]
@@ -24,14 +24,47 @@ type Overview = {
 
 const when = (iso: string) => (iso ? `${fmtDate(iso.slice(0, 10))}${iso.length > 10 ? ` ${iso.slice(11, 16)}` : ''}` : '–')
 
-function Users({ users }: { users: Overview['users'] }) {
+/** Make an account an admin, or take it back: one click to ask, a second to confirm. */
+function AdminToggle({ u, me, onChanged }: { u: Overview['users'][number]; me: number; onChanged: () => void }) {
+  const [asking, setAsking] = useState(false)
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('')
+  if (u.id === me) return <small className="muted">You</small>
+  if (u.is_demo) return <small className="muted">Demo</small>
+  const make = !u.is_admin
+  async function go() {
+    if (!asking) return setAsking(true)
+    setBusy(true)
+    setError('')
+    try {
+      await post(`/api/admin/users/${u.id}/admin`, { admin: make })
+      onChanged()
+    } catch (e) {
+      setError(String((e as Error).message || e))
+    } finally {
+      setBusy(false)
+      setAsking(false)
+    }
+  }
+  return (
+    <span className="admin-toggle">
+      <button className={`link ${make ? '' : 'danger-link'}`} disabled={busy} onClick={go} onBlur={() => setAsking(false)}
+        title={make ? 'Admins see this panel and the preview, and use the course AI key' : ''}>
+        {asking ? (make ? `Confirm: make ${u.name.split(' ')[0]} an admin` : 'Confirm: remove admin') : make ? 'Make admin' : 'Remove admin'}
+      </button>
+      {error && <small className="danger-link"> {error}</small>}
+    </span>
+  )
+}
+
+function Users({ users, me, onChanged }: { users: Overview['users']; me: number; onChanged: () => void }) {
   return (
     <section className="card admin-card">
       <h2>People using the site <small>{users.length} signed up</small></h2>
       <div className="table-wrap">
         <table className="progress">
           <thead>
-            <tr><th>Name</th><th>Email</th><th>Joined</th><th>Last active</th><th>Banks</th><th>Contacts</th><th>Chats logged</th><th>AI key</th><th>Reader</th></tr>
+            <tr><th>Name</th><th>Email</th><th>Joined</th><th>Last active</th><th>Banks</th><th>Contacts</th><th>Chats logged</th><th>AI key</th><th>Reader</th><th>Admin</th></tr>
           </thead>
           <tbody>
             {users.map((u) => (
@@ -45,6 +78,7 @@ function Users({ users }: { users: Overview['users'] }) {
                 <td>{u.interactions}</td>
                 <td>{u.own_key ? 'Yes' : 'No'}</td>
                 <td>{u.last_sync ? `Last ${when(u.last_sync)}` : 'Not set up'}</td>
+                <td><AdminToggle u={u} me={me} onChanged={onChanged} /></td>
               </tr>
             ))}
           </tbody>
@@ -223,7 +257,7 @@ function Feed({ items, onChanged }: { items: FeedItem[]; onChanged: () => void }
   )
 }
 
-export default function Admin() {
+export default function Admin({ me }: { me: number }) {
   const { data, error, reload } = useApi<Overview>('/api/admin/overview')
   const setup = useApi<SetupState>('/api/setup')
   if (!data || !setup.data) return <Loading error={error || setup.error} />
@@ -231,7 +265,7 @@ export default function Admin() {
     <div className="admin">
       <h1>Admin</h1>
       <p className="lede">Everything here goes to every account. Students' own edits always win over what you push.</p>
-      <Users users={data.users} />
+      <Users users={data.users} me={me} onChanged={reload} />
       <EarlyAccess initial={data.early_access} />
       <section className="card setup-card admin-card">
         <p className="fine">Email templates: edit and save them here, then click "Make these the standard for every account". Students who never changed a template get yours.</p>

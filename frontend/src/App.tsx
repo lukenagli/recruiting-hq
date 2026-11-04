@@ -131,7 +131,7 @@ export default function App() {
   if (preview && section === 'catch-up') page = <CatchUp />
   if (section === 'letters') page = <Letters bank={arg ?? ''} />
   if (section === 'bank' && arg) page = <BankView bank={arg} initial={query.get('sel') ?? ''} />
-  if (section === 'admin' && user.is_admin) page = <Admin />
+  if (section === 'admin' && user.is_admin) page = <Admin me={user.id} />
 
   return (
     <PreviewContext.Provider value={!!user.preview}>
