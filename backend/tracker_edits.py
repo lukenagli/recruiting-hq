@@ -5,6 +5,7 @@ listed on an event they only organised).
 Each call snapshots the tracker first and is recorded like an assistant run, so the assistant's Undo puts it back.
 """
 import json
+import re
 from datetime import datetime
 
 from . import normalize as nz
@@ -97,7 +98,49 @@ def _op(conn, uid: int, op: dict) -> str:
         for col, val in changes.items():
             conn.execute(f"UPDATE my_banks SET {col} = ? WHERE user_id = ? AND bank = ?", (val, uid, bank))
         return f"Updated the {bank} application: {', '.join(changes)}"
+    if kind == "add_chat":
+        return add_chat(conn, uid, op)
     raise EditError(f"Unknown edit {kind!r}.")
+
+
+def add_chat(conn, uid: int, op: dict) -> str:
+    """A coffee chat the student enters by hand: the date they spoke, who (name, bank, group, alum or not) and their notes.
+    The person is found or added at that bank, and the bank joins their list if it isn't on it. A chat with that person
+    still waiting as a request or upcoming becomes this chat rather than a second one."""
+    name, bank, day = nz.clean(op.get("name")), nz.bank(op.get("bank")), nz.clean(op.get("date"))
+    if not name or not bank:
+        raise EditError("A coffee chat needs the person's name and bank.")
+    try:
+        datetime.strptime(day, "%Y-%m-%d")
+    except ValueError:
+        raise EditError("A coffee chat needs the date you spoke (YYYY-MM-DD).") from None
+    alum = {"yes": "yes", "no": "no"}.get(nz.clean(op.get("alum")).lower(), "")
+    group, notes = nz.clean(op.get("group")), nz.clean(op.get("notes"))
+    conn.execute("INSERT OR IGNORE INTO my_banks (user_id, bank, applied, deadline, link, prefs, notes) VALUES (?, ?, '', '', '', '', '')", (uid, bank))
+    found = conn.execute("SELECT id, name FROM people WHERE user_id = ? AND bank = ? AND LOWER(name) = LOWER(?)", (uid, bank, name)).fetchone()
+    if found:
+        pid, name = found["id"], found["name"]  # as the tracker already spells it
+        for col, val in (("grp", group), ("alum", alum)):
+            if val:
+                conn.execute(f"UPDATE people SET {col} = ? WHERE id = ?", (val, pid))
+    else:
+        pid = conn.execute(
+            "INSERT INTO people (user_id, name, title, bank, grp, subgroup, email, outreach, origin, notes, alum) VALUES (?, ?, '', ?, ?, '', '', '', 'outreach', '', ?)",
+            (uid, name, bank, group, alum)).lastrowid
+    status = "done" if day <= datetime.now().strftime("%Y-%m-%d") else "upcoming"
+    waiting = next((r for r in conn.execute(
+        """SELECT i.id, i.kind, i.title FROM interactions i JOIN interaction_people ip ON ip.interaction_id = i.id
+           WHERE i.user_id = ? AND ip.person_id = ? AND i.kind IN ('coffee_chat', 'step') AND i.status IN ('todo', 'upcoming')
+           ORDER BY i.date""", (uid, pid)) if r["kind"] == "coffee_chat" or re.search(r"coffee|chat", r["title"] or "", re.I)), None)
+    if waiting:
+        conn.execute("UPDATE interactions SET kind = 'coffee_chat', title = ?, date = ?, status = ?, summary = ? WHERE id = ?",
+                     (f"Coffee chat with {name}", day, status, notes, waiting["id"]))
+    else:
+        eid = conn.execute(
+            """INSERT INTO interactions (user_id, bank, kind, title, date, date_note, format, status, summary, thank_you)
+               VALUES (?, ?, 'coffee_chat', ?, ?, '', '', ?, ?, '')""", (uid, bank, f"Coffee chat with {name}", day, status, notes)).lastrowid
+        conn.execute("INSERT OR IGNORE INTO interaction_people VALUES (?, ?, '')", (eid, pid))
+    return f"Added a coffee chat with {name} ({bank}) on {day}"
 
 
 def apply(uid: int, ops: list[dict], note: str = "") -> dict:

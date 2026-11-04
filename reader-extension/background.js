@@ -225,16 +225,25 @@ async function ask(tabId, msg) {
 
 // Long jobs (reading all of Outlook) answer at once and send their result later in an 'rhq-result' message: Chrome
 // stops this background when one request waits more than five minutes, which closed nothing and lost the run.
-const waiting = new Map()
+const waiting = new Map() // id -> { resolve, tabId }
 chrome.runtime.onMessage.addListener((msg, sender) => {
   if (sender.id !== chrome.runtime.id || msg.type !== 'rhq-result' || !waiting.has(msg.id)) return
-  waiting.get(msg.id)(msg.out)
+  waiting.get(msg.id).resolve(msg.out)
   waiting.delete(msg.id)
+})
+// The reader's tab closed (the student closed the window, or Chrome did): stop waiting for it. What it read so far
+// was handed over folder by folder and is filed as usual.
+chrome.tabs.onRemoved.addListener((tabId) => {
+  for (const [id, w] of waiting) {
+    if (w.tabId !== tabId) continue
+    w.resolve({ ok: false, error: 'the reader window was closed before it finished; what it had read is filed.' })
+    waiting.delete(id)
+  }
 })
 
 async function askLong(tabId, msg) {
   const id = crypto.randomUUID()
-  const result = new Promise((resolve) => waiting.set(id, resolve))
+  const result = new Promise((resolve) => waiting.set(id, { resolve, tabId }))
   const started = await ask(tabId, { ...msg, id })
   if (!started.started) {
     waiting.delete(id)
@@ -476,6 +485,7 @@ async function syncOutlook(state, lines, first = true, last = true) {
       await chrome.tabs.remove(tab.id).catch(() => undefined)
       await unlockTab(tab.id, OUTLOOK_LOCK)
     }
+    await closeReader() // reading is over: the window goes now, and filing carries on without it (a next round opens a new one)
   }
   const readIn = Date.now() - started
   const read = result && result.ok ? result.batches : []
@@ -512,7 +522,7 @@ async function syncOutlookFully(state, lines) {
       current = { ...(await api('/api/sync/state')), baseline: state.baseline }
     }
   } finally {
-    await closeReader() // reading is over (filing goes on without the window)
+    await closeReader() // in case a round stopped before its own close
   }
 }
 

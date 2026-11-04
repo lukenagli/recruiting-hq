@@ -130,8 +130,14 @@ async function readFolder(name, since, patience = 10000, screen = null) {
 /** Emails scheduled to send, read from the Drafts list WITHOUT opening them (Outlook opens a draft for editing).
  *  Only rows Outlook marks [Scheduled]; unfinished drafts are left alone. The background opens Drafts by address. */
 async function scheduled(since) {
-  await rhqWaitFor(() => document.querySelector('[role="listbox"]'), 30000)
-  await rhqSleep(2000)
+  // An empty Drafts folder shows no list at all, so waiting for one only stalled the refresh: the folder list says how
+  // many drafts there are, and with none there is nothing to read.
+  const node = await rhqWaitFor(() => [...document.querySelectorAll('[role="tree"] [role="treeitem"]')]
+    .find((t) => /^Drafts( - |$)/.test(t.getAttribute('title') || '')), 20000)
+  const count = Number(((/ - ([\d,]+) items?/.exec((node && node.getAttribute('title')) || '') || [])[1] || '0').replace(/,/g, ''))
+  if (node && !count) return []
+  if (!(await rhqWaitFor(() => document.querySelector('[role="listbox"] [role="option"]'), 10000))) return []
+  await rhqSleep(1500)
   const out = []
   for (const row of document.querySelectorAll('[role="listbox"] [role="option"]')) {
     if (!/\[Scheduled\]/i.test(row.textContent)) continue // the marker is in the text, though not in the visible-text copy
@@ -371,7 +377,7 @@ chrome.runtime.onMessage.addListener((msg, _sender, reply) => {
         await rhqWaitFor(() => document.querySelector('[role="listbox"] [role="option"]'), 20000)
         await rhqSleep(1000)
       }
-      const again = await readFolder(b.conversation, msg.checkpoints[b.conversation] || msg.baseline, 45000, screenFor(b.conversation))
+      const again = await readFolder(b.conversation, msg.checkpoints[b.conversation] || msg.baseline, 20000, screenFor(b.conversation))
       b.items = again.items
       b.more = again.more
       b.seen_until = again.seen_until

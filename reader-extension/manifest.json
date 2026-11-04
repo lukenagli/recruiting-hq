@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Recruiting HQ Reader",
-  "version": "1.16.0",
+  "version": "1.17.0",
   "description": "Reads (never sends, replies or reacts) what's new in your Outlook email and calendar and files it in Recruiting HQ.",
   "permissions": ["storage", "declarativeNetRequest", "declarativeNetRequestFeedback"],
   "host_permissions": [

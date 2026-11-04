@@ -455,9 +455,9 @@ export default function Deals() {
               ))}
             </ul>
           </section>
-          <p className="muted">
+          {!preview && <p className="muted">
             You can also fill in a point by telling the assistant, for example: "For the {deal.title} deal, the termination fee is …"
-          </p>
+          </p>}
         </>
       )}
     </div>

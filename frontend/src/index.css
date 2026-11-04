@@ -1373,3 +1373,18 @@ main h1 { text-shadow: 0 2px 16px rgba(4, 10, 26, 0.5); }
 .share-prices .notice { width: 100%; margin: 0; }
 .thanks-catch-up { margin-top: 18px; display: flex; flex-direction: column; gap: 8px; align-items: flex-start; }
 .thanks-catch-up h2 { margin: 0; }
+
+/* Preview: add a coffee chat by hand, in the home header */
+.add-chat { display: grid; gap: 10px; margin-bottom: 18px; }
+.add-chat h2 { margin: 0; }
+.add-chat label { display: grid; gap: 4px; font-size: 12.5px; font-weight: 600; color: #3a4560; flex: 1; min-width: 140px; }
+.add-chat input, .add-chat select, .add-chat textarea { font: inherit; font-size: 15px; font-weight: 400; color: #101a2e; background: #fff;
+  border: 1px solid #c9d0de; border-radius: 8px; padding: 7px 9px; }
+.add-chat textarea { resize: vertical; }
+.add-chat-row { display: flex; gap: 10px; flex-wrap: wrap; }
+.add-chat-actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.add-chat-actions .spacer { flex: 1; }
+.add-chat-error { margin: 0; color: #b42318; font-size: 13.5px; }
+.add-chat-msg { color: #fff; font-size: 13.5px; background: rgba(10, 20, 50, 0.7); padding: 3px 10px; border-radius: 999px; }
+.update-links .add-chat-open { font-size: 15px; font-weight: 600; }
+.update-links .add-chat-open span { color: #9cc2ff; font-size: 16px; }
