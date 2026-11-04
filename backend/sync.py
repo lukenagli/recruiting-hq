@@ -208,6 +208,16 @@ def state(uid: int) -> dict:
 FIRST_SYNC_FROM = "2026-09-01T00:00:00"  # a new reader catches up on everything since fall recruiting began
 
 
+def calendar_from(uid: int) -> str:
+    """Where the reader starts on the calendar: FIRST_SYNC_FROM until the calendar has been filed once (a first scan
+    files it last, so one cut short by the day's allowance reads it in full again next time), then ''."""
+    ensure()
+    with connect(read_only=True) as conn:
+        done = conn.execute("SELECT 1 FROM sync_state WHERE user_id = ? AND source = 'outlook' AND conversation = 'Calendar'",
+                            (uid,)).fetchone()
+    return "" if done else FIRST_SYNC_FROM
+
+
 def first_start(uid: int) -> str:
     """Where an account's reader starts the first time: FIRST_SYNC_FROM until anything has been read, then ''
     (from then on, each folder carries on from its own checkpoint)."""
@@ -505,6 +515,10 @@ def _message(batch: Batch, items: list[Item], school: str, tags: list[str] | Non
     if len(folders) > 1:
         head += ("Each email is marked with the folder it was read from. End your reply with one line \"Folders used: \" and "
                  "the folders of the emails you saved something from, or \"none\". ")
+    if batch.source == "outlook":
+        head += ("Work in as few steps as you can: each step resends everything. What lookup would show for the banks and people "
+                 "named is below, so make all your saves together, as several tool calls in one response, and call lookup "
+                 "only for someone or something that isn't there. ")
     head += "Do not draft emails. If nothing is worth saving, save nothing and say so.\n\n"
     if brief:
         head += brief + "\n\nThe messages:\n"

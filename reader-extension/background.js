@@ -467,16 +467,27 @@ async function readCalendar(tab, screenSource, lines, baseline, filings, firstSc
   lines.push(`Outlook calendar: ${out.events.length} events from ${from.slice(5)} to ${until.slice(5)}, ${recruiting.length} about recruiting` +
              (holds.length ? ` (and ${holds.length} time block${holds.length > 1 ? 's' : ''} held for offered times, left out)` : '') +
              `, ${fresh.length} new or changed.`)
-  if (!fresh.length) return chrome.storage.local.set({ calendarReadOn: today })
   const at = localNow()
-  fileSoon(filings, { source: 'outlook', conversation: 'Calendar', group_chat: false,
+  if (!fresh.length) {
+    // nothing to file: the calendar still counts as read (so it isn't read back to September again)
+    if (firstScan) fileSoon(filings, { source: 'outlook', conversation: 'Calendar', group_chat: false, items: [], seen_until: at }, lines)
+    return chrome.storage.local.set({ calendarReadOn: today })
+  }
+  const batch = { source: 'outlook', conversation: 'Calendar', group_chat: false,
                       items: fresh.map((e) => {
                         const { minutes } = eventShape(e)
                         const length = minutes >= 1440 ? 'all day' : minutes ? `${minutes} minutes` : 'length not shown'
                         return { key: `calendar|${e}`, at, author: '', text: `CALENDAR EVENT on my Outlook calendar (${length}): ${e}` }
-                      }) }, lines,
-           () => chrome.storage.local.set({ calendarSeen: [...calendarSeen, ...fresh].slice(-1500), calendarReadOn: today })) // only once filed
+                      }) }
+  const done = () => chrome.storage.local.set({ calendarSeen: [...calendarSeen, ...fresh].slice(-1500), calendarReadOn: today }) // only once filed
+  if (firstScan) {
+    laterCalendar = { batch, done } // filed after all the email (syncOutlookFully)
+    return lines.push('Outlook calendar: filed after the email, so each chat finds its person and bank.')
+  }
+  fileSoon(filings, batch, lines, done)
 }
+
+let laterCalendar = null
 
 /** Move the reader's tab to another Outlook page, by address. */
 async function goTo(tab, url) {
@@ -507,7 +518,7 @@ async function syncOutlook(state, lines, first = true, last = true) {
     await fitPage(tab.id)
     if (first) {
       try {
-        await readCalendar(tab, (state.outlook || {}).screen || '', lines, state.baseline, filings, state.start_from || '')
+        await readCalendar(tab, (state.outlook || {}).screen || '', lines, state.baseline, filings, state.calendar_from || state.start_from || '')
       } catch (e) {
         lines.push(`Outlook calendar: ${e.message || e}`)
       }
@@ -577,12 +588,19 @@ async function syncOutlook(state, lines, first = true, last = true) {
 const OUTLOOK_ROUNDS = 10
 async function syncOutlookFully(state, lines) {
   let current = state
+  laterCalendar = null
   try {
     for (let round = 0; round < OUTLOOK_ROUNDS; round++) {
       const waiting = await syncOutlook(current, lines, round === 0, round === OUTLOOK_ROUNDS - 1)
       if (!waiting || outOfAI) break
       await report('outlook', 0.5, `Catching up on older email: ${waiting} more conversations (round ${round + 2})`)
       current = { ...(await api('/api/sync/state')), baseline: state.baseline }
+    }
+    if (laterCalendar && !outOfAI) {
+      await report('outlook', 0.95, 'Filing your calendar')
+      const filings = []
+      fileSoon(filings, laterCalendar.batch, lines, laterCalendar.done)
+      await Promise.allSettled(filings)
     }
   } finally {
     await closeReader() // in case a round stopped before its own close
