@@ -18,7 +18,7 @@ from datetime import date, datetime
 from pydantic import BaseModel, Field
 from pydantic_ai import Agent, BinaryContent, RunContext
 from pydantic_ai.exceptions import UsageLimitExceeded
-from pydantic_ai.usage import UsageLimits
+from pydantic_ai.usage import RunUsage, UsageLimits
 
 from . import normalize as nz
 from . import schools, templates
@@ -37,6 +37,9 @@ LIMITS = UsageLimits(request_limit=10, tool_calls_limit=25, total_tokens_limit=8
 MAX_MESSAGE_CHARS = 12_000
 MAX_TRANSCRIPT_CHARS = 60_000
 TRANSCRIPT_LIMITS = UsageLimits(request_limit=14, tool_calls_limit=40, total_tokens_limit=250_000)
+# The reader filing a batch of email or calendar events (at most sync.MAX_ITEMS of them): a new student's first scan
+# saves a person and a chat for nearly every one.
+FILING_LIMITS = UsageLimits(request_limit=16, tool_calls_limit=70, total_tokens_limit=250_000)
 ISO = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 
 # What "this user's tracker" means for undo: each table and how to select only that user's rows.
@@ -1024,9 +1027,11 @@ async def run(user: dict, chosen: Chosen, message: str, history: list[dict], tra
                   f"already been through recruiting is a '{sc['peer']}'; yale='yes' in save_person means an alum of their school.\n\n{prompt}")
     deps, started = Deps(user_id=user["id"], user_name=user["name"], filing=filing), datetime.now().isoformat(timespec="seconds")
     usage, outcome = None, "ok"
+    spent = RunUsage() if filing else None  # filing: what a run that stops partway used still counts toward the day
+    limits = FILING_LIMITS if filing else TRANSCRIPT_LIMITS if transcript else LIMITS
     try:
         result = await agent.run([prompt, attachment] if attachment else prompt, model=chosen.model, model_settings=chosen.settings, deps=deps,
-                                 usage_limits=TRANSCRIPT_LIMITS if transcript else LIMITS)
+                                 usage_limits=limits, usage=spent)
         reply, usage = result.output, usage_dict(result.usage)
     except UsageLimitExceeded as exc:
         outcome = "limit"
@@ -1034,6 +1039,8 @@ async def run(user: dict, chosen: Chosen, message: str, history: list[dict], tra
     except Exception as exc:
         outcome = "error"
         reply = f"Something went wrong talking to the model ({type(exc).__name__}). Anything listed below was saved."
+    if usage is None and spent is not None:
+        usage = usage_dict(spent)
 
     changed = any(s["result"].get("ok") for s in deps.steps if s["tool"] != "lookup")
     u = usage or {}
@@ -1045,7 +1052,7 @@ async def run(user: dict, chosen: Chosen, message: str, history: list[dict], tra
             (user["id"], started, message, reply, json.dumps(deps.steps), outcome, u.get("requests", 0), u.get("input_tokens", 0),
              u.get("cached_input_tokens", 0), u.get("output_tokens", 0), deps.snapshot if changed else None),
         ).lastrowid
-    return {"reply": reply, "steps": deps.steps, "usage": usage, "run_id": run_id, "changed": changed}
+    return {"reply": reply, "steps": deps.steps, "usage": usage, "run_id": run_id, "changed": changed, "outcome": outcome}
 
 
 def undo(uid: int, run_id: int) -> dict:

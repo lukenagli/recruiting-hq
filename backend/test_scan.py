@@ -140,7 +140,11 @@ def status(owner: dict) -> dict:
                "refreshes": len({entry["at"][:16] for entry in log}),
                "folders": len({entry["conversation"] for entry in log}),
                "emails_new": sum(entry["new"] for entry in log), "emails_filed": sum(entry["filed"] for entry in log),
-               "allowance_stops": sum(1 for entry in log if "allowance" in (entry["note"] or ""))}
+               "allowance_stops": sum(1 for entry in log if "allowance" in (entry["note"] or "")),
+               "recent_runs": [dict(r) for r in conn.execute(
+                   """SELECT started_at, agent, outcome, requests, input_tokens + output_tokens AS tokens, SUBSTR(reply, 1, 200) AS reply
+                      FROM agent_runs WHERE user_id = ? ORDER BY id DESC LIMIT 12""", (sid,))],
+               "recent_log": [{**e, "note": (e["note"] or "")[:200]} for e in log[-20:]]}
     return out
 
 

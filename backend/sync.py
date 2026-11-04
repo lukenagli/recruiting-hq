@@ -30,6 +30,7 @@ from .llm import Chosen, usage_dict
 SEASON_START = "2026-08-01"  # this recruiting season; anything older belongs to an earlier class
 SYNC_BUDGET = 200_000         # tokens a day for syncing, about half the daily allowance
 MAX_CHARS = 40_000            # per filing run
+MAX_ITEMS = 12                # emails or calendar events per filing run (each can mean a person and a chat to save)
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS sync_state (
@@ -628,9 +629,11 @@ async def ingest(user: dict, chosen: Chosen, batch: Batch) -> dict:
             return _log(uid, now, batch, len(batch.items), len(fresh), 0, "Daily sync allowance used; will continue tomorrow.")
         sc = schools.for_user(uid)
         chunk, size = [], 0
-        for i in relevant:  # one model run per ~40k characters
-            if size + len(i.text) > MAX_CHARS and chunk:
-                await assistant.run(user, chosen, _message(batch, chunk, sc["short"] or "my school"), [], transcript=True)
+        for i in relevant:  # one model run per ~40k characters or MAX_ITEMS messages
+            if chunk and (size + len(i.text) > MAX_CHARS or len(chunk) >= MAX_ITEMS):
+                brief = _brief(uid, "\n".join(i.text for i in chunk)) if batch.source == "outlook" else ""
+                await assistant.run(user, chosen, _message(batch, chunk, sc["short"] or "my school", brief=brief), [], transcript=True,
+                                    filing=batch.source == "outlook")
                 filed += len(chunk)
                 chunk, size = [], 0
             chunk.append(i)
@@ -708,7 +711,7 @@ async def ingest_many(user: dict, chosen: Chosen, batches: list[Batch]) -> dict:
     runs, cur, size = [], [], 0
     for w in work:
         for item, prints in w["items"]:
-            if cur and size + len(item.text) > MAX_CHARS:
+            if cur and (size + len(item.text) > MAX_CHARS or len(cur) >= MAX_ITEMS):
                 runs.append(cur)
                 cur, size = [], 0
             cur.append((w, item, prints))
@@ -732,7 +735,9 @@ async def ingest_many(user: dict, chosen: Chosen, batches: list[Batch]) -> dict:
         for w, _, _ in run:
             w["filed"] += 1
             w["note"] = out["reply"][:400]
-        if out.get("usage") is not None:  # the run finished: these emails needn't be sent again
+            if out.get("outcome", "ok") != "ok":
+                w["done"], w["failed"] = False, out["reply"][:160]
+        if out.get("outcome", "ok") == "ok":  # the run finished: these emails needn't be sent again
             with connect() as conn:
                 conn.executemany("INSERT OR IGNORE INTO sync_seen (user_id, print, at) VALUES (?, ?, ?)",
                                  [(uid, p, now) for _, _, prints in run for p in prints])
@@ -744,8 +749,8 @@ async def ingest_many(user: dict, chosen: Chosen, batches: list[Batch]) -> dict:
     for w in work:
         batch, fresh = w["batch"], w["fresh"]
         if not w["done"]:
-            results[w["n"]] = _log(uid, now, batch, len(batch.items), len(fresh), w["filed"],
-                                   "Today's AI allowance ran out partway; the rest is read again on the next refresh.")
+            why = ("Today's AI allowance ran out partway" if out_of_ai else f"Filing stopped partway ({w.get('failed', '')})")
+            results[w["n"]] = _log(uid, now, batch, len(batch.items), len(fresh), w["filed"], f"{why}; the rest is read again on the next refresh.")
             continue
         _checkpoint(uid, now, batch, fresh, w["last_at"])
         if not batch.items:  # only moved a screened folder's checkpoint on
