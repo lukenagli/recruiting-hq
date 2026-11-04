@@ -327,8 +327,12 @@ async function fileNow(batch, lines) {
 
 /** File a batch without waiting for it (it's added to `filings`, to wait for later); a failure is a line in the report.
  *  `then` runs only if it was filed (not when the AI allowance had already run out). */
+// Folders whose filing failed this round (Recruiting HQ was restarting, say): not reported as looked through.
+let unfiled = new Set()
+
 function fileSoon(filings, batch, lines, then = () => undefined) {
   filings.push(file(batch, lines).then((filed) => filed && then()).catch((e) => {
+    unfiled.add(batch.conversation)
     if (!/ 429 /.test(String(e.message))) lines.push(`Outlook ${batch.conversation}: ${e.message || e}`)
   }))
 }
@@ -353,6 +357,7 @@ function releaseHeld(filings, lines) {
   const run = filing.then(() => fileManyNow(batches, lines))
   filing = run.catch(() => undefined)
   filings.push(run.catch((e) => {
+    for (const b of batches) unfiled.add(b.conversation)
     if (!/ 429 /.test(String(e.message))) lines.push(`Outlook ${batches.map((b) => b.conversation).join(', ')}: ${e.message || e}`)
   }))
 }
@@ -488,6 +493,7 @@ async function syncOutlook(state, lines, first = true, last = true) {
   const filings = [] // filed one at a time (see file), while the tab goes on reading
   outlookRun = { claimed: new Set(), n: 1, filings, lines }
   held = { on: !!state.combine, batches: [], chars: 0 }
+  unfiled = new Set()
   const msg = { type: 'outlook-collect', checkpoints: state.checkpoints.outlook || {}, baseline: state.baseline,
                 watch: (state.outlook || {}).watch || [], screen: (state.outlook || {}).screen || '',
                 plan: (state.outlook || {}).plan || {} }
@@ -557,7 +563,8 @@ async function syncOutlook(state, lines, first = true, last = true) {
   if (result && result.ok && result.listed) {
     // Recruiting HQ keeps track of which folders hold recruiting mail, to skip the ones that never do. A folder only
     // counts as looked through once what was read there is filed (not when the day's AI allowance ran out).
-    await api('/api/sync/folders', { listed: result.listed, read: outOfAI ? [] : result.read || [], skipped })
+    const looked = outOfAI ? [] : (result.read || []).filter((r) => !unfiled.has(r.name))
+    await api('/api/sync/folders', { listed: result.listed, read: looked, skipped })
       .catch((e) => lines.push(`Outlook folders: not recorded (${e.message || e}).`))
   }
   lines.push(`Outlook${first ? '' : ' catch-up round'} timing: read ${read.length} folders${first ? ' and the calendar' : ''} in ` +
