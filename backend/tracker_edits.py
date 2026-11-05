@@ -100,6 +100,16 @@ def _op(conn, uid: int, op: dict) -> str:
         return f"Updated the {bank} application: {', '.join(changes)}"
     if kind == "add_chat":
         return add_chat(conn, uid, op)
+    if kind == "delete_person":  # someone the student never spoke with (a roster name): only if no entry or draft has them
+        person = _person(conn, uid, int(op["id"]))
+        if conn.execute("SELECT 1 FROM interaction_people WHERE person_id = ?", (person["id"],)).fetchone() or conn.execute(
+                "SELECT 1 FROM thank_you_drafts WHERE person_id = ?", (person["id"],)).fetchone():
+            raise EditError(f"{person['name']} is on an entry; take them off it first.")
+        conn.execute("DELETE FROM links WHERE user_id = ? AND (src = ? OR dst = ?)", (uid, f"person:{person['id']}", f"person:{person['id']}"))
+        conn.execute("DELETE FROM people WHERE id = ? AND user_id = ?", (person["id"], uid))
+        return f"Removed {person['name']}"
+    if kind == "add_entry":  # an event or step by hand: {bank, kind, title, date, status, summary, format, date_note, thank_you, people: [{name, title, grp, notes}]}
+        return add_entry(conn, uid, op)
     if kind == "add_questions":  # what was asked in a chat: {entry_id, asked_me: [...], i_asked: [...]}
         entry = _entry(conn, uid, int(op["entry_id"]))
         n = 0
@@ -162,6 +172,41 @@ def add_chat(conn, uid: int, op: dict) -> str:
                VALUES (?, ?, 'coffee_chat', ?, ?, '', '', ?, ?, '')""", (uid, bank, f"Coffee chat with {name}", day, status, notes)).lastrowid
         conn.execute("INSERT OR IGNORE INTO interaction_people VALUES (?, ?, '')", (eid, pid))
     return f"Added a coffee chat with {name} ({bank}) on {day}"
+
+
+def add_entry(conn, uid: int, op: dict) -> str:
+    """An event or step the student adds by hand, with the people met there (found or added at that bank)."""
+    bank, kind, title, day = nz.bank(op.get("bank")), nz.clean(op.get("kind")), nz.clean(op.get("title")), nz.clean(op.get("date"))
+    if not bank or not title or kind not in ("event", "step", "interview"):
+        raise EditError("An entry needs a bank, a title and a kind (event, step or interview).")
+    try:
+        datetime.strptime(day, "%Y-%m-%d")
+    except ValueError:
+        raise EditError("An entry needs its date (YYYY-MM-DD).") from None
+    status = nz.clean(op.get("status")) or ("done" if day <= datetime.now().strftime("%Y-%m-%d") else "upcoming")
+    conn.execute("INSERT OR IGNORE INTO my_banks (user_id, bank, applied, deadline, link, prefs, notes) VALUES (?, ?, '', '', '', '', '')", (uid, bank))
+    eid = conn.execute(
+        """INSERT INTO interactions (user_id, bank, kind, title, date, date_note, format, status, summary, thank_you)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+        (uid, bank, kind, title, day, nz.clean(op.get("date_note")), nz.clean(op.get("format")), status,
+         nz.clean_text(op.get("summary")), nz.clean(op.get("thank_you")))).lastrowid
+    for p in op.get("people", []):
+        name = nz.clean(p.get("name"))
+        if not name:
+            continue
+        found = conn.execute("SELECT id FROM people WHERE user_id = ? AND bank = ? AND LOWER(name) = LOWER(?)", (uid, bank, name)).fetchone()
+        if found:
+            pid = found["id"]
+            for col in ("title", "grp"):
+                if nz.clean(p.get(col)):
+                    conn.execute(f"UPDATE people SET {col} = ? WHERE id = ? AND (COALESCE({col}, '') = '')", (nz.clean(p.get(col)), pid))
+        else:
+            pid = conn.execute(
+                "INSERT INTO people (user_id, name, title, bank, grp, subgroup, email, outreach, origin, notes) VALUES (?, ?, ?, ?, ?, '', '', '', ?, ?)",
+                (uid, name, nz.clean(p.get("title")), bank, nz.clean(p.get("grp")), "event" if kind == "event" else "outreach",
+                 nz.clean(p.get("person_notes")))).lastrowid
+        conn.execute("INSERT OR IGNORE INTO interaction_people VALUES (?, ?, ?)", (eid, pid, nz.clean(p.get("notes"))))
+    return f"Added {title} ({bank}) on {day}"
 
 
 def apply(uid: int, ops: list[dict], note: str = "") -> dict:

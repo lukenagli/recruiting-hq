@@ -165,10 +165,12 @@ def _name(n: str) -> str:
 def _tracker(conn, uid: int) -> dict:
     people = {r["id"]: dict(r) for r in conn.execute("SELECT id, name, bank, title, grp, alum, email, origin FROM people WHERE user_id = ?", (uid,))}
     entries = []
-    for r in conn.execute("SELECT id, bank, kind, title, date, status, format, thank_you, date_note FROM interactions WHERE user_id = ?", (uid,)):
+    for r in conn.execute("SELECT id, bank, kind, title, date, status, format, thank_you, date_note, summary FROM interactions WHERE user_id = ?", (uid,)):
         e = dict(r)
-        e["people"] = sorted(people[p[0]]["name"] for p in conn.execute("SELECT person_id FROM interaction_people WHERE interaction_id = ?", (e["id"],))
-                             if p[0] in people)
+        met = [(people[p[0]], p[1] or "") for p in conn.execute("SELECT person_id, notes FROM interaction_people WHERE interaction_id = ?", (e["id"],))
+               if p[0] in people]
+        e["people"] = sorted(p["name"] for p, _ in met)
+        e["who"] = sorted(({"name": p["name"], "title": p["title"], "grp": p["grp"], "notes": n} for p, n in met), key=lambda w: w["name"])
         entries.append(e)
     banks = {r["bank"]: dict(r) for r in conn.execute("SELECT bank, applied, status, notes FROM my_banks WHERE user_id = ?", (uid,))}
     return {"people": people, "entries": entries, "banks": banks}
@@ -270,7 +272,8 @@ def compare(owner: dict) -> dict:
         else:
             entries_missing.append({"bank": e["bank"], "kind": e["kind"], "title": e["title"], "date": e["date"], "status": e["status"],
                                     "people": e["people"], "came_from": e_origin.get(e["id"], "")})
-    entries_extra = [{"bank": t["bank"], "kind": t["kind"], "title": t["title"], "date": t["date"], "status": t["status"], "people": t["people"]}
+    entries_extra = [{"bank": t["bank"], "kind": t["kind"], "title": t["title"], "date": t["date"], "status": t["status"], "people": t["people"],
+                      "date_note": t["date_note"], "format": t["format"], "thank_you": t["thank_you"], "summary": t["summary"], "who": t["who"]}
                      for t in test["entries"] if t["id"] not in used]
     out_mine = {b for b, a in mine["banks"].items() if a["status"] == "out"}
     out_test = {b for b, a in test["banks"].items() if a["status"] == "out"}
