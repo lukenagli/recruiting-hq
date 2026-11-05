@@ -65,8 +65,10 @@ def bank_defaults(pushed: bool = True) -> dict[str, dict]:
     saved = _get("bank_defaults", {}) if pushed else {}
     out = {}
     for bank in sorted(set(bank_info.DOMAINS) | set(saved), key=str.lower):
-        built_in = {"recruiter_name": "", "recruiter_title": "", "letter_name": bank_info.LETTER_NAMES.get(bank, ""),
-                    "address": bank_info.ADDRESSES.get(bank, "")}
+        names = bank_info.LETTER_NAMES if pushed else bank_info.GRADED_LETTER_NAMES  # preview: every bank filled in
+        addresses = bank_info.ADDRESSES if pushed else bank_info.GRADED_ADDRESSES
+        built_in = {"recruiter_name": "", "recruiter_title": "", "letter_name": names.get(bank, ""),
+                    "address": addresses.get(bank, "")}
         out[bank] = {f: (saved.get(bank, {}).get(f) or built_in[f]) for f in BANK_FIELDS}
     return out
 

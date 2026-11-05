@@ -57,25 +57,117 @@ MORE_DOMAINS = {
 DOMAINS.update(MORE_DOMAINS)
 
 
-# New York office addresses for cover letters (public information). Users can override one per bank.
+# Headquarters addresses for cover letters (public information; Nov 2026). Firms based outside the US use their US
+# headquarters. Users can override one per bank, and the admin's pushed values win over these.
 ADDRESSES = {
+    "Allen & Company": "711 Fifth Avenue\nNew York, NY 10022",
+    "BGL": "One Cleveland Center, 1375 East 9th Street, Suite 2500\nCleveland, OH 44114",
+    "BMO": "151 West 42nd Street\nNew York, NY 10036",
+    "BNP Paribas": "787 Seventh Avenue\nNew York, NY 10019",
+    "Baird": "777 East Wisconsin Avenue\nMilwaukee, WI 53202",
     "Bank of America": "One Bryant Park\nNew York, NY 10036",
     "Barclays": "745 Seventh Avenue\nNew York, NY 10020",
+    "Cain Brothers": "277 Park Avenue, 40th Floor\nNew York, NY 10172",
+    "Cantor Fitzgerald": "110 East 59th Street\nNew York, NY 10022",
     "Centerview": "31 West 52nd Street\nNew York, NY 10019",
     "Citi": "388 Greenwich Street\nNew York, NY 10013",
+    "Deutsche Bank": "1 Columbus Circle\nNew York, NY 10019",
+    "Ducera": "11 Times Square, 36th Floor\nNew York, NY 10036",
     "Evercore": "55 East 52nd Street\nNew York, NY 10055",
     "Goldman Sachs": "200 West Street\nNew York, NY 10282",
+    "Gordon Dyal & Co.": "152 West 57th Street, 39th Floor\nNew York, NY 10019",
+    "Greenhill": "1271 Avenue of the Americas\nNew York, NY 10020",
     "Guggenheim": "330 Madison Avenue\nNew York, NY 10017",
+    "HSBC": "66 Hudson Boulevard\nNew York, NY 10001",
+    "Harris Williams": "1001 Haxall Point, 9th Floor\nRichmond, VA 23219",
     "Houlihan Lokey": "245 Park Avenue\nNew York, NY 10167",
     "J.P. Morgan": "270 Park Avenue\nNew York, NY 10017",
+    "Jefferies": "520 Madison Avenue\nNew York, NY 10022",
+    "KBW": "787 Seventh Avenue\nNew York, NY 10019",
+    "KeyBanc": "127 Public Square\nCleveland, OH 44114",
     "Lazard": "30 Rockefeller Plaza\nNew York, NY 10112",
+    "Lincoln International": "110 North Wacker Drive, 51st Floor\nChicago, IL 60606",
+    "LionTree": "745 Fifth Avenue\nNew York, NY 10151",
+    "MUFG": "1221 Avenue of the Americas\nNew York, NY 10020",
+    "Macquarie": "125 West 55th Street\nNew York, NY 10019",
+    "Mizuho": "1271 Avenue of the Americas\nNew York, NY 10020",
+    "Moelis": "399 Park Avenue\nNew York, NY 10022",
     "Morgan Stanley": "1585 Broadway\nNew York, NY 10036",
+    "Nomura": "Worldwide Plaza, 309 West 49th Street\nNew York, NY 10019",
+    "Oppenheimer": "85 Broad Street\nNew York, NY 10004",
+    "PJT": "280 Park Avenue\nNew York, NY 10017",
+    "PWP": "767 Fifth Avenue\nNew York, NY 10153",
+    "Piper Sandler": "800 Nicollet Mall, Suite 900\nMinneapolis, MN 55402",
+    "Qatalyst": "One Maritime Plaza, 24th Floor\nSan Francisco, CA 94111",
     "RBC": "200 Vesey Street\nNew York, NY 10281",
+    "Raymond James": "880 Carillon Parkway\nSt. Petersburg, FL 33716",
+    "Rothschild": "1251 Avenue of the Americas\nNew York, NY 10020",
+    "Solomon Partners": "1251 Avenue of the Americas\nNew York, NY 10020",
+    "Stifel": "501 North Broadway\nSt. Louis, MO 63102",
+    "TD Cowen": "599 Lexington Avenue\nNew York, NY 10022",
+    "UBS": "1285 Avenue of the Americas\nNew York, NY 10019",
+    "Wells Fargo": "500 West 33rd Street\nNew York, NY 10001",
+    "William Blair": "150 North Riverside Plaza\nChicago, IL 60606",
 }
 
 
-# Formal firm names for the cover letter's recipient block (from letters the student has sent).
-LETTER_NAMES = {"Guggenheim": "Guggenheim Securities, LLC"}
+# Formal firm names for the cover letter's recipient block: the entity that hires US bankers (its registered name).
+LETTER_NAMES = {
+    "Allen & Company": "Allen & Company LLC",
+    "BGL": "Brown Gibbons Lang & Company",
+    "BMO": "BMO Capital Markets Corp.",
+    "BNP Paribas": "BNP Paribas Securities Corp.",
+    "Baird": "Robert W. Baird & Co. Incorporated",
+    "Bank of America": "BofA Securities, Inc.",
+    "Barclays": "Barclays Capital Inc.",
+    "Cain Brothers": "Cain Brothers, a division of KeyBanc Capital Markets Inc.",
+    "Cantor Fitzgerald": "Cantor Fitzgerald & Co.",
+    "Centerview": "Centerview Partners LLC",
+    "Citi": "Citigroup Global Markets Inc.",
+    "Deutsche Bank": "Deutsche Bank Securities Inc.",
+    "Ducera": "Ducera Partners LLC",
+    "Evercore": "Evercore Group L.L.C.",
+    "Goldman Sachs": "Goldman Sachs & Co. LLC",
+    "Gordon Dyal & Co.": "Gordon Dyal & Co. Advisory Group LP",
+    "Greenhill": "Greenhill & Co., LLC",
+    "Guggenheim": "Guggenheim Securities, LLC",
+    "HSBC": "HSBC Securities (USA) Inc.",
+    "Harris Williams": "Harris Williams LLC",
+    "Houlihan Lokey": "Houlihan Lokey Capital, Inc.",
+    "J.P. Morgan": "J.P. Morgan Securities LLC",
+    "Jefferies": "Jefferies LLC",
+    "KBW": "Keefe, Bruyette & Woods, Inc.",
+    "KeyBanc": "KeyBanc Capital Markets Inc.",
+    "Lazard": "Lazard Frères & Co. LLC",
+    "Lincoln International": "Lincoln International LLC",
+    "LionTree": "LionTree Advisors LLC",
+    "MUFG": "MUFG Securities Americas Inc.",
+    "Macquarie": "Macquarie Capital (USA) Inc.",
+    "Mizuho": "Mizuho Securities USA LLC",
+    "Moelis": "Moelis & Company LLC",
+    "Morgan Stanley": "Morgan Stanley & Co. LLC",
+    "Nomura": "Nomura Securities International, Inc.",
+    "Oppenheimer": "Oppenheimer & Co. Inc.",
+    "PJT": "PJT Partners LP",
+    "PWP": "Perella Weinberg Partners LP",
+    "Piper Sandler": "Piper Sandler & Co.",
+    "Qatalyst": "Qatalyst Partners LP",
+    "RBC": "RBC Capital Markets, LLC",
+    "Raymond James": "Raymond James & Associates, Inc.",
+    "Rothschild": "Rothschild & Co US Inc.",
+    "Solomon Partners": "Solomon Partners Securities, LLC",
+    "Stifel": "Stifel, Nicolaus & Company, Incorporated",
+    "TD Cowen": "TD Securities (USA) LLC",
+    "UBS": "UBS Securities LLC",
+    "Wells Fargo": "Wells Fargo Securities, LLC",
+    "William Blair": "William Blair & Company, L.L.C.",
+}
+
+
+# What accounts outside the preview (the graded version, the demo) get until the project is graded: the first list.
+GRADED_ADDRESSES = {b: ADDRESSES[b] for b in ("Bank of America", "Barclays", "Centerview", "Citi", "Evercore", "Goldman Sachs",
+                                              "Guggenheim", "Houlihan Lokey", "J.P. Morgan", "Lazard", "Morgan Stanley", "RBC")}
+GRADED_LETTER_NAMES = {"Guggenheim": "Guggenheim Securities, LLC"}
 
 
 def domain(bank: str) -> str:
