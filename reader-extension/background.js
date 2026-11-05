@@ -15,6 +15,13 @@ const OUTLOOK_LOCK = ['action=CreateItem', 'action=SendItem', 'action=UpdateItem
   'reaction', 'readreceipt', 'meetingresponse', '/send', '/reply', '/forward', 'sendmail', 'createreply', 'createforward']
 const OUTLOOK_SITES = ['outlook.cloud.microsoft', 'outlook.office.com', 'outlook.office365.com']
 const WORKER_RULES = 20000000 // rule ids for the service worker's lock, above every tab's (tab ids map below 10,000,000)
+// Outlook's own program files, styles, images and fonts can't send or change anything, and some of their names contain
+// a locked word ("reaction"); blocking them (Nov 5, 2026) kept Outlook from showing any email. So in the reader's tab
+// the lock leaves those kinds of download alone, and for Outlook's service worker (which also downloads Outlook's
+// program files, as plain requests) it stops what can change something: every send, reply, reaction, read receipt or
+// change is a POST, PUT, PATCH or DELETE.
+const STATIC_TYPES = ['script', 'stylesheet', 'image', 'font', 'media']
+const CHANGING = ['post', 'put', 'patch', 'delete']
 
 async function lockTab(tabId, filters) {
   const base = (tabId % 100000) * 100
@@ -25,7 +32,7 @@ async function lockTab(tabId, filters) {
       id: ids[i],
       priority: 1,
       action: { type: 'block' },
-      condition: { tabIds: [tabId], urlFilter, isUrlFilterCaseSensitive: false },
+      condition: { tabIds: [tabId], urlFilter, isUrlFilterCaseSensitive: false, excludedResourceTypes: STATIC_TYPES },
     })),
   })
   await lockIsOn(ids)
@@ -47,7 +54,8 @@ async function lockWorkers() {
       id: ids[i],
       priority: 1,
       action: { type: 'block' },
-      condition: { tabIds: [-1], initiatorDomains: OUTLOOK_SITES, urlFilter, isUrlFilterCaseSensitive: false },
+      condition: { tabIds: [-1], initiatorDomains: OUTLOOK_SITES, urlFilter, isUrlFilterCaseSensitive: false,
+                   requestMethods: CHANGING },
     })),
   })
   await lockIsOn(ids)
@@ -61,10 +69,23 @@ async function unlockWorkers() {
 // each one as it happens; its own record only keeps the last five minutes).
 const lockName = (id) => OUTLOOK_LOCK[id >= WORKER_RULES ? id - WORKER_RULES - 1 : (id % 100) - 1] || 'a request'
 let caught = null
+let caughtUrls = {} // rule -> a few of the addresses it stopped, with ids and values taken out (to see what was stopped)
+const shortUrl = (url) => {
+  try {
+    const u = new URL(url)
+    const path = u.pathname.split('/').map((s) => (s.length > 24 || /@|%40/.test(s) ? '…' : s)).join('/')
+    return path + (u.searchParams.get('action') ? `?action=${u.searchParams.get('action')}` : '')
+  } catch {
+    return '?'
+  }
+}
 chrome.declarativeNetRequest.onRuleMatchedDebug?.addListener((info) => {
   if (!caught) return
   const name = lockName(info.rule.ruleId)
   caught[name] = (caught[name] || 0) + 1
+  const seen = (caughtUrls[name] = caughtUrls[name] || [])
+  const s = `${info.request.method || ''} ${shortUrl(info.request.url)}${info.request.tabId === -1 ? ' (worker)' : ''}`
+  if (seen.length < 4 && !seen.includes(s)) seen.push(s)
 })
 
 /** What the lock stopped since `since` (ms), as a line for the report: proof it was on, and of anything it caught. */
@@ -78,8 +99,10 @@ async function lockReport(since) {
   }
   const n = Object.values(seen || {}).reduce((a, b) => a + b, 0)
   if (!n) return 'Network lock: on the whole time; nothing tried to send, reply, react or change any email.'
+  const what = Object.entries(caughtUrls).map(([k, urls]) => `${k}: ${urls.join(', ')}`).join('; ')
+  caughtUrls = {}
   return `Network lock: on the whole time, and it stopped ${n} request${n > 1 ? 's' : ''} Outlook made on its own while emails ` +
-         `were opened (${Object.entries(seen).map(([k, c]) => `${k} ×${c}`).join(', ')}).`
+         `were opened (${Object.entries(seen).map(([k, c]) => `${k} ×${c}`).join(', ')}).` + (what ? ` Stopped: ${what}.` : '')
 }
 
 async function unlockTab(tabId, filters) {
@@ -824,6 +847,7 @@ async function syncAll() {
     handed = { emails: 0, events: 0 }
     // Outlook only, in one window. Slack and WhatsApp had too little news to be worth reading.
     caught = {}
+    caughtUrls = {}
     await lockWorkers()
     await openReader()
     try {
