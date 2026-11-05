@@ -419,6 +419,10 @@ def init_db() -> None:
                 for item in json.loads(config.RECRUITING_CALENDAR.read_text(encoding="utf-8")):
                     conn.execute("INSERT INTO calendar_items (date, end, title, detail, source) VALUES (?, ?, ?, ?, ?)",
                                  (item["date"], item.get("end", ""), item["title"], item.get("detail", ""), item.get("source", "")))
+            # Super Week is Dec 1 to 9, ending on BOOYa ranking day (the latest Finance Club deck; the first copy said Nov 30 to Dec 8)
+            conn.execute("UPDATE calendar_items SET date = '2026-12-01', end = '2026-12-09', "
+                         "detail = 'Superday interviews in early December, ending on BOOYa ranking day (Dec 9)' "
+                         "WHERE title = 'Super Week' AND date = '2026-11-30'")
     finally:
         conn.close()
     _initialised_for = config.DB_PATH
