@@ -509,6 +509,10 @@ def save_entry(
     conn = _write(ctx)
     try:
         with conn:
+            if entry_id is None and kind == "coffee_chat" and (status or "done") == "done" and not date and _in_preview(uid):
+                return _refuse(ctx, "save_entry", args, "A coffee chat that happened needs the day it happened. Take it from the calendar or the emails arranging it; if "
+                                  "only a thank-you shows it, it was the day the thank-you says (the day it was written, or the day before for "
+                                  "\"yesterday\"). If nothing says when, don't mark it done: ask me which day it was.")
             if entry_id is None and kind == "coffee_chat" and date and people and _in_preview(uid):
                 # Preview: one chat with a person is often seen twice (the calendar invite and a thank-you a day later):
                 # a chat with them a few days either side is that chat, so it is updated, not logged again.
@@ -546,6 +550,10 @@ def save_entry(
                     return _refuse(ctx, "save_entry", args, f"Entry {entry_id} belongs to {row['bank']}, not {bank}.")
                 # Preview: a chat that was cancelled or is being rescheduled didn't happen at its old time (an invite left
                 # on the calendar says nothing), so it only becomes done with the new date it happened on.
+                if (status == "done" and (kind or row["kind"]) == "coffee_chat" and not date and not row["date"] and _in_preview(uid)):
+                    return _refuse(ctx, "save_entry", args, "A coffee chat that happened needs the day it happened. Take it from the calendar or the emails arranging it; if "
+                                  "only a thank-you shows it, it was the day the thank-you says (the day it was written, or the day before for "
+                                  "\"yesterday\"). If nothing says when, don't mark it done: ask me which day it was.")
                 called_off = CALLED_OFF.search(row["date_note"] or "") and not (date_note and not CALLED_OFF.search(date_note))
                 if (status == "done" and row["status"] != "done" and called_off and date in ("", row["date"])
                         and _in_preview(uid)):

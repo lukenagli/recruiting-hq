@@ -92,6 +92,32 @@ def _twin_chats(conn, uid: int) -> list[str]:
     return asked
 
 
+def _stale_called_off(conn, uid: int, today: str) -> list[str]:
+    """A chat called off and never given a new time, with every time offered for it already past: did it happen, or
+    should it come off the map? (Guessing could drop a reschedule still being arranged.)"""
+    asked = []
+    for r in conn.execute(
+            """SELECT i.id, i.bank, i.date, i.date_note, i.title,
+                      (SELECT GROUP_CONCAT(p.name, ', ') FROM interaction_people ip JOIN people p ON p.id = ip.person_id
+                       WHERE ip.interaction_id = i.id) AS who
+               FROM interactions i WHERE i.user_id = ? AND i.kind = 'coffee_chat' AND i.status = 'todo' AND i.date != ''""", (uid,)):
+        if not assistant.CALLED_OFF.search(" ".join(filter(None, (r["title"], r["date_note"])))):
+            continue
+        months = {m: n for n, m in enumerate(["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"], 1)}
+        offered = [f"{datetime.now().year}-{months[m[:3].lower()]:02d}-{int(d):02d}"
+                   for m, d in re.findall(r"\b(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\.? (\d{1,2})\b", r["date_note"] or "")]
+        if max([r["date"], *offered]) >= today:
+            continue  # a time offered is still ahead: the reschedule may yet happen
+        when = f"{datetime.strptime(r['date'], '%Y-%m-%d'):%b} {int(r['date'][8:])}"
+        q = (f"Your {when} coffee chat with {r['who'] or 'this person'} ({r['bank']}) was called off and no new time was set. "
+             "Did it happen later, or should it come off your map?")
+        if not conn.execute("SELECT 1 FROM reader_questions WHERE user_id = ? AND question = ?", (uid, q)).fetchone():
+            conn.execute("INSERT INTO reader_questions (user_id, asked_at, question) VALUES (?, ?, ?)",
+                         (uid, datetime.now().isoformat(timespec="seconds"), q))
+            asked.append(q)
+    return asked
+
+
 def mark_review(uid: int) -> None:
     with connect() as conn:
         conn.execute("""CREATE TABLE IF NOT EXISTS reader_review (user_id INTEGER PRIMARY KEY, ready_at TEXT NOT NULL,
@@ -104,7 +130,7 @@ async def run(user: dict, first_scan: bool = False) -> dict:
     ctx = _ctx(uid)
     with connect() as conn:
         merged = _merge_people(conn, uid, ctx)
-        asked = _twin_chats(conn, uid)
+        asked = _twin_chats(conn, uid) + _stale_called_off(conn, uid, datetime.now().strftime("%Y-%m-%d"))
     if merged and ctx.deps.snapshot is not None:
         with connect() as conn:
             conn.execute("""INSERT INTO agent_runs (user_id, started_at, agent, user_message, reply, steps, outcome, snapshot)
