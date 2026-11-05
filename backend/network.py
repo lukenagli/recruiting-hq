@@ -281,9 +281,12 @@ def _thanks_due(uid: int, data: dict, names: dict) -> list[dict]:
         start = _start_minutes(i["date_note"] or "")
         happened = i["status"] == "done" or (i["status"] == "upcoming" and (
             i["date"] < today or (start is not None and start + 60 <= now.hour * 60 + now.minute)))
-        left = [names[j["person_id"]] for j in i["people"] if (i["id"], j["person_id"]) not in thanked and j["person_id"] in names]
+        ids = [j["person_id"] for j in i["people"] if (i["id"], j["person_id"]) not in thanked and j["person_id"] in names]
+        left = [names[p] for p in ids]
         if happened and left:
-            out.append({"bank": i["bank"], "title": i["title"], "kind": i["kind"], "date": i["date"], "who": left})
+            # ids: to open that person (or the event, for several) on the bank's map from the home page
+            out.append({"bank": i["bank"], "title": i["title"], "kind": i["kind"], "date": i["date"], "who": left,
+                        "who_ids": ids, "entry_id": i["id"]})
     return sorted(out, key=lambda t: t["date"])
 
 

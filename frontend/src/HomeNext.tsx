@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import type { AiSettings, BankSummary, CalendarItem, HomeData } from './api'
 import { useBullets } from './bullets'
 import { useDictation } from './dictation'
@@ -38,9 +38,19 @@ function ask(detail: { text?: string; record?: 'recap' | 'conversation'; draft?:
   window.dispatchEvent(new CustomEvent(ASK_EVENT, { detail }))
 }
 
-/** One line in the header: tell the assistant what happened. It opens in the side panel. */
+/** The box in the header: tell the assistant what happened. It opens in the side panel. Enter sends; Shift+Enter starts a
+ *  new line, and the box grows with what is typed (up to about six lines, then it scrolls). */
 function UpdateBar({ onAdd, added }: { onAdd: () => void; added: string }) {
   const [text, setText] = useState('')
+  const box = useRef<HTMLTextAreaElement>(null)
+  const [tall, setTall] = useState(false)
+  useLayoutEffect(() => {
+    const el = box.current
+    if (!el) return
+    el.style.height = 'auto'
+    el.style.height = `${el.scrollHeight}px`
+    setTall(el.scrollHeight > 44)
+  }, [text])
   const dictation = useDictation((phrase) => setText((t) => `${t}${t && !/\s$/.test(t) ? ' ' : ''}${phrase}`))
   function go(e?: React.FormEvent) {
     e?.preventDefault()
@@ -51,10 +61,19 @@ function UpdateBar({ onAdd, added }: { onAdd: () => void; added: string }) {
   }
   return (
     <>
-      <form className="update-bar" onSubmit={go}>
-        <input
+      <form className={tall ? 'update-bar tall' : 'update-bar'} onSubmit={go}>
+        <textarea
+          ref={box}
+          rows={1}
           value={text}
           onChange={(e) => setText(e.target.value)}
+          onKeyDown={(e) => {
+            // Enter sends; Shift+Enter is a new line (and Enter while an accent or Asian character is being composed types it)
+            if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
+              e.preventDefault()
+              go()
+            }
+          }}
           placeholder={dictation.listening ? 'Listening…' : 'What happened? A chat, an email, an invite…'}
           aria-label="Tell the assistant what happened"
         />
@@ -219,12 +238,14 @@ function Todos({ d, out, onChanged }: { d: HomeData; out: Set<string>; onChanged
       key: `ty${t.bank}${t.title}${t.date}`,
       title: t.who.length === 1 ? `Send a thank-you email to ${t.who[0]}` : `Send thank-you emails to ${t.who.join(', ')}`,
       bank: t.bank,
+      // opens that person on the bank's map, as clicking their name there does (several people: the event they met at)
+      sel: t.who_ids?.length === 1 ? `person:${t.who_ids[0]}` : t.entry_id ? `interaction:${t.entry_id}` : '',
       date: t.date,
       when: t.kind === 'event' ? `${t.title}, ${fmtDate(t.date)}` : `spoke ${fmtDate(t.date)}`,
       urgent: true,
     })),
-    ...(d.todos ?? []).filter((t) => !ticked.has(t.id)).map((t) => ({ id: t.id, key: `td${t.bank}${t.title}`, title: t.title, bank: t.bank, date: t.date, when: t.date ? fmtDate(t.date) : '', urgent: !!t.date && daysUntil(t.date, d.today) <= 1 })),
-    ...d.deadlines.filter((a) => !out.has(a.bank) && daysUntil(a.date, d.today) > 7).map((a) => ({ id: 0, key: `ap${a.bank}`, title: `Apply to ${a.bank}`, bank: a.bank, date: a.date, when: `due ${fmtDate(a.date)}`, urgent: false })),
+    ...(d.todos ?? []).filter((t) => !ticked.has(t.id)).map((t) => ({ id: t.id, key: `td${t.bank}${t.title}`, title: t.title, bank: t.bank, sel: `interaction:${t.id}`, date: t.date, when: t.date ? fmtDate(t.date) : '', urgent: !!t.date && daysUntil(t.date, d.today) <= 1 })),
+    ...d.deadlines.filter((a) => !out.has(a.bank) && daysUntil(a.date, d.today) > 7).map((a) => ({ id: 0, key: `ap${a.bank}`, title: `Apply to ${a.bank}`, bank: a.bank, sel: '', date: a.date, when: `due ${fmtDate(a.date)}`, urgent: false })),
   ].sort((a, b) => (a.date || '9999').localeCompare(b.date || '9999')) // earliest first, undated last
   const shown = all ? items : items.slice(0, 7)
   return (
@@ -241,7 +262,7 @@ function Todos({ d, out, onChanged }: { d: HomeData; out: Set<string>; onChanged
             ) : (
               <span className="todo-dot" aria-hidden />
             )}
-            <a href={`#/bank/${encodeURIComponent(t.bank)}`}>
+            <a href={`#/bank/${encodeURIComponent(t.bank)}${t.sel ? `?sel=${encodeURIComponent(t.sel)}` : ''}`}>
               <span className="todo-what">
                 <strong>{t.title}</strong>
                 <small>{[t.bank, t.when].filter(Boolean).join(' · ')}</small>
