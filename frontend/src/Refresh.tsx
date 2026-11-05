@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { get } from './api'
+import FolderSetup from './FolderSetup'
 import { useApi, usePreview } from './ui'
 
 /**
@@ -41,7 +42,7 @@ const phone = () => {
   }
 }
 
-function send(type: 'ping' | 'sync' | 'capiq' | 'thanks') {
+function send(type: 'ping' | 'sync' | 'capiq' | 'thanks' | 'folders') {
   window.postMessage({ source: 'rhq-page', type }, window.origin)
 }
 
@@ -63,7 +64,8 @@ export function useReader() {
       clearTimeout(t)
     }
   }, [])
-  return { status, installed: !!status || stale, stale, checked, sync: () => send('sync'), capiq: () => send('capiq'), thanks: () => send('thanks') }
+  return { status, installed: !!status || stale, stale, checked, sync: () => send('sync'), capiq: () => send('capiq'), thanks: () => send('thanks'),
+           folders: () => send('folders') }
 }
 
 /** The one-time catch-up for someone already recruiting: the thank-you emails they already sent, each filed on the
@@ -147,11 +149,11 @@ function useFiling(on: boolean, readerBusy: boolean, onDone?: () => void) {
 }
 
 export default function Refresh({ onDone }: { onDone?: () => void }) {
-  const { status, installed, stale, checked, sync } = useReader()
+  const { status, installed, stale, checked, sync, folders } = useReader()
   const preview = usePreview()
   // ai_left: the reader can't file anything once it's used up;
   // start_from: the account's first sync, which reaches back to the start of the season
-  const allowance = useApi<{ ai_left: number; outlook_only?: boolean; start_from?: string }>('/api/sync/state')
+  const allowance = useApi<{ ai_left: number; outlook_only?: boolean; start_from?: string; folders_confirmed?: boolean; folders_known?: number }>('/api/sync/state')
   const firstSync = !!allowance.data?.start_from
   const [confirming, setConfirming] = useState(false)
   const [wasBusy, setWasBusy] = useState(false)
@@ -162,6 +164,7 @@ export default function Refresh({ onDone }: { onDone?: () => void }) {
     if (busy) setWasBusy(true)
     if (!busy && wasBusy) {
       setWasBusy(false)
+      allowance.reload() // a look at the folders before a first scan: the folder screen comes next
       onDone?.()
     }
   }, [busy, wasBusy, onDone])
@@ -236,6 +239,28 @@ export default function Refresh({ onDone }: { onDone?: () => void }) {
         <a className="btn" href="#/settings">Finish setting up the reader (paste your key)</a>
       </div>
     )
+  // Preview: an account's first scan starts with a 20-second look at the Outlook folders, then the student says which
+  // hold recruiting email (FolderSetup), then the scan itself.
+  const needsFolders = preview && firstSync && allowance.data?.folders_confirmed === false && !busy && !filingBusy
+  if (needsFolders && (allowance.data?.folders_known ?? 0) > 0)
+    return (
+      <div className="refresh">
+        <FolderSetup onStart={() => { allowance.reload(); sync() }} />
+      </div>
+    )
+  if (needsFolders)
+    return (
+      <div className="refresh">
+        <div className="refresh-warning">
+          <p>
+            <strong>Your first refresh brings in everything since September 1.</strong> First, the reader takes a 20-second look at your
+            Outlook folder list (it opens no email) so you can tell it which folders hold recruiting email. A Chrome window opens and
+            closes on its own; leave it in front.
+          </p>
+          <button className="primary" onClick={folders}>Look at my folders</button>
+        </div>
+      </div>
+    )
   return (
     <div className="refresh">
       {!busy && filingBusy ? (
@@ -253,6 +278,13 @@ export default function Refresh({ onDone }: { onDone?: () => void }) {
               <small>Filed {filing.done} of {filing.done + filing.waiting + filing.running} batches</small>
             </div>
           )}
+        </div>
+      ) : busy && status?.progress?.label?.startsWith('Looking at your Outlook folders') ? (
+        <div className="refresh-warning working">
+          <p>
+            <strong>Looking at your Outlook folders…</strong> Only the folder list, no email is opened. It takes about 20 seconds; leave the
+            Chrome window in front until it closes.
+          </p>
         </div>
       ) : busy ? (
         <div className="refresh-warning working">

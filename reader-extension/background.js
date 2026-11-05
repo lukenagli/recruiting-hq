@@ -104,7 +104,8 @@ async function openReader() {
   await chrome.storage.session.set({ readerWindows: [...readerWindows, win.id] }) // see `ready` below
   // A window opened while another app is in front can land behind it: bring it forward once more.
   await chrome.windows.update(win.id, { focused: true, drawAttention: false }).catch(() => undefined)
-  reader = { windows: [win.id] }
+  // its blank tab is the one Outlook opens in (lockedTab), so the window has a single tab
+  reader = { windows: [win.id], blank: (win.tabs && win.tabs[0] && win.tabs[0].id) || null }
   return reader
 }
 
@@ -162,7 +163,12 @@ const ready = (async () => {
 /** A tab in the reader's window with the network lock on before it loads anything. */
 async function lockedTab(url, filters) {
   if (!reader) await openReader()
-  const tab = await chrome.tabs.create({ windowId: reader.windows[0], url: 'about:blank', active: true })
+  // The window's own blank tab if it hasn't been used yet, else a new one. Either way it is blank while the lock goes on,
+  // so nothing in Outlook loads before the lock does.
+  const blank = reader.blank
+  reader.blank = null
+  const tab = (blank && (await chrome.tabs.get(blank).catch(() => null))) ||
+    (await chrome.tabs.create({ windowId: reader.windows[0], url: 'about:blank', active: true }))
   await lockTab(tab.id, filters)
   await chrome.tabs.update(tab.id, { url })
   return tab
@@ -173,8 +179,8 @@ async function lockedTab(url, filters) {
 // Earlier versions synced every 30 minutes; clear that timer if it is still set.
 chrome.runtime.onInstalled.addListener(() => chrome.alarms?.clearAll())
 chrome.runtime.onMessage.addListener((msg, sender, reply) => {
-  if (sender.id !== chrome.runtime.id || !['sync-now', 'capiq-now', 'thanks-now'].includes(msg.type)) return
-  ;({ 'capiq-now': capiqAll, 'thanks-now': thanksAll }[msg.type] || syncAll)().then(() => reply({ ok: true }))
+  if (sender.id !== chrome.runtime.id || !['sync-now', 'capiq-now', 'thanks-now', 'folders-now'].includes(msg.type)) return
+  ;({ 'capiq-now': capiqAll, 'thanks-now': thanksAll, 'folders-now': foldersAll }[msg.type] || syncAll)().then(() => reply({ ok: true }))
   return true
 })
 
@@ -683,6 +689,38 @@ function heartbeat() {
     chrome.runtime.getPlatformInfo()
     chrome.storage.local.set({ running: Date.now() })
   }, 20000)
+}
+
+/** Before an account's first scan: a look at the Outlook folder list only (no email is opened), so the student can say
+ *  which folders hold recruiting email before everything since September is read. */
+async function foldersAll() {
+  await ready
+  const { running } = await chrome.storage.local.get('running')
+  if (running && Date.now() - running < RUNNING_FRESH) return
+  await chrome.storage.local.set({ running: Date.now(), progress: { pct: 10, label: 'Looking at your Outlook folders' } })
+  const keepAlive = heartbeat()
+  const lines = []
+  let tab = null
+  try {
+    await openReader()
+    tab = await lockedTab('https://outlook.cloud.microsoft/mail/', OUTLOOK_LOCK)
+    await loaded(tab.id)
+    await fitPage(tab.id)
+    const out = await ask(tab.id, { type: 'outlook-list-folders' })
+    if (!out.ok) throw new Error(out.error)
+    await api('/api/sync/folders', { listed: out.folders, read: [], skipped: [] })
+    lines.push(`Looked at your ${out.folders.length} Outlook folders (no email opened). Say which hold recruiting email on the home page.`)
+  } catch (e) {
+    lines.push(`Outlook folders: ${e.message || e}`)
+  } finally {
+    if (tab) {
+      await chrome.tabs.remove(tab.id).catch(() => undefined)
+      await unlockTab(tab.id, OUTLOOK_LOCK)
+    }
+    await closeReader()
+    clearInterval(keepAlive)
+    await chrome.storage.local.set({ running: 0, progress: { pct: 100, label: 'Done' }, last: { at: new Date().toLocaleString(), lines } })
+  }
 }
 
 async function capiqAll() {

@@ -16,7 +16,7 @@ from starlette.background import BackgroundTask
 
 from . import banks as banks_info
 from . import tracker_edits
-from . import filing_queue, scan_cleanup
+from . import filing_queue, folder_setup, scan_cleanup
 from . import accounts, assistant, attachments, auth, budget, capiq, catch_up, config, cover_letters, deal_docs, deal_recs, deal_sources, deals, importer, legal, llm, market, network, onboarding, practice, profile, schools, reference, research, shared, stars, sync, templates, test_scan, thank_backfill, thank_you, transfer, user_keys
 from .auth import admin_user, current_user
 from .db import connect, init_db
@@ -755,6 +755,24 @@ def sync_folders(user: dict = Depends(preview_user)):
     return {"folders": sync.folder_plan(user["id"])}
 
 
+@app.get("/api/sync/folder-setup")
+def folder_setup_get(user: dict = Depends(reader_user)):
+    """Before your first scan: each Outlook folder, with what the site suggests (read, check or skip) and why."""
+    return folder_setup.suggest(user["id"])
+
+
+class FolderSetup(BaseModel):
+    choices: dict[str, str] = Field(default_factory=dict)
+    note: str = Field(default="", max_length=2000)
+
+
+@app.post("/api/sync/folder-setup")
+def folder_setup_post(req: FolderSetup, user: dict = Depends(reader_user)):
+    if len(req.choices) > 500:
+        raise HTTPException(status_code=400, detail="Too many folders.")
+    return folder_setup.confirm(user["id"], req.choices, req.note)
+
+
 class FolderMode(BaseModel):
     folder: str
     mode: str
@@ -791,7 +809,9 @@ def sync_state(user: dict = Depends(reader_user)):
     return {**sync.state(user["id"]), "ai_left": 0 if budget.filing_stuck(user["id"]) else 1,
             "outlook_only": True, "start_from": sync.first_start(user["id"]), "combine": True,
             "calendar_from": sync.calendar_from(user["id"]), "test_scan": bool(user.get("test_of")), "queue": True,
-            "filing_busy": filing_queue.status(user["id"])["busy"]}
+            "filing_busy": filing_queue.status(user["id"])["busy"],
+            # Preview: before a first scan the student says which folders hold recruiting email (folder_setup)
+            "folders_confirmed": folder_setup.confirmed(user["id"]), "folders_known": len(sync.folder_plan(user["id"]))}
 
 
 @app.get("/api/reader/questions")

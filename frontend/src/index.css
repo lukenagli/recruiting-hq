@@ -1464,3 +1464,18 @@ main h1 { text-shadow: 0 2px 16px rgba(4, 10, 26, 0.5); }
 .scan-review-bank li { display: flex; gap: 12px; justify-content: space-between; align-items: baseline; padding: 6px 0 6px 12px; }
 .scan-review-done { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; margin-top: 12px; }
 @media (max-width: 760px) { .scan-review-bank li { flex-direction: column; gap: 4px; padding-left: 4px; } }
+
+/* Preview: which Outlook folders hold recruiting email, before a first scan */
+.folder-setup-group { margin-top: 12px; }
+.folder-setup-group h4 { margin: 0; }
+.folder-setup-group ul { list-style: none; padding: 0; margin: 6px 0 0; }
+.folder-setup-group li { display: flex; gap: 12px; justify-content: space-between; align-items: center; padding: 6px 0; border-top: 1px solid var(--line); }
+.folder-setup-name { display: flex; flex-direction: column; min-width: 0; }
+.folder-setup-choices { display: inline-flex; flex: none; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+.folder-setup-choices button { border: 0; border-radius: 0; background: transparent; padding: 5px 10px; font-size: 13px; cursor: pointer; color: inherit; }
+.folder-setup-choices button + button { border-left: 1px solid var(--line); }
+.folder-setup-choices button.on { background: var(--accent, #2563eb); color: #fff; }
+.folder-setup-fixed { flex: none; font-size: 13px; }
+.folder-setup-note { display: flex; flex-direction: column; gap: 4px; margin: 12px 0 8px; }
+.folder-setup-note textarea { width: 100%; box-sizing: border-box; font: inherit; }
+@media (max-width: 760px) { .folder-setup-group li { flex-direction: column; align-items: stretch; } .folder-setup-choices { align-self: flex-start; } }

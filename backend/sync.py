@@ -475,7 +475,7 @@ def _sync_used_today(uid: int) -> int:
             "AND user_message LIKE 'New messages from %'", (uid, date.today().isoformat())).fetchone()[0]
 
 
-def _message(batch: Batch, items: list[Item], school: str, tags: list[str] | None = None, brief: str = "") -> str:
+def _message(batch: Batch, items: list[Item], school: str, tags: list[str] | None = None, brief: str = "", uid: int = 0) -> str:
     """`tags`: each item's folder, for a run over several folders; `brief`: the tracker as it stands for what they mention."""
     where = {"outlook": "my Outlook email", "slack": "Slack", "whatsapp": "WhatsApp"}.get(batch.source, batch.source)
     folders = list(dict.fromkeys(tags)) if tags else [batch.conversation]
@@ -555,6 +555,12 @@ def _message(batch: Batch, items: list[Item], school: str, tags: list[str] | Non
         head += ("Work in as few steps as you can: each step resends everything. What lookup would show for the banks and people "
                  "named is below, so make all your saves together, as several tool calls in one response, and call lookup "
                  "only for someone or something that isn't there. ")
+    if batch.source == "outlook":
+        from . import folder_setup
+
+        told = folder_setup.note(uid) if uid else ""
+        if told:
+            head += f"What I told you about how I keep my recruiting email: \"{told}\". "
     head += "Do not draft emails. If nothing is worth saving, save nothing and say so.\n\n"
     if brief:
         head += brief + "\n\nThe messages:\n"
@@ -689,7 +695,7 @@ async def ingest(user: dict, chosen: Chosen, batch: Batch) -> dict:
         for i in relevant:  # one model run per ~40k characters or MAX_ITEMS messages
             if chunk and (size + len(i.text) > MAX_CHARS or len(chunk) >= MAX_ITEMS):
                 brief = _brief(uid, "\n".join(i.text for i in chunk)) if batch.source == "outlook" else ""
-                await assistant.run(user, chosen, _message(batch, chunk, sc["short"] or "my school", brief=brief), [], transcript=True,
+                await assistant.run(user, chosen, _message(batch, chunk, sc["short"] or "my school", brief=brief, uid=uid), [], transcript=True,
                                     filing=batch.source == "outlook")
                 filed += len(chunk)
                 chunk, size = [], 0
@@ -697,7 +703,7 @@ async def ingest(user: dict, chosen: Chosen, batch: Batch) -> dict:
             size += len(i.text) + 60
         if chunk:
             brief = _brief(uid, "\n".join(i.text for i in chunk)) if batch.source == "outlook" else ""
-            out = await assistant.run(user, chosen, _message(batch, chunk, sc["short"] or "my school", brief=brief), [], transcript=True,
+            out = await assistant.run(user, chosen, _message(batch, chunk, sc["short"] or "my school", brief=brief, uid=uid), [], transcript=True,
                                       filing=batch.source == "outlook")
             filed += len(chunk)
             note = out["reply"][:400]
@@ -787,7 +793,7 @@ async def ingest_many(user: dict, chosen: Chosen, batches: list[Batch]) -> dict:
         items = [item for _, item, _ in run]
         tags = [w["batch"].conversation for w, _, _ in run]
         brief = _brief(uid, "\n".join(i.text for i in items))
-        out = await assistant.run(user, chosen, _message(run[0][0]["batch"], items, school, tags=tags, brief=brief), [],
+        out = await assistant.run(user, chosen, _message(run[0][0]["batch"], items, school, tags=tags, brief=brief, uid=uid), [],
                                   transcript=True, filing=True)
         for w, _, _ in run:
             w["filed"] += 1

@@ -9,6 +9,7 @@ const MAX_OPEN = 60 // conversations opened per folder per refresh (a first scan
 // most of them again), and opening it shows the whole thread, so it is opened once.
 let opened = new Set()
 let maxOpen = MAX_OPEN
+const FIND_MS = 20000 // how long the list is scrolled looking for one email before the folder stops there
 
 function folderNode(name) {
   return [...document.querySelectorAll('[role="tree"] [role="treeitem"]')].find((t) => (t.getAttribute('title') || '').startsWith(`${name} - `))
@@ -114,13 +115,20 @@ async function readFolder(name, since, patience = 10000, screen = null) {
   const rows = screen ? all.filter((r) => screen.test(r.label)) : all
   const out = []
   let repeats = 0
-  for (const { id, at } of rows.slice(0, maxOpen)) {
+  let stuck = 0 // emails from the one that didn't open onward: left for the next refresh
+  const batch = rows.slice(0, maxOpen)
+  for (const [i, { id, at }] of batch.entries()) {
     if (opened.has(id)) {
       repeats++
       continue
     }
+    const opening = await openConversation(id, since)
+    if (opening === null) {
+      stuck = rows.length - i
+      break
+    }
     opened.add(id)
-    const text = ((await openConversation(id, since)) || '').trim()
+    const text = opening.trim()
     if (!document.querySelector('[role="listbox"] [role="option"]')) {
       throw new Error("Outlook's reading pane is turned off, so emails open over the list. In Outlook, choose View > Layout > " +
                       'Reading pane > Show on the right, then refresh again.')
@@ -130,12 +138,12 @@ async function readFolder(name, since, patience = 10000, screen = null) {
     if (!when || when <= since) continue
     out.push({ key: `${id}|${when}`, at: when, author: '', text: text.slice(0, 20000) }) // a whole thread, unfolded
   }
-  const more = Math.max(0, rows.length - maxOpen)
+  const more = stuck || Math.max(0, rows.length - maxOpen)
   // Every email it needed was opened (here or, for a conversation read in another folder, there): everything up to its
   // newest email has been looked at, including what a screened folder passed over.
   const seenUntil = !more ? all.map((r) => r.at).filter(Boolean).sort().slice(-1)[0] || '' : ''
   const note = `${all.length} new since ${since.slice(5, 16).replace('T', ' ')}` + (screen && all.length ? `, ${rows.length} about recruiting` : '') +
-    (repeats ? `, ${repeats} already read in another folder` : '')
+    (repeats ? `, ${repeats} already read in another folder` : '') + (stuck ? `, stopped at an email Outlook didn't open (${stuck} left for next time)` : '')
   return { items: out, more, note, seen_until: seenUntil }
 }
 
@@ -275,8 +283,9 @@ async function openConversation(id, since = '') {
   // first, then upward to the top, then downward to the end (a long backlog would take minutes to rescan from the top
   // for each email).
   let row = find()
+  const started = Date.now()
   for (const step of [-0.6, 0.6]) {
-    for (let k = 0; k < 300 && !row; k++) {
+    for (let k = 0; k < 300 && !row && Date.now() - started < FIND_MS; k++) {
       const s = listScroller()
       const before = s.scrollTop
       s.scrollTop += s.clientHeight * step
@@ -289,10 +298,15 @@ async function openConversation(id, since = '') {
   if (!row) return null
   const before = paneText()
   if (!rhqSafeClick(row, 'outlook-messages')) return null
+  let shown = false
   for (let w = 0; w < 20; w++) { // until the reading pane shows this conversation, not the last one
     await rhqSleep(400)
-    if (paneText() !== before && paneText().length > 40) break
+    if (paneText() !== before && paneText().length > 40) {
+      shown = true
+      break
+    }
   }
+  if (!shown) return null // Outlook never showed it (a slow connection): read again on the next refresh
   await settled()
   await unfoldNewer(since)
   await settled()
@@ -359,6 +373,16 @@ chrome.runtime.onMessage.addListener((msg, _sender, reply) => {
   }
   if (msg.type === 'outlook-scheduled') {
     scheduled(msg.since).then((items) => reply({ ok: true, items })).catch((e) => reply({ ok: false, error: String(e) }))
+    return true
+  }
+  if (msg.type === 'outlook-list-folders') {
+    (async () => {
+      if (!(await rhqWaitFor(() => document.querySelector('[role="tree"] [role="treeitem"]'), 30000))) {
+        throw new Error("Outlook's folder list didn't show.")
+      }
+      await expandAll()
+      return folders()
+    })().then((list) => reply({ ok: true, folders: list })).catch((e) => reply({ ok: false, error: String(e) }))
     return true
   }
   if (msg.type !== 'outlook-collect') return

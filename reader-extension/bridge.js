@@ -16,8 +16,8 @@ window.addEventListener('message', async (e) => {
   const { type } = e.data
   try {
     if (type === 'ping' || type === 'status') answer({ type: 'status', version: chrome.runtime.getManifest().version, ...(await status()) })
-    if (type === 'sync' || type === 'capiq' || type === 'thanks') {
-      chrome.runtime.sendMessage({ type: { capiq: 'capiq-now', thanks: 'thanks-now' }[type] || 'sync-now' }).catch(() => answer({ type: 'stale' }))
+    if (type === 'sync' || type === 'capiq' || type === 'thanks' || type === 'folders') {
+      chrome.runtime.sendMessage({ type: { capiq: 'capiq-now', thanks: 'thanks-now', folders: 'folders-now' }[type] || 'sync-now' }).catch(() => answer({ type: 'stale' }))
       answer({ type: 'status', version: chrome.runtime.getManifest().version, ...(await status()), busy: true })
     }
   } catch {
