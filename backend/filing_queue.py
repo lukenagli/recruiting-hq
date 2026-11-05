@@ -71,7 +71,10 @@ def status(uid: int) -> dict:
             "SELECT state, COUNT(*) AS n FROM filing_jobs WHERE user_id = ? AND refresh = ? AND kind != 'folders' GROUP BY state",
             (uid, last["refresh"]))}
         pending = conn.execute("SELECT COUNT(*) FROM filing_jobs WHERE user_id = ? AND state IN ('waiting', 'running')", (uid,)).fetchone()[0]
-    return {"refresh": last["refresh"], **{s: counts.get(s, 0) for s in ("waiting", "running", "done", "failed")}, "busy": pending > 0}
+        errors = [json.loads(r["result"] or "{}").get("error", "")[:200] for r in conn.execute(
+            "SELECT result FROM filing_jobs WHERE user_id = ? AND refresh = ? AND state = 'failed' ORDER BY id", (uid, last["refresh"]))]
+    return {"refresh": last["refresh"], **{s: counts.get(s, 0) for s in ("waiting", "running", "done", "failed")}, "busy": pending > 0,
+            "errors": errors}
 
 
 def _user(conn, uid: int) -> dict | None:
