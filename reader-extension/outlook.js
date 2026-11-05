@@ -293,9 +293,26 @@ async function openConversation(id, since = '') {
     await rhqSleep(400)
     if (paneText() !== before && paneText().length > 40) break
   }
-  await rhqSleep(600)
+  await settled()
   await unfoldNewer(since)
-  return paneText()
+  await settled()
+  return paneText().replace(/^\s*Summarize this email\s*$/gim, '') // Outlook's summary button, not part of any email
+}
+
+/** Outlook draws a conversation in steps: the subject (and its "Summarize this email" button) first, then each email's
+ *  sender and date, then the open email's "To:" line with its text. It counts as shown once the date stamp and the
+ *  "To:" line are there (or, for an email without one, 3 seconds have passed) and the text has stopped growing for a
+ *  moment; at most about 8 seconds. */
+async function settled() {
+  let last = -1
+  for (let w = 0, still = 0; w < 26 && still < 2; w++) {
+    await rhqSleep(300)
+    const text = paneText()
+    PANE_DATE.lastIndex = 0
+    const ready = PANE_DATE.test(text) && (/(^|\n)\s*To:/.test(text) || w >= 10)
+    still = ready && text.length === last ? still + 1 : 0
+    last = text.length
+  }
 }
 
 async function thankYous(since) {
