@@ -1248,6 +1248,15 @@ def trim_check(user: dict = Depends(admin_user)):
     return mail_trim.check(rows)
 
 
+@app.get("/api/admin/filing-messages")
+def filing_messages(n: int = 3, user: dict = Depends(admin_user)):
+    """What the reader's last few filing runs sent the model, for your own account (to trace a missed email)."""
+    with connect(read_only=True) as conn:
+        return [dict(r) for r in conn.execute(
+            """SELECT started_at, outcome, SUBSTR(user_message, 1, 60000) AS message, SUBSTR(reply, 1, 2000) AS reply FROM agent_runs
+               WHERE user_id = ? AND user_message LIKE 'New messages from %' ORDER BY id DESC LIMIT ?""", (user["id"], max(1, min(n, 10))))]
+
+
 @app.get("/api/admin/test-scan/compare")
 def test_scan_compare(user: dict = Depends(admin_user)):
     """What the test scan found against your own tracker: who and what it missed, and what it added."""
