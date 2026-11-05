@@ -238,7 +238,7 @@ function EarlyAccess({ initial }: { initial: string[] }) {
 
 type ScanStatus = {
   exists: boolean; active?: boolean; started_at?: string; people?: number; entries?: number; banks?: number; runs?: number; tokens?: number
-  refreshes?: number; emails_new?: number; emails_filed?: number; allowance_stops?: number
+  refreshes?: number; emails_new?: number; emails_filed?: number; allowance_stops?: number; finished?: boolean
 }
 
 /** A new student's first scan, tried on your own Outlook: your reader fills a test tracker instead of yours. */
@@ -259,21 +259,20 @@ function TestScan() {
     <section className="card admin-card">
       <h2>Test a first scan</h2>
       <p className="fine">
-        Your reader fills an empty test tracker, as a new student's first refresh does (everything since September 1, under a new
-        student's daily allowance), so you can see what it finds. Your own tracker isn't touched, but it doesn't update while the test
-        is on. Press Refresh on the home page to run it, as often as it says there's more to read.
+        Your reader fills an empty test tracker, as a new student's first refresh does (everything since September 1), so you can see
+        what it finds. Your own tracker isn't touched, but it doesn't update while the test is on. Press Refresh on the home page once to
+        run it (about half an hour); it switches back to your tracker when you stop it.
       </p>
       {data.exists && (
         <p className="notice">
-          {data.active ? 'On' : 'Stopped'} since {when(data.started_at || '')}: {data.refreshes} refreshes, {data.emails_filed} emails filed, {data.people} people
-          and {data.entries} entries at {data.banks} banks, {(data.tokens || 0).toLocaleString()} tokens
-          {data.allowance_stops ? `, stopped ${data.allowance_stops} times by the daily allowance` : ''}.
+          {data.finished ? 'Finished' : data.active ? 'On' : 'Stopped partway'}, started {when(data.started_at || '')}: {data.emails_filed} emails filed, {data.people} people
+          and {data.entries} entries at {data.banks} banks, {(data.tokens || 0).toLocaleString()} tokens.
         </p>
       )}
       <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center' }}>
         {!data.active && <button className="primary" disabled={busy} onClick={() => act('start')}>{data.exists ? 'Start over' : 'Start a test scan'}</button>}
         {data.active && <button className="primary" disabled={busy} onClick={() => act('stop')}>Stop: back to my tracker</button>}
-        {data.exists && !data.active && <button disabled={busy} onClick={() => act('resume')}>Carry on with this test</button>}
+        {data.exists && !data.active && !data.finished && <button disabled={busy} onClick={() => act('resume')}>Carry on with this test</button>}
         {data.exists && !data.active && <button className="link danger-link" disabled={busy} onClick={() => act('delete')}>Delete the test tracker</button>}
       </div>
     </section>

@@ -140,6 +140,9 @@ def status(owner: dict) -> dict:
         log = [dict(r) for r in conn.execute("SELECT at, conversation, received, new, filed, note FROM sync_log WHERE user_id = ? ORDER BY id",
                                              (sid,))] if "sync_log" in tables else []
         out = {"exists": True, "active": bool(row["active"]), "started_at": row["started_at"],
+               # the calendar is filed last, so once it has a checkpoint the first scan got all the way through
+               "finished": "sync_state" in tables and bool(conn.execute(
+                   "SELECT 1 FROM sync_state WHERE user_id = ? AND source = 'outlook' AND conversation = 'Calendar'", (sid,)).fetchone()),
                "people": count("SELECT COUNT(*) FROM people WHERE user_id = ?"),
                "entries": count("SELECT COUNT(*) FROM interactions WHERE user_id = ?"),
                "banks": count("SELECT COUNT(DISTINCT bank) FROM interactions WHERE user_id = ?"),
