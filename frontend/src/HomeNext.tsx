@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import type { AiSettings, BankSummary, CalendarItem, HomeData } from './api'
+import { useBullets } from './bullets'
 import { useDictation } from './dictation'
 import { ASK_EVENT } from './Assistant'
 import ClubFeed from './ClubFeed'
@@ -86,6 +87,7 @@ function AddChat({ banks, onAdded, onClose }: { banks: string[]; onAdded: (msg: 
   const [msg, setMsg] = useState('')
   const set = (k: keyof typeof blank) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => setF({ ...f, [k]: e.target.value })
   const dictation = useDictation((phrase) => setF((v) => ({ ...v, notes: `${v.notes}${v.notes && !/\s$/.test(v.notes) ? ' ' : ''}${phrase}` })))
+  const bullets = useBullets(f.notes, (notes) => setF((v) => ({ ...v, notes })))
   async function save(e: React.FormEvent) {
     e.preventDefault()
     dictation.stop()
@@ -125,7 +127,8 @@ function AddChat({ banks, onAdded, onClose }: { banks: string[]; onAdded: (msg: 
         </label>
       </div>
       <label>What you talked about / notes
-        <textarea rows={4} value={f.notes} onChange={set('notes')} placeholder={dictation.listening ? 'Listening…' : 'Their path, the group, advice, anything to follow up on'} />
+        <textarea rows={4} ref={bullets.ref} value={f.notes} onChange={bullets.onChange} onKeyDown={bullets.onKeyDown}
+          placeholder={dictation.listening ? 'Listening…' : 'Their path, the group, advice, anything to follow up on. Start a line with "- " for a bullet; Tab and Shift+Tab indent it.'} />
       </label>
       <div className="add-chat-actions">
         {dictation.supported && (
