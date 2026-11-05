@@ -777,13 +777,27 @@ def record_thank_you(ctx: RunContext[Deps], bank: str, entry_id: int, people: li
             if not hit:
                 return _refuse(ctx, "record_thank_you", args, f"None of {people} is listed on {entry['title']}: {sorted(there.values())}.")
             when = f"{date}T09:00:00"
+            day = f"{datetime.strptime(date, '%Y-%m-%d'):%a, %b} {int(date[8:])}"
+            own = body.strip()[:4000] if body.strip() and len(hit) == 1 else ""
+            if scheduled:
+                # A scheduled email is read from Outlook's Drafts list without opening it (opening it would let Outlook
+                # change it), so at most its first lines are seen; the full text comes from Sent Items once it sends.
+                note = f"Scheduled in Outlook to send {day}."
+                text = (f"{own}\n\n" if own else "") + (f"{note} The reader only sees the start of a scheduled email without "
+                                                          "opening it, so the full email shows here once it sends.")
+            else:
+                note = f"Sent from Outlook on {day}."
+                text = own or f"{note} (seen by the reader; the email stays in Outlook)"
             for pid in hit:
-                if not conn.execute("SELECT 1 FROM thank_you_drafts WHERE user_id = ? AND interaction_id = ? AND person_id = ? AND sent_at IS NOT NULL "
-                                    "AND sent_at != ''", (uid, entry_id, pid)).fetchone():
-                    note = f"{'Scheduled' if scheduled else 'Sent'} from Outlook on {date}."
-                    text = body.strip()[:4000] if body.strip() and len(hit) == 1 else note + " (seen by the reader; the email stays in Outlook)"
+                had = conn.execute("SELECT id, send_line, body FROM thank_you_drafts WHERE user_id = ? AND interaction_id = ? AND person_id = ? "
+                                   "AND sent_at IS NOT NULL AND sent_at != '' ORDER BY id DESC LIMIT 1", (uid, entry_id, pid)).fetchone()
+                if had is None:
                     conn.execute("""INSERT INTO thank_you_drafts (user_id, interaction_id, person_id, body, check_line, send_line, warnings, created_at, sent_at)
                                     VALUES (?, ?, ?, ?, '', ?, '[]', ?, ?)""", (uid, entry_id, pid, text, note, when, when))
+                elif not scheduled and own and (had["send_line"].startswith("Scheduled")
+                                                 or had["body"].endswith("(seen by the reader; the email stays in Outlook)")):
+                    # the scheduled one has sent (or one only noted before): its own text replaces the note
+                    conn.execute("UPDATE thank_you_drafts SET body = ?, send_line = ?, sent_at = ? WHERE id = ?", (own, note, when, had["id"]))
             thanked = {r[0] for r in conn.execute("SELECT person_id FROM thank_you_drafts WHERE user_id = ? AND interaction_id = ? "
                                                   "AND sent_at IS NOT NULL AND sent_at != ''", (uid, entry_id))}
             if set(there) <= thanked:

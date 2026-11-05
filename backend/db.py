@@ -423,6 +423,17 @@ def init_db() -> None:
             conn.execute("UPDATE calendar_items SET date = '2026-12-01', end = '2026-12-09', "
                          "detail = 'Superday interviews in early December, ending on BOOYa ranking day (Dec 9)' "
                          "WHERE title = 'Super Week' AND date = '2026-11-30'")
+            # A scheduled thank-you the reader saw before Nov 6, 2026 says so plainly (it was a bare note)
+            for row in conn.execute("SELECT id, send_line FROM thank_you_drafts WHERE send_line LIKE 'Scheduled from Outlook on %' "
+                                    "AND body LIKE '%(seen by the reader; the email stays in Outlook)'").fetchall():
+                day = row[1].removeprefix("Scheduled from Outlook on ").rstrip(".")
+                try:
+                    shown = f"{datetime.strptime(day, '%Y-%m-%d'):%a, %b} {int(day[8:])}"
+                except ValueError:
+                    shown = day
+                conn.execute("UPDATE thank_you_drafts SET body = ?, send_line = ? WHERE id = ?",
+                             (f"Scheduled in Outlook to send {shown}. The reader only sees the start of a scheduled email without "
+                              "opening it, so the full email shows here once it sends.", f"Scheduled in Outlook to send {shown}.", row[0]))
     finally:
         conn.close()
     _initialised_for = config.DB_PATH
