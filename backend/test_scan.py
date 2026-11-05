@@ -252,8 +252,14 @@ def compare(owner: dict) -> dict:
         mine, test = _tracker(conn, owner["id"]), _tracker(conn, row["sandbox_id"])
         p_origin, e_origin = _origins(conn, owner["id"])
     people_missing, people_found = [], 0
+    # the adjusted score leaves out what the owner put in by hand (typed, a roster), which no email could show
+    by_hand = lambda origin, came_from: came_from == "typed" or origin == "listed"  # noqa: E731
+    adj = {"people": [0, 0], "entries": [0, 0], "entries_unknown": [0, 0]}
     for p in mine["people"].values():
         hit = next((t for t in test["people"].values() if nz.bank(t["bank"]) == nz.bank(p["bank"]) and _same_person(p["name"], t["name"])), None)
+        if not by_hand(p["origin"], p_origin.get(p["id"], "")):
+            adj["people"][0] += 1
+            adj["people"][1] += bool(hit)
         if hit:
             people_found += 1
         else:
@@ -264,6 +270,13 @@ def compare(owner: dict) -> dict:
     used, entries_missing, entries_found, differences = set(), [], 0, []
     for e in mine["entries"]:
         hit = next((t for t in test["entries"] if t["id"] not in used and _same_entry(e, t)), None)
+        how = e_origin.get(e["id"], "")
+        if how != "typed":
+            adj["entries"][0] += 1
+            adj["entries"][1] += bool(hit)
+        if how == "":
+            adj["entries_unknown"][0] += 1
+            adj["entries_unknown"][1] += bool(hit)
         if hit:
             used.add(hit["id"])
             entries_found += 1
@@ -281,6 +294,7 @@ def compare(owner: dict) -> dict:
     out_mine = {b for b, a in mine["banks"].items() if a["status"] == "out"}
     out_test = {b for b, a in test["banks"].items() if a["status"] == "out"}
     return {"exists": True, "status": status(owner),
+            "adjusted": {k: {"mine": v[0], "found": v[1]} for k, v in adj.items()},
             "people": {"mine": len(mine["people"]), "test": len(test["people"]), "found": people_found,
                        "missing": sorted(people_missing, key=lambda p: (p["bank"], p["name"])),
                        "extra": sorted(people_extra, key=lambda p: (p["bank"], p["name"]))},
