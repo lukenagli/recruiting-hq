@@ -616,11 +616,15 @@ def setup_finish(user: dict = Depends(current_user)):
 # ---- The AI features (each checks the account's daily budget, then uses that account's own key) ----
 
 def ai_for(user: dict) -> llm.Chosen:
-    budget.check(user["id"])
     try:
-        return llm.model_for(user)
+        chosen = llm.model_for(user)
     except llm.NoModelError as err:
         raise HTTPException(status_code=428, detail=str(err))
+    # Preview: the daily allowance only guards the course key (the owner and the demo). Someone on their own key uses
+    # what they need, billed to them.
+    if chosen.provider == "course" or not accounts.in_preview_uid(user["id"]):
+        budget.check(user["id"])
+    return chosen
 
 class AssistantRequest(BaseModel):
     message: str

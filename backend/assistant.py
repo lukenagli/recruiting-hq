@@ -551,6 +551,14 @@ def save_entry(
                 if not person:
                     continue
                 pid = _person_id(conn, uid, person, bank)
+                elsewhere = None if pid is not None or not _in_preview(uid) else conn.execute(
+                    "SELECT bank FROM people WHERE user_id = ? AND name = ? COLLATE NOCASE AND bank != ?", (uid, person, bank)).fetchone()
+                if elsewhere:
+                    # Preview: someone named in a bank's update who is already at another bank (a 2Y who gave advice) is
+                    # not copied to this bank. save_person adds them here on purpose if they really are at both.
+                    did += (f". {person} is in the tracker at {elsewhere['bank']}, so they weren't added at {bank}: mention "
+                            f"them in the summary, or use save_person if they are at {bank} too")
+                    continue
                 if pid is None:
                     pid = conn.execute(
                         "INSERT INTO people (user_id, name, title, bank, grp, subgroup, email, outreach, origin, notes) VALUES (?, ?, '', ?, '', '', '', '', ?, '')",
@@ -737,7 +745,8 @@ def record_thank_you(ctx: RunContext[Deps], bank: str, entry_id: int, people: li
 @tool
 def remove_entry(ctx: RunContext[Deps], entry_id: int, reason: str) -> dict:
     """Remove an entry that doesn't belong on the student's map: a chat cancelled for good (no new time, or replaced by
-    a chat with someone else), or a scheduling step (sending an invite or a resume, booking a room, confirming a time).
+    a chat with someone else), a scheduling step (sending an invite or a resume, booking a room, confirming a time), or
+    a coffee chat request to someone whose chat is already logged.
     Never a chat, event or interview that happened.
 
     Args:
