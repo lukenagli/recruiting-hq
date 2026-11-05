@@ -111,10 +111,11 @@ ADDRESSES = {
 }
 
 
-# Formal firm names for the cover letter's recipient block: the entity that hires US bankers (its registered name).
+# Formal firm names for the cover letter's recipient block: the investment bank's registered US name (its broker-dealer, as
+# its parent's 10-K or 20-F, or FINRA, names it), not the listed parent (JPMorgan Chase & Co., Lazard, Inc.).
 LETTER_NAMES = {
     "Allen & Company": "Allen & Company LLC",
-    "BGL": "Brown Gibbons Lang & Company",
+    "BGL": "Brown, Gibbons, Lang & Company Securities, LLC",
     "BMO": "BMO Capital Markets Corp.",
     "BNP Paribas": "BNP Paribas Securities Corp.",
     "Baird": "Robert W. Baird & Co. Incorporated",
@@ -125,10 +126,10 @@ LETTER_NAMES = {
     "Centerview": "Centerview Partners LLC",
     "Citi": "Citigroup Global Markets Inc.",
     "Deutsche Bank": "Deutsche Bank Securities Inc.",
-    "Ducera": "Ducera Partners LLC",
+    "Ducera": "Ducera Securities LLC",
     "Evercore": "Evercore Group L.L.C.",
     "Goldman Sachs": "Goldman Sachs & Co. LLC",
-    "Gordon Dyal & Co.": "Gordon Dyal & Co. Advisory Group LP",
+    "Gordon Dyal & Co.": "Gordon Dyal & Co., LLC",
     "Greenhill": "Greenhill & Co., LLC",
     "Guggenheim": "Guggenheim Securities, LLC",
     "HSBC": "HSBC Securities (USA) Inc.",
