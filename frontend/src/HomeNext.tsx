@@ -77,10 +77,10 @@ function UpdateBar({ onAdd, added }: { onAdd: () => void; added: string }) {
   )
 }
 
-/** Add a coffee chat by hand: the day you spoke, who (name, bank, group, alum or not) and what you talked about.
+/** Add a coffee chat by hand: the day you spoke, who (name, role, bank, group, alum or not) and what you talked about.
  *  Saved straight to the tracker, no AI involved; it shows on that bank's Recruiting Map. */
 function AddChat({ banks, onAdded, onClose }: { banks: string[]; onAdded: (msg: string) => void; onClose: () => void }) {
-  const blank = { date: localToday(), name: '', bank: '', group: '', alum: '', notes: '' }
+  const blank = { date: localToday(), name: '', title: '', bank: '', group: '', alum: '', notes: '' }
   const [f, setF] = useState(blank)
   const [busy, setBusy] = useState(false)
   const [msg, setMsg] = useState('')
@@ -107,6 +107,10 @@ function AddChat({ banks, onAdded, onClose }: { banks: string[]; onAdded: (msg: 
       <div className="add-chat-row">
         <label>Date you spoke<input type="date" required value={f.date} onChange={set('date')} /></label>
         <label>Name<input required value={f.name} onChange={set('name')} placeholder="Jane Smith" /></label>
+        <label>Role<input list="add-chat-roles" value={f.title} onChange={set('title')} placeholder="Associate" /></label>
+        <datalist id="add-chat-roles">
+          {['Analyst', 'Associate', 'Vice President', 'Director', 'Managing Director', '2Y (second-year student)', 'Recruiter'].map((r) => <option key={r} value={r} />)}
+        </datalist>
       </div>
       <div className="add-chat-row">
         <label>Bank<input required list="add-chat-banks" value={f.bank} onChange={set('bank')} placeholder="Goldman Sachs" /></label>

@@ -135,7 +135,7 @@ def _op(conn, uid: int, op: dict) -> str:
 
 
 def add_chat(conn, uid: int, op: dict) -> str:
-    """A coffee chat the student enters by hand: the date they spoke, who (name, bank, group, alum or not) and their notes.
+    """A coffee chat the student enters by hand: the date they spoke, who (name, role, bank, group, alum or not) and their notes.
     The person is found or added at that bank, and the bank joins their list if it isn't on it. A chat with that person
     still waiting as a request or upcoming becomes this chat rather than a second one."""
     name, bank, day = nz.clean(op.get("name")), nz.bank(op.get("bank")), nz.clean(op.get("date"))
@@ -147,17 +147,20 @@ def add_chat(conn, uid: int, op: dict) -> str:
         raise EditError("A coffee chat needs the date you spoke (YYYY-MM-DD).") from None
     alum = {"yes": "yes", "no": "no"}.get(nz.clean(op.get("alum")).lower(), "")
     group, notes = nz.clean(op.get("group")), nz.clean(op.get("notes"))
+    title = nz.clean(op.get("title"))[:80]
+    if title.lower().startswith("2y"):
+        title = "2Y"  # a second-year student, as the tracker writes it
     conn.execute("INSERT OR IGNORE INTO my_banks (user_id, bank, applied, deadline, link, prefs, notes) VALUES (?, ?, '', '', '', '', '')", (uid, bank))
     found = conn.execute("SELECT id, name FROM people WHERE user_id = ? AND bank = ? AND LOWER(name) = LOWER(?)", (uid, bank, name)).fetchone()
     if found:
         pid, name = found["id"], found["name"]  # as the tracker already spells it
-        for col, val in (("grp", group), ("alum", alum)):
+        for col, val in (("grp", group), ("alum", alum), ("title", title)):
             if val:
                 conn.execute(f"UPDATE people SET {col} = ? WHERE id = ?", (val, pid))
     else:
         pid = conn.execute(
-            "INSERT INTO people (user_id, name, title, bank, grp, subgroup, email, outreach, origin, notes, alum) VALUES (?, ?, '', ?, ?, '', '', '', 'outreach', '', ?)",
-            (uid, name, bank, group, alum)).lastrowid
+            "INSERT INTO people (user_id, name, title, bank, grp, subgroup, email, outreach, origin, notes, alum) VALUES (?, ?, ?, ?, ?, '', '', '', 'outreach', '', ?)",
+            (uid, name, title, bank, group, alum)).lastrowid
     status = "done" if day <= datetime.now().strftime("%Y-%m-%d") else "upcoming"
     waiting = next((r for r in conn.execute(
         """SELECT i.id, i.kind, i.title FROM interactions i JOIN interaction_people ip ON ip.interaction_id = i.id
