@@ -356,7 +356,7 @@ function StartFork() {
         <a className="fork-choice" href="#/catch-up">
           <span className="fork-emoji" aria-hidden>📇</span>
           <strong>I've already been networking</strong>
-          <span>Bring in everyone you've talked to, one bank at a time. A few minutes per bank.</span>
+          <span>Refresh from Outlook brings in your chats and contacts from your email. Add anything that isn't in your email here, one bank at a time.</span>
         </a>
       </div>
     </section>

@@ -108,6 +108,7 @@ export default function App() {
         </header>
         <main>
           <Setup
+            preview={!!user.preview}
             onDone={() => {
               window.location.hash = '#/tour'
               loadSession()

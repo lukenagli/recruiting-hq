@@ -11,7 +11,7 @@ type SyncState = {
 }
 
 /** Preview: the Recruiting HQ Reader extension, which keeps the tracker up to date from Outlook email and calendar. */
-export default function ReaderSettings() {
+export default function ReaderSettings({ bare = false, onChange }: { bare?: boolean; onChange?: () => void }) {
   const { data, reload } = useApi<SyncState>('/api/sync/state')
   const [key, setKey] = useState('')
   const [copied, setCopied] = useState(false)
@@ -21,6 +21,7 @@ export default function ReaderSettings() {
     const out = await post<{ key: string }>('/api/sync/key', {})
     setKey(out.key)
     reload()
+    onChange?.()
   }
   async function turnOff() {
     await post('/api/sync/key/revoke', {})
@@ -29,11 +30,11 @@ export default function ReaderSettings() {
   }
 
   return (
-    <section className="card setup-card reader-card">
-      <h2>Outlook reader</h2>
+    <section className={bare ? 'reader-card' : 'card setup-card reader-card'}>
+      {!bare && <h2>Outlook reader</h2>}
       <p>
-        The Recruiting HQ Reader is a Chrome extension. When you press Refresh, it reads what's new in your Outlook email and calendar and
-        files it here. It never runs on its own. <strong>It can only read: it cannot send, reply, react or type anywhere, and while
+        {!bare && "The Recruiting HQ Reader is a Chrome extension. When you press Refresh, it reads what's new in your Outlook email and calendar and files it here. "}
+        It never runs on its own. <strong>It can only read: it cannot send, reply, react or type anywhere, and while
         it reads, Chrome blocks anything in Outlook that would.</strong>
       </p>
       <ol className="reader-steps">
@@ -66,9 +67,10 @@ export default function ReaderSettings() {
       {data.has_key && (
         <button className="link danger-link" onClick={turnOff}>Turn the reader off</button>
       )}
-      {data.has_key && <Refresh onDone={reload} />}
-      {data.has_key && <OutlookFolders key={data.log[0]?.at ?? ''} />}
-      {data.log.length > 0 && (
+      {bare && data.has_key && <p className="fine">Once the key is pasted into the Reader and saved, you're set. You'll press Refresh on your homepage after setup.</p>}
+      {!bare && data.has_key && <Refresh onDone={reload} />}
+      {!bare && data.has_key && <OutlookFolders key={data.log[0]?.at ?? ''} />}
+      {!bare && data.log.length > 0 && (
         <>
           <h4>Recent syncs</h4>
           <ul className="reader-log">

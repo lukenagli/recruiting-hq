@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { post, upload } from './api'
+import ReaderSettings from './ReaderSettings'
 import { CoverTemplate, EmailTemplates } from './Templates'
 import type { SetupState } from './api'
 import { Loading, Logo, useApi } from './ui'
@@ -11,6 +12,8 @@ import { Loading, Logo, useApi } from './ui'
  */
 
 const STEPS = ['AI key', 'Resume', 'Banks', 'Templates', 'Done']
+// Preview: the Outlook reader is a step of its own, before Done
+const PREVIEW_STEPS = ['AI key', 'Resume', 'Banks', 'Templates', 'Outlook', 'Done']
 
 const PROVIDERS = [
   {
@@ -299,13 +302,35 @@ function TemplatesStep({ s, next, back, reload }: { s: SetupState; next: () => v
   )
 }
 
-function DoneStep({ s, back, finish }: { s: SetupState; back: () => void; finish: () => void }) {
+function ReaderStep({ next, back }: { next: () => void; back: () => void }) {
+  const { data, reload } = useApi<{ has_key: boolean }>('/api/sync/state')
+  return (
+    <>
+      <h2>Connect your Outlook</h2>
+      <p className="setup-why">
+        This is what keeps your tracker up to date. The Recruiting HQ Reader, a Chrome extension, reads your Outlook email and calendar when
+        you press Refresh and logs every coffee chat, event, person and thank-you here. It uses your AI key, so add that first. Do this on
+        your laptop in Chrome; it takes about five minutes.
+      </p>
+      <ReaderSettings bare onChange={reload} />
+      <Nav step={4} onBack={back}>
+        <button className={data?.has_key ? 'primary' : 'ghost'} onClick={next}>
+          {data?.has_key ? 'Continue' : 'Skip for now'}
+        </button>
+      </Nav>
+    </>
+  )
+}
+
+function DoneStep({ s, back, finish, preview }: { s: SetupState; back: () => void; finish: () => void; preview: boolean }) {
+  const reader = useApi<{ has_key: boolean }>(preview ? '/api/sync/state' : '/api/setup')
   const items: [keyof SetupState['done'], string, string][] = [
     ['ai', 'AI connected', s.ai.ready ? (s.ai.provider_label || 'Site key') : 'Grading, letters and emails stay off until you add a key in Settings'],
     ['resume', 'Resume', s.profile.has_resume ? 'Uploaded' : 'Add it in Settings before writing cover letters'],
     ['banks', 'Banks', s.banks.length ? s.banks.join(', ') : 'Add banks any time from the Recruiting Map'],
     ['templates', 'Cover letter template', s.cover_template.has_template ? s.cover_template.filename : 'Using the Yale SOM template'],
   ]
+  const readerOn = preview && !!reader.data?.has_key
   return (
     <>
       <h2>You're all set</h2>
@@ -319,11 +344,30 @@ function DoneStep({ s, back, finish }: { s: SetupState; back: () => void; finish
             </span>
           </li>
         ))}
+        {preview && (
+          <li className={readerOn ? 'ok' : ''}>
+            <b aria-hidden>{readerOn ? '✓' : '–'}</b>
+            <span>
+              <strong>Outlook reader</strong>
+              <small>{readerOn ? 'Reader key made' : 'Set it up any time in Settings, on your laptop in Chrome'}</small>
+            </span>
+          </li>
+        )}
       </ul>
+      {preview ? (
+        <p className="setup-why">
+          {readerOn
+            ? 'Next, press ↻ Refresh from Outlook on your homepage. The first one reads your email and calendar back to September 1 and fills in your tracker, so it takes a while; after that a refresh takes a minute or two. '
+            : ''}
+          Tell the "Anything happen?" box on your homepage about anything that isn't in your email, in plain words or by voice. A two-minute
+          tour shows you everything else.
+        </p>
+      ) : (
       <p className="setup-why">
         From here, tell the "Anything happen?" box on your homepage about every coffee chat or event, in plain words or by voice. It keeps your map,
         thank-you emails and cover letters up to date. Next, a two-minute tour shows you everything else.
       </p>
+      )}
       <Nav step={4} onBack={back}>
         <button className="primary big" onClick={finish}>
           Show me around
@@ -333,7 +377,8 @@ function DoneStep({ s, back, finish }: { s: SetupState; back: () => void; finish
   )
 }
 
-export default function Setup({ onDone }: { onDone: () => void }) {
+export default function Setup({ onDone, preview = false }: { onDone: () => void; preview?: boolean }) {
+  const steps = preview ? PREVIEW_STEPS : STEPS
   const { data, error, reload } = useApi<SetupState>('/api/setup')
   const [step, setStep] = useState(-1)
   const [version, setVersion] = useState(0)
@@ -369,8 +414,8 @@ export default function Setup({ onDone }: { onDone: () => void }) {
 
   return (
     <div className="setup">
-      <div className="setup-progress" aria-label={`Step ${step + 1} of ${STEPS.length}`}>
-        {STEPS.map((label, i) => (
+      <div className="setup-progress" aria-label={`Step ${step + 1} of ${steps.length}`}>
+        {steps.map((label, i) => (
           <button key={label} className={i === step ? 'on' : i < step ? 'past' : ''} onClick={() => go(i)}>
             <i />
             <span>{label}</span>
@@ -382,7 +427,8 @@ export default function Setup({ onDone }: { onDone: () => void }) {
         {step === 1 && <ResumeStep s={data} next={next} back={back} reload={reload} />}
         {step === 2 && <BanksStep s={data} next={next} back={back} />}
         {step === 3 && <TemplatesStep s={data} next={next} back={back} reload={reload} />}
-        {step === 4 && <DoneStep s={data} back={back} finish={finish} />}
+        {preview && step === 4 && <ReaderStep next={next} back={back} />}
+        {step === steps.length - 1 && <DoneStep s={data} back={back} finish={finish} preview={preview} />}
       </div>
     </div>
   )
