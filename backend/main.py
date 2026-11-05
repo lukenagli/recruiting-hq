@@ -16,12 +16,21 @@ from starlette.background import BackgroundTask
 
 from . import banks as banks_info
 from . import tracker_edits
+from . import filing_queue, scan_cleanup
 from . import accounts, assistant, attachments, auth, budget, capiq, catch_up, config, cover_letters, deal_docs, deal_recs, deal_sources, deals, importer, legal, llm, market, network, onboarding, practice, profile, schools, reference, research, shared, stars, sync, templates, test_scan, thank_backfill, thank_you, transfer, user_keys
 from .auth import admin_user, current_user
 from .db import connect, init_db
 from .llm import get_model, usage_dict
 
 app = FastAPI(title="Recruiting HQ")
+
+
+@app.on_event("startup")
+async def start_filing_worker():
+    """Preview: the reader's filing runs in the background here (filing_queue), so a student needn't wait for it."""
+    import asyncio
+
+    app.state.filing_worker = asyncio.create_task(filing_queue.worker())
 app.add_middleware(
     CORSMiddleware,
     allow_origins=config.FRONTEND_ORIGINS,
@@ -781,7 +790,8 @@ def sync_state(user: dict = Depends(reader_user)):
     # start_from: an account's first sync goes back to the start of fall recruiting, not just to when it was set up.
     return {**sync.state(user["id"]), "ai_left": 0 if budget.filing_stuck(user["id"]) else 1,
             "outlook_only": True, "start_from": sync.first_start(user["id"]), "combine": True,
-            "calendar_from": sync.calendar_from(user["id"]), "test_scan": bool(user.get("test_of"))}
+            "calendar_from": sync.calendar_from(user["id"]), "test_scan": bool(user.get("test_of")), "queue": True,
+            "filing_busy": filing_queue.status(user["id"])["busy"]}
 
 
 @app.get("/api/reader/questions")
@@ -852,6 +862,52 @@ async def sync_ingest_many(req: Batches, user: dict = Depends(reader_user)):
     if any(b.source != "outlook" for b in req.batches) or sum(len(b.items) for b in req.batches) > 400:
         raise HTTPException(status_code=400, detail="Outlook folders only, and at most 400 emails at once.")
     return await sync.ingest_many(user, reader_ai(user), req.batches)
+
+
+class QueueJob(BaseModel):
+    refresh: str = Field(min_length=1, max_length=40)
+    kind: str
+    batches: list[sync.Batch] = Field(default_factory=list, max_length=60)
+    batch: sync.Batch | None = None
+    listed: list[str] = Field(default_factory=list)
+    read: list[dict] = Field(default_factory=list)
+    skipped: list[str] = Field(default_factory=list)
+    first_scan: bool = False
+
+
+@app.post("/api/sync/queue")
+def sync_queue(req: QueueJob, user: dict = Depends(reader_user)):
+    """Reader 1.21: hand over what was read, to be filed in the background (the reader's window can close at once)."""
+    if req.kind == "mail" and (any(b.source != "outlook" for b in req.batches) or sum(len(b.items) for b in req.batches) > 400):
+        raise HTTPException(status_code=400, detail="Outlook folders only, and at most 400 emails at once.")
+    if req.kind == "calendar" and (req.batch is None or len(req.batch.items) > 400):
+        raise HTTPException(status_code=400, detail="A calendar job needs its events (at most 400).")
+    if req.kind in ("mail", "calendar"):
+        reader_ai(user)  # no key, or the guard against a fault: say so now, while the reader is still open
+    payload = {"mail": lambda: {"batches": [b.model_dump() for b in req.batches]},
+               "calendar": lambda: {"batch": req.batch.model_dump()},
+               "folders": lambda: {"listed": req.listed, "read": req.read, "skipped": req.skipped},
+               "finish": lambda: {"first_scan": req.first_scan}}.get(req.kind)
+    if payload is None:
+        raise HTTPException(status_code=400, detail="Unknown kind.")
+    return filing_queue.add(user, req.refresh, req.kind, payload())
+
+
+@app.get("/api/sync/filing")
+def sync_filing(user: dict = Depends(reader_user)):
+    """How far the background filing of the latest refresh has got."""
+    return filing_queue.status(user["id"])
+
+
+@app.get("/api/reader/review")
+def reader_review(user: dict = Depends(preview_user)):
+    """After your first scan: what it found, bank by bank, to look over once."""
+    return scan_cleanup.review(user["id"])
+
+
+@app.post("/api/reader/review/done")
+def reader_review_done(user: dict = Depends(preview_user)):
+    return scan_cleanup.review_done(user["id"])
 
 
 @app.post("/api/assistant/undo")

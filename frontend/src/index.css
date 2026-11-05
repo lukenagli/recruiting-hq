@@ -1455,3 +1455,12 @@ main h1 { text-shadow: 0 2px 16px rgba(4, 10, 26, 0.5); }
 .reader-questions li { display: flex; gap: 12px; justify-content: space-between; align-items: baseline; padding: 8px 0; border-top: 1px solid var(--line); }
 .reader-questions .rq-actions { display: flex; gap: 12px; flex: none; }
 @media (max-width: 760px) { .reader-questions li { flex-direction: column; gap: 4px; } }
+
+/* Preview: looking over a first scan */
+.scan-review { margin-bottom: 16px; }
+.scan-review-bank { border-top: 1px solid var(--line); padding: 8px 0; }
+.scan-review-bank summary { cursor: pointer; display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; }
+.scan-review-bank ul { list-style: none; padding: 0; margin: 6px 0 0; }
+.scan-review-bank li { display: flex; gap: 12px; justify-content: space-between; align-items: baseline; padding: 6px 0 6px 12px; }
+.scan-review-done { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; margin-top: 12px; }
+@media (max-width: 760px) { .scan-review-bank li { flex-direction: column; gap: 4px; padding-left: 4px; } }

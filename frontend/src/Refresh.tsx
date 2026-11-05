@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { get } from './api'
 import { useApi, usePreview } from './ui'
 
 /**
@@ -111,6 +112,40 @@ export function ThanksCatchUp({ onDone }: { onDone?: () => void }) {
   )
 }
 
+type Filing = { waiting: number; running: number; done: number; failed: number; busy: boolean }
+
+/** Preview: Recruiting HQ files what the reader read in the background; this follows it until it's done. */
+function useFiling(on: boolean, readerBusy: boolean, onDone?: () => void) {
+  const [filing, setFiling] = useState<Filing | null>(null)
+  useEffect(() => {
+    if (!on || readerBusy) return
+    let stop = false
+    let wasBusy = false
+    let timer: ReturnType<typeof setTimeout> | undefined
+    const look = async () => {
+      try {
+        const f = await get<Filing>('/api/sync/filing')
+        if (stop) return
+        setFiling(f)
+        if (f.busy) wasBusy = true
+        else if (wasBusy) {
+          wasBusy = false
+          onDone?.()
+        }
+        if (f.busy) timer = setTimeout(look, 4000)
+      } catch {
+        if (!stop) timer = setTimeout(look, 10000)
+      }
+    }
+    look()
+    return () => {
+      stop = true
+      if (timer) clearTimeout(timer)
+    }
+  }, [on, readerBusy]) // eslint-disable-line react-hooks/exhaustive-deps
+  return filing
+}
+
 export default function Refresh({ onDone }: { onDone?: () => void }) {
   const { status, installed, stale, checked, sync } = useReader()
   const preview = usePreview()
@@ -121,6 +156,8 @@ export default function Refresh({ onDone }: { onDone?: () => void }) {
   const [confirming, setConfirming] = useState(false)
   const [wasBusy, setWasBusy] = useState(false)
   const busy = !!status?.busy
+  const filing = useFiling(preview && !!status?.has_key, busy, onDone)
+  const filingBusy = !!filing?.busy
   useEffect(() => {
     if (busy) setWasBusy(true)
     if (!busy && wasBusy) {
@@ -201,14 +238,34 @@ export default function Refresh({ onDone }: { onDone?: () => void }) {
     )
   return (
     <div className="refresh">
-      {busy ? (
+      {!busy && filingBusy ? (
+        <div className="refresh-warning working">
+          <p>
+            <strong>Reading is done; filing it now.</strong> Recruiting HQ is going through what the reader found and logging your chats,
+            events, people and thank-yous. You can close Chrome or the laptop: it carries on without you, and your tracker fills in as it goes.
+          </p>
+          {filing && (
+            <div className="reader-progress" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-label="Filing progress"
+              aria-valuenow={Math.round((100 * filing.done) / Math.max(1, filing.done + filing.waiting + filing.running))}>
+              <div className="reader-progress-track">
+                <i style={{ width: `${Math.max(3, Math.round((100 * filing.done) / Math.max(1, filing.done + filing.waiting + filing.running)))}%` }} />
+              </div>
+              <small>Filed {filing.done} of {filing.done + filing.waiting + filing.running} batches</small>
+            </div>
+          )}
+        </div>
+      ) : busy ? (
         <div className="refresh-warning working">
           <p>
             <strong>Refreshing…</strong>{' '}
             {preview
               ? "A Chrome window is reading your Outlook calendar and email. Leave it in front and don't click in it; it closes on its own when it's done"
               : "Two Chrome windows, side by side, are reading your Outlook email and calendar. Leave them in front and don't click in them; they close on their own when they're done"}
-            {firstSync ? `. This first one reaches back to September 1, so it can take ${preview ? 'about half an hour' : '10 to 20 minutes'}.` : ', usually within a minute or two.'}
+            {firstSync
+              ? preview
+                ? '. This first one reaches back to September 1: reading takes about 10 to 15 minutes, then the window closes and the rest happens without you.'
+                : '. This first one reaches back to September 1, so it can take 10 to 20 minutes.'
+              : ', usually within a minute or two.'}
           </p>
           <ReaderProgress status={status} />
         </div>
@@ -220,7 +277,9 @@ export default function Refresh({ onDone }: { onDone?: () => void }) {
               ? "the reader opens a Chrome window over yours to read your Outlook calendar and email. Chrome only reads what's on screen, so leave it in front while it works; it closes itself when it's done."
               : "the reader opens two Chrome windows side by side to read your Outlook email and calendar. Chrome only reads what's on screen, so leave them in front while they work; they close themselves when they're done."}{' '}
             {firstSync
-              ? `This first refresh reads everything since September 1 (every folder, however you organize them), so it can take ${preview ? 'about half an hour' : '10 to 20 minutes'}; after that, a refresh takes a minute or two.`
+              ? preview
+                ? 'This first refresh reads everything since September 1 (every folder, however you organize them). Reading takes about 10 to 15 minutes; after that the window closes, you can close the laptop, and Recruiting HQ files it in the background. Later refreshes take a minute or two.'
+                : 'This first refresh reads everything since September 1 (every folder, however you organize them), so it can take 10 to 20 minutes; after that, a refresh takes a minute or two.'
               : 'It usually takes a minute or two.'}{' '}
             It only reads: it never sends, replies or reacts.
           </p>

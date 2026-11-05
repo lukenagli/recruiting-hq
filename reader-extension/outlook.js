@@ -4,7 +4,11 @@
 // presses keys, never opens a reply or compose box, and never clicks anything in an email.
 
 const PANE_DATE = /(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun) (\d{1,2}\/\d{1,2}\/\d{4}) (\d{1,2}:\d{2} [AP]M)/g
-const MAX_OPEN = 60 // conversations opened per folder per refresh
+const MAX_OPEN = 60 // conversations opened per folder per refresh (a first scan asks for more, so it reads in one pass)
+// Conversations opened this refresh: one conversation shows in every folder holding one of its emails (Sent Items has
+// most of them again), and opening it shows the whole thread, so it is opened once.
+let opened = new Set()
+let maxOpen = MAX_OPEN
 
 function folderNode(name) {
   return [...document.querySelectorAll('[role="tree"] [role="treeitem"]')].find((t) => (t.getAttribute('title') || '').startsWith(`${name} - `))
@@ -109,7 +113,13 @@ async function readFolder(name, since, patience = 10000, screen = null) {
   const all = await newRows(since, new Date(since.slice(0, 10) + 'T00:00:00'))
   const rows = screen ? all.filter((r) => screen.test(r.label)) : all
   const out = []
-  for (const { id, at } of rows.slice(0, MAX_OPEN)) {
+  let repeats = 0
+  for (const { id, at } of rows.slice(0, maxOpen)) {
+    if (opened.has(id)) {
+      repeats++
+      continue
+    }
+    opened.add(id)
     const text = ((await openConversation(id, since)) || '').trim()
     if (!document.querySelector('[role="listbox"] [role="option"]')) {
       throw new Error("Outlook's reading pane is turned off, so emails open over the list. In Outlook, choose View > Layout > " +
@@ -120,10 +130,12 @@ async function readFolder(name, since, patience = 10000, screen = null) {
     if (!when || when <= since) continue
     out.push({ key: `${id}|${when}`, at: when, author: '', text: text.slice(0, 20000) }) // a whole thread, unfolded
   }
-  const more = Math.max(0, rows.length - MAX_OPEN)
-  // A screened folder whose matching emails were all opened: everything up to its newest email has been looked at.
-  const seenUntil = screen && !more ? all.map((r) => r.at).filter(Boolean).sort().slice(-1)[0] || '' : ''
-  const note = `${all.length} new since ${since.slice(5, 16).replace('T', ' ')}` + (screen && all.length ? `, ${rows.length} about recruiting` : '')
+  const more = Math.max(0, rows.length - maxOpen)
+  // Every email it needed was opened (here or, for a conversation read in another folder, there): everything up to its
+  // newest email has been looked at, including what a screened folder passed over.
+  const seenUntil = !more ? all.map((r) => r.at).filter(Boolean).sort().slice(-1)[0] || '' : ''
+  const note = `${all.length} new since ${since.slice(5, 16).replace('T', ' ')}` + (screen && all.length ? `, ${rows.length} about recruiting` : '') +
+    (repeats ? `, ${repeats} already read in another folder` : '')
   return { items: out, more, note, seen_until: seenUntil }
 }
 
@@ -333,6 +345,8 @@ chrome.runtime.onMessage.addListener((msg, _sender, reply) => {
     return true
   }
   if (msg.type !== 'outlook-collect') return
+  opened = new Set()
+  maxOpen = Math.max(MAX_OPEN, Math.min(600, Number(msg.max_open) || 0))
   answerLater(msg, reply, async () => {
     if (!(await rhqWaitFor(() => document.querySelector('[role="tree"] [role="treeitem"]'), 30000))) {
       throw new Error(`Outlook's folder list didn't show (window ${window.innerWidth}×${window.innerHeight}, ${document.visibilityState}), so nothing was read.`)

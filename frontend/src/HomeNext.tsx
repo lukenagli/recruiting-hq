@@ -250,6 +250,69 @@ function Todos({ d, out, onChanged }: { d: HomeData; out: Set<string>; onChanged
   )
 }
 
+type ReviewEntry = { id: number; kind: string; title: string; date: string; status: string; people: string | null }
+type Review = { ready: boolean; banks?: { bank: string; people: number; entries: ReviewEntry[] }[] }
+const KIND_LABEL: Record<string, string> = { coffee_chat: 'Coffee chat', event: 'Event', interview: 'Interview' }
+
+/** After a first scan: everything it found, bank by bank, to look over once. Anything wrong is fixed or removed here. */
+function FirstScanReview({ onChanged }: { onChanged: () => void }) {
+  const { data, reload } = useApi<Review>('/api/reader/review')
+  const [removing, setRemoving] = useState<number | null>(null)
+  const [removed, setRemoved] = useState<Set<number>>(new Set())
+  if (!data?.ready || !data.banks?.length) return null
+  async function remove(e: ReviewEntry) {
+    await post('/api/tracker/edits', { note: `Removed after the first scan: ${e.title}`, ops: [{ op: 'delete_entry', id: e.id }] })
+    setRemoved((s) => new Set(s).add(e.id))
+    setRemoving(null)
+    onChanged()
+  }
+  async function done() {
+    await post('/api/reader/review/done', {})
+    reload()
+  }
+  const left = (b: { entries: ReviewEntry[] }) => b.entries.filter((e) => !removed.has(e.id))
+  const total = data.banks.reduce((n, b) => n + left(b).length, 0)
+  return (
+    <section className="dash-card scan-review">
+      <h2>Check what your first scan found <span className="count">{total}</span></h2>
+      <p className="muted">
+        The reader logged these from your email and calendar. Take two minutes to look them over: fix anything that's off (a wrong date or
+        name) and remove anything that didn't happen. Your thank-you drafts and cover letters are built from this.
+      </p>
+      {data.banks.map((b) => (
+        <details key={b.bank} className="scan-review-bank">
+          <summary>
+            <strong>{b.bank}</strong> <span className="muted">{left(b).length} logged · {b.people} {b.people === 1 ? 'person' : 'people'}</span>
+          </summary>
+          <ul>
+            {left(b).map((e) => (
+              <li key={e.id}>
+                <span>
+                  <b>{KIND_LABEL[e.kind] ?? e.kind}</b> {e.date ? fmtDate(e.date) : 'no date'}
+                  {e.kind === 'coffee_chat' && e.people ? ` · ${e.people}` : ` · ${e.title}${e.people ? ` (${e.people})` : ''}`}
+                  {e.status === 'upcoming' && <small className="muted"> (coming up)</small>}
+                </span>
+                <span className="rq-actions">
+                  <button type="button" className="link" onClick={() => ask({ draft: `Fix the ${(KIND_LABEL[e.kind] ?? e.kind).toLowerCase()} "${e.title}" (${b.bank}, ${e.date || 'no date'}): ` })}>Fix</button>
+                  {removing === e.id ? (
+                    <button type="button" className="link danger-link" onClick={() => remove(e)}>Sure? Remove</button>
+                  ) : (
+                    <button type="button" className="link muted" onClick={() => setRemoving(e.id)}>Remove</button>
+                  )}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </details>
+      ))}
+      <div className="scan-review-done">
+        <button type="button" className="primary" onClick={done}>Looks right</button>
+        <small className="muted">Anything you remove can be put back with Undo in the assistant.</small>
+      </div>
+    </section>
+  )
+}
+
 /** What the reader couldn't file without the student: answering opens the assistant with the question filled in. */
 function ReaderQuestions() {
   const { data, reload } = useApi<{ id: number; asked_at: string; question: string }[]>('/api/reader/questions')
@@ -421,6 +484,7 @@ export default function HomeNext({ name }: { name: string }) {
             onAdded={(msg) => { setAdded(msg); setAdding(false); api.reload(); banks.reload() }} />
         )}
         <Refresh onDone={() => { api.reload(); banks.reload() }} />
+        <FirstScanReview onChanged={() => { api.reload(); banks.reload() }} />
         <ReaderQuestions />
         {ai.data && !ai.data.ready && (
           <a className="notice key-callout" href="#/settings">

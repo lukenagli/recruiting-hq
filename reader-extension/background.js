@@ -307,6 +307,20 @@ chrome.runtime.onMessage.addListener((msg, sender, reply) => {
 let filing = Promise.resolve()
 let runBaseline = '' // this refresh's starting line (a test scan's own, not the one kept in storage)
 let outOfAI = false
+// Recruiting HQ 1.21+ files in the background (state.queue): what was read is handed over at once and the reader's
+// window closes as soon as reading is done; the student can close the laptop while the site files it.
+let queueMode = false
+let refreshId = ''
+let handed = { emails: 0, events: 0 }
+
+async function enqueue(kind, body) {
+  try {
+    return await api('/api/sync/queue', { refresh: refreshId, kind, ...body })
+  } catch (e) {
+    if (/ 429 /.test(String(e.message))) outOfAI = true
+    throw e
+  }
+}
 function file(batch, lines) {
   const run = filing.then(() => fileNow(batch, lines))
   filing = run.catch(() => undefined)
@@ -316,6 +330,12 @@ function file(batch, lines) {
 async function fileNow(batch, lines) {
   if (outOfAI || (!batch.items.length && !batch.seen_until)) return
   const baseline = runBaseline || (await chrome.storage.local.get('baseline')).baseline
+  if (queueMode) {
+    const calendar = batch.conversation === 'Calendar'
+    await enqueue(calendar ? 'calendar' : 'mail', calendar ? { batch: { ...batch, baseline } } : { batches: [{ ...batch, baseline }] })
+    handed[calendar ? 'events' : 'emails'] += batch.items.length
+    return true
+  }
   try {
     const out = await api('/api/sync/ingest', { ...batch, baseline })
     if (batch.items.length) lines.push(`${batch.source} · ${batch.conversation}: ${out.new} new, ${out.filed} filed. ${out.note || ''}`.trim())
@@ -366,6 +386,11 @@ function releaseHeld(filings, lines) {
 async function fileManyNow(batches, lines) {
   if (outOfAI) return
   const baseline = runBaseline || (await chrome.storage.local.get('baseline')).baseline
+  if (queueMode) {
+    await enqueue('mail', { batches: batches.map((b) => ({ ...b, baseline })) })
+    handed.emails += batches.reduce((n, b) => n + b.items.length, 0)
+    return true
+  }
   try {
     const out = await api('/api/sync/ingest-many', { batches: batches.map((b) => ({ ...b, baseline })) })
     out.results.forEach((r, i) => {
@@ -508,7 +533,8 @@ async function syncOutlook(state, lines, first = true, last = true) {
   unfiled = new Set()
   const msg = { type: 'outlook-collect', checkpoints: state.checkpoints.outlook || {}, baseline: state.baseline,
                 watch: (state.outlook || {}).watch || [], screen: (state.outlook || {}).screen || '',
-                plan: (state.outlook || {}).plan || {} }
+                plan: (state.outlook || {}).plan || {},
+                max_open: queueMode && state.start_from ? 400 : 0 } // a first scan reads each folder in one pass
   const started = Date.now()
   let tab = null
   let result = null
@@ -576,11 +602,12 @@ async function syncOutlook(state, lines, first = true, last = true) {
     // Recruiting HQ keeps track of which folders hold recruiting mail, to skip the ones that never do. A folder only
     // counts as looked through once what was read there is filed (not when the day's AI allowance ran out).
     const looked = outOfAI ? [] : (result.read || []).filter((r) => !unfiled.has(r.name))
-    await api('/api/sync/folders', { listed: result.listed, read: looked, skipped })
+    // in the background, after this refresh's filing (a folder whose filing fails there isn't counted)
+    await (queueMode ? enqueue('folders', { listed: result.listed, read: looked, skipped }) : api('/api/sync/folders', { listed: result.listed, read: looked, skipped }))
       .catch((e) => lines.push(`Outlook folders: not recorded (${e.message || e}).`))
   }
   lines.push(`Outlook${first ? '' : ' catch-up round'} timing: read ${read.length} folders${first ? ' and the calendar' : ''} in ` +
-             `${took(readIn)}; filing finished ${took(Date.now() - started - readIn)} after reading did.`)
+             `${took(readIn)}; ` + (queueMode ? 'handed to Recruiting HQ to file in the background.' : `filing finished ${took(Date.now() - started - readIn)} after reading did.`))
   return waiting
 }
 
@@ -591,17 +618,27 @@ async function syncOutlookFully(state, lines) {
   let current = state
   laterCalendar = null
   try {
-    for (let round = 0; round < OUTLOOK_ROUNDS; round++) {
-      const waiting = await syncOutlook(current, lines, round === 0, round === OUTLOOK_ROUNDS - 1)
+    // In the background mode there is one round: the checkpoints only move once the site has filed what was read, so a
+    // second round would read the same mail again. A first scan reads each folder in full (max_open) instead.
+    const rounds = queueMode ? 1 : OUTLOOK_ROUNDS
+    for (let round = 0; round < rounds; round++) {
+      const waiting = await syncOutlook(current, lines, round === 0, round === rounds - 1)
       if (!waiting || outOfAI) break
       await report('outlook', 0.5, `Catching up on older email: ${waiting} more conversations (round ${round + 2})`)
       current = { ...(await api('/api/sync/state')), baseline: state.baseline }
     }
     if (laterCalendar && !outOfAI) {
-      await report('outlook', 0.95, 'Filing your calendar')
+      await report('outlook', 0.95, queueMode ? 'Handing over your calendar' : 'Filing your calendar')
       const filings = []
       fileSoon(filings, laterCalendar.batch, lines, laterCalendar.done)
       await Promise.allSettled(filings)
+    }
+    if (queueMode && !outOfAI) {
+      // last in the queue: tidy up (the same person under two names, a chat logged twice) and, after a first scan,
+      // ask the student to look it over
+      await enqueue('finish', { first_scan: !!state.start_from }).catch((e) => lines.push(`Tidy-up: not queued (${e.message || e}).`))
+      lines.push(`Handed ${handed.emails} email${handed.emails === 1 ? '' : 's'}` + (handed.events ? ` and ${handed.events} calendar events` : '') +
+                 ' to Recruiting HQ, which files them in the background. You can close Chrome or the laptop now.')
     }
   } finally {
     await closeReader() // in case a round stopped before its own close
@@ -734,6 +771,9 @@ async function syncAll() {
     if (state.ai_left === 0) {
       return lines.push("Not started: today's AI allowance is used up, so nothing could be filed. Refresh again after midnight.")
     }
+    if (state.filing_busy) { // the last refresh is still being filed: reading now would read the same mail again
+      return lines.push('Not started: Recruiting HQ is still filing your last refresh. Refresh again once it has finished.')
+    }
     // Where reading starts for a folder with no checkpoint: set when the key was first saved, or, on an account's first
     // sync, the start of fall recruiting (start_from), so a new student's whole season comes in.
     // A test scan (an admin trying a first scan into a test tracker) keeps its starting line to itself.
@@ -741,6 +781,9 @@ async function syncAll() {
     state.baseline = state.test_scan ? state.start_from || (await chrome.storage.local.get('baseline')).baseline
       : (await chrome.storage.local.get('baseline')).baseline
     runBaseline = state.baseline || ''
+    queueMode = !!state.queue
+    refreshId = String(Date.now())
+    handed = { emails: 0, events: 0 }
     // Outlook only, in one window. Slack and WhatsApp had too little news to be worth reading.
     caught = {}
     await lockWorkers()
