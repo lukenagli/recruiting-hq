@@ -109,7 +109,14 @@ async function readFolder(name, since, patience = 10000, screen = null) {
   if (!open) await rhqWaitFor(() => document.title !== title || firstId() !== prev, 5000)
   await rhqWaitFor(() => firstId() && (open || firstId() !== prev), count ? patience : 2500)
   await rhqSleep(250)
-  if (!firstId()) return { items: [], more: 0, note: count ? `its ${count} emails didn't load` : 'empty' }
+  if (!firstId()) {
+    const rows = document.querySelectorAll('[role="listbox"] [role="option"]')
+    const why = `${document.visibilityState}, ${window.innerWidth}×${window.innerHeight} at ${Math.round(window.devicePixelRatio * 100)}%, ` +
+      `${document.querySelectorAll('[role="listbox"]').length} list(s), ${rows.length} row(s)` +
+      (rows[0] ? `, first row has ${[...rows[0].attributes].map((a) => a.name).filter((n) => n.startsWith('data-')).join('/') || 'no data- marks'}` : '') +
+      `, selected folder ${(document.querySelector('[role="tree"] [role="treeitem"][aria-selected="true"]')?.getAttribute('title') || '?').replace(/ - .*$/, '')}`
+    return { items: [], more: 0, note: count ? `its ${count} emails didn't load [${why}]` : 'empty' }
+  }
   since = since || rhqIso(new Date(Date.now() - 14 * 864e5)) // no starting line: the last two weeks
   const all = await newRows(since, new Date(since.slice(0, 10) + 'T00:00:00'))
   const rows = screen ? all.filter((r) => screen.test(r.label)) : all
@@ -299,7 +306,7 @@ async function openConversation(id, since = '') {
   const before = paneText()
   if (!rhqSafeClick(row, 'outlook-messages')) return null
   let shown = false
-  for (let w = 0; w < 20; w++) { // until the reading pane shows this conversation, not the last one
+  for (let w = 0; w < 38; w++) { // until the reading pane shows this conversation, not the last one (about 15 s)
     await rhqSleep(400)
     if (paneText() !== before && paneText().length > 40) {
       shown = true
@@ -307,7 +314,7 @@ async function openConversation(id, since = '') {
     }
   }
   if (!shown) return null // Outlook never showed it (a slow connection): read again on the next refresh
-  await settled()
+  if (!(await settled())) return null // it never showed its date and text: not handed over, read again next time
   await unfoldNewer(since)
   await settled()
   return paneText().replace(/^\s*Summarize this email\s*$/gim, '') // Outlook's summary button, not part of any email
@@ -319,14 +326,16 @@ async function openConversation(id, since = '') {
  *  moment; at most about 8 seconds. */
 async function settled() {
   let last = -1
-  for (let w = 0, still = 0; w < 26 && still < 2; w++) {
+  let ready = false
+  for (let w = 0, still = 0; w < 50 && still < 2; w++) { // at most about 15 seconds (a slow connection)
     await rhqSleep(300)
     const text = paneText()
     PANE_DATE.lastIndex = 0
-    const ready = PANE_DATE.test(text) && (/(^|\n)\s*To:/.test(text) || w >= 10)
+    ready = PANE_DATE.test(text) && (/(^|\n)\s*To:/.test(text) || w >= 10)
     still = ready && text.length === last ? still + 1 : 0
     last = text.length
   }
+  return ready
 }
 
 async function thankYous(since) {
@@ -426,7 +435,7 @@ chrome.runtime.onMessage.addListener((msg, _sender, reply) => {
       // Each folder is claimed before it is read: without a yes (the refresh was stopped), nothing more is read.
       if ((await rhqSend({ type: 'outlook-claim', name, n: toRead }).catch(() => false)) !== true) continue
       const since = msg.checkpoints[name] || msg.baseline
-      const r = await readFolder(name, since, 10000, screenFor(name))
+      const r = await readFolder(name, since, 25000, screenFor(name))
       const b = { source: 'outlook', conversation: name, group_chat: false, ...r }
       // Handed over to be filed now, while the next folders are read (filing marks it so it isn't filed twice). A
       // folder whose list didn't load waits for its second try below.
@@ -443,7 +452,7 @@ chrome.runtime.onMessage.addListener((msg, _sender, reply) => {
         await rhqWaitFor(() => document.querySelector('[role="listbox"] [role="option"]'), 20000)
         await rhqSleep(1000)
       }
-      const again = await readFolder(b.conversation, msg.checkpoints[b.conversation] || msg.baseline, 10000, screenFor(b.conversation))
+      const again = await readFolder(b.conversation, msg.checkpoints[b.conversation] || msg.baseline, 40000, screenFor(b.conversation))
       b.items = again.items
       b.more = again.more
       b.seen_until = again.seen_until
