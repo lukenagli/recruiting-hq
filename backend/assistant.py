@@ -211,8 +211,10 @@ def tool(fn):
 
             if not accounts.in_preview_uid(ctx.deps.user_id):  # preview only until the project is graded
                 raise
-            return _refuse(ctx, fn.__name__, kwargs, f"That would duplicate something already in the tracker ({exc}). Look it up and "
-                                                      "update the existing one instead.")
+            plain = {k: ([x.model_dump() if hasattr(x, "model_dump") else x for x in v] if isinstance(v, list) else
+                         v.model_dump() if hasattr(v, "model_dump") else v) for k, v in kwargs.items()}  # kept as JSON in the run log
+            return _refuse(ctx, fn.__name__, plain, f"That would duplicate something already in the tracker ({exc}). Look it up and "
+                                                     "update the existing one instead.")
     prepare = _not_when_filing if fn.__name__ in NOT_FOR_FILING else _only_when_filing if fn.__name__ in ONLY_FOR_FILING else None
     return agent.tool(safe, prepare=prepare)
 
@@ -1153,7 +1155,7 @@ async def run(user: dict, chosen: Chosen, message: str, history: list[dict], tra
             """INSERT INTO agent_runs (user_id, started_at, agent, user_message, reply, steps, outcome, requests,
                                        input_tokens, cached_input_tokens, output_tokens, snapshot)
                VALUES (?, ?, 'tracker_assistant', ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-            (user["id"], started, message, reply, json.dumps(deps.steps), outcome, u.get("requests", 0), u.get("input_tokens", 0),
+            (user["id"], started, message, reply, json.dumps(deps.steps, default=str), outcome, u.get("requests", 0), u.get("input_tokens", 0),
              u.get("cached_input_tokens", 0), u.get("output_tokens", 0), deps.snapshot if changed else None),
         ).lastrowid
     return {"reply": reply, "steps": deps.steps, "usage": usage, "run_id": run_id, "changed": changed, "outcome": outcome}

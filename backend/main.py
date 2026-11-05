@@ -1228,6 +1228,9 @@ def test_scan_action(req: TestScanAction, user: dict = Depends(admin_user)):
         return test_scan.stop(user)
     if req.action == "resume":
         return test_scan.resume(user)
+    if req.action == "redo":  # file the test's failed batches again
+        row = test_scan._row(user["id"])
+        return filing_queue.redo_failed(row["sandbox_id"]) if row else {"ok": False}
     if req.action == "delete":
         return test_scan.delete(user)
     raise HTTPException(status_code=400, detail="action must be start, stop or delete")

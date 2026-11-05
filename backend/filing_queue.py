@@ -68,13 +68,35 @@ def status(uid: int) -> dict:
         if not last:
             return {"refresh": "", "waiting": 0, "running": 0, "done": 0, "failed": 0, "busy": False}
         counts = {r["state"]: r["n"] for r in conn.execute(
-            "SELECT state, COUNT(*) AS n FROM filing_jobs WHERE user_id = ? AND refresh = ? AND kind != 'folders' GROUP BY state",
+            "SELECT state, COUNT(*) AS n FROM filing_jobs WHERE user_id = ? AND refresh = ? AND kind != 'folders' AND state != 'redone' GROUP BY state",
             (uid, last["refresh"]))}
         pending = conn.execute("SELECT COUNT(*) FROM filing_jobs WHERE user_id = ? AND state IN ('waiting', 'running')", (uid,)).fetchone()[0]
         errors = [json.loads(r["result"] or "{}").get("error", "")[:200] for r in conn.execute(
             "SELECT result FROM filing_jobs WHERE user_id = ? AND refresh = ? AND state = 'failed' ORDER BY id", (uid, last["refresh"]))]
     return {"refresh": last["refresh"], **{s: counts.get(s, 0) for s in ("waiting", "running", "done", "failed")}, "busy": pending > 0,
             "errors": errors}
+
+
+def redo_failed(uid: int) -> dict:
+    """File a refresh's failed jobs again, then its calendar and tidy-up after them (the calendar read afresh, so each chat
+    finds the people and banks the redone email brings in)."""
+    ensure()
+    with connect() as conn:
+        last = conn.execute("SELECT refresh FROM filing_jobs WHERE user_id = ? AND state = 'failed' ORDER BY id DESC LIMIT 1", (uid,)).fetchone()
+        if not last:
+            return {"ok": True, "redone": 0}
+        jobs = [dict(r) for r in conn.execute("SELECT * FROM filing_jobs WHERE user_id = ? AND refresh = ? ORDER BY id", (uid, last["refresh"]))]
+        again = [j for j in jobs if j["state"] == "failed"] + [j for j in jobs if j["kind"] in ("calendar", "folders", "finish") and j["state"] != "failed"]
+        for j in jobs:
+            if j["state"] == "failed":
+                conn.execute("UPDATE filing_jobs SET state = 'redone' WHERE id = ?", (j["id"],))
+        if any(j["kind"] == "calendar" for j in again):
+            conn.execute("DELETE FROM sync_state WHERE user_id = ? AND source = 'outlook' AND conversation = 'Calendar'", (uid,))
+        for j in again:
+            conn.execute("INSERT INTO filing_jobs (user_id, refresh, kind, payload, added_at) VALUES (?, ?, ?, ?, ?)",
+                         (uid, j["refresh"], j["kind"], j["payload"], _now()))
+    _poke()
+    return {"ok": True, "redone": len(again)}
 
 
 def _user(conn, uid: int) -> dict | None:
@@ -144,12 +166,17 @@ async def _drain(uid: int) -> None:
             job = await asyncio.to_thread(_claim, uid)
             if not job:
                 return
-            try:
-                result = await _run(job)
-                await asyncio.to_thread(_finish, job["id"], "done", result if isinstance(result, dict) else {"result": result})
-            except Exception as err:  # noqa: BLE001 - one failed job must not stop the queue
-                log.exception("filing job %s failed", job["id"])
-                await asyncio.to_thread(_finish, job["id"], "failed", {"error": str(err)[:500]})
+            for attempt in (1, 2):  # a passing fault (the model provider, a busy database) gets one more try
+                try:
+                    result = await _run(job)
+                    await asyncio.to_thread(_finish, job["id"], "done", result if isinstance(result, dict) else {"result": result})
+                    break
+                except Exception as err:  # noqa: BLE001 - one failed job must not stop the queue
+                    log.exception("filing job %s failed (try %s)", job["id"], attempt)
+                    if attempt == 2:
+                        await asyncio.to_thread(_finish, job["id"], "failed", {"error": str(err)[:500]})
+                    else:
+                        await asyncio.sleep(5)
     finally:
         _busy.discard(uid)
 
@@ -161,14 +188,18 @@ _loop: asyncio.AbstractEventLoop | None = None
 
 def _poke() -> None:
     """Wake the worker now (routes run in other threads; the worker also looks every few seconds)."""
-    if _loop is not None:
-        _loop.call_soon_threadsafe(_wake.set)
+    if _loop is not None and not _loop.is_closed():
+        try:
+            _loop.call_soon_threadsafe(_wake.set)
+        except RuntimeError:  # the loop just stopped; the next worker looks anyway
+            pass
 
 
 async def worker() -> None:
     """Runs for the life of the app: files each account's queue, several accounts side by side."""
-    global _loop
+    global _loop, _wake
     _loop = asyncio.get_running_loop()
+    _wake = asyncio.Event()  # belongs to this loop
     ensure()
     with connect() as conn:  # jobs cut off by a restart are picked up again
         conn.execute("UPDATE filing_jobs SET state = 'waiting' WHERE state = 'running'")
