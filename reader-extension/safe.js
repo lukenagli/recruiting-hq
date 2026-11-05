@@ -121,9 +121,31 @@ async function rhqWaitFor(test, ms = 15000) {
  *  second (and later once a minute), so the pause is timed by the extension's background instead, which Chrome
  *  doesn't slow. Falls back to an ordinary timer if the background doesn't answer. */
 function rhqSleep(ms) {
+  // An Outlook tab left open while the reader was updated keeps this page's old copy, cut off from the reader: it stops
+  // whatever it was doing (nothing it reads could be filed).
+  if (!rhqAlive()) return Promise.reject(new Error('The reader was updated; reload Outlook to use the new one.'))
   // hidden: Chrome isn't drawing this page (its window is behind others), so the background brings it to the front;
   // width: a page narrower than a desktop one hides Outlook's folder list, so the background zooms it out
-  return chrome.runtime.sendMessage({ type: 'rhq-sleep', ms, hidden: document.hidden, width: window.innerWidth }).catch(() => new Promise((r) => setTimeout(r, ms)))
+  return rhqSend({ type: 'rhq-sleep', ms, hidden: document.hidden, width: window.innerWidth }).catch(() => new Promise((r) => setTimeout(r, ms)))
+}
+
+/** Whether this page's copy of the reader is still connected to the extension (not after an update or reload). */
+function rhqAlive() {
+  try {
+    return !!chrome.runtime?.id
+  } catch {
+    return false
+  }
+}
+
+/** A message to the reader's background. Never throws: once cut off (after an update), it fails quietly. */
+function rhqSend(msg) {
+  if (!rhqAlive()) return Promise.reject(new Error('reader updated'))
+  try {
+    return chrome.runtime.sendMessage(msg)
+  } catch (e) {
+    return Promise.reject(e)
+  }
 }
 
 /** "2026-10-19T15:17:00" (local time) from a Date. */

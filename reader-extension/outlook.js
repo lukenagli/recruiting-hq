@@ -292,7 +292,7 @@ async function thankYous(since) {
   const list = folders()
   const rows = []
   for (const [i, name] of list.entries()) {
-    chrome.runtime.sendMessage({ type: 'outlook-progress', i, n: list.length, name: `looking through ${name}` }).catch(() => undefined)
+    rhqSend({ type: 'outlook-progress', i, n: list.length, name: `looking through ${name}` }).catch(() => undefined)
     const node = folderNode(name)
     if (!node || !rhqSafeClick(node, 'outlook-folders')) continue
     await rhqSleep(2500)
@@ -300,7 +300,7 @@ async function thankYous(since) {
   }
   const emails = []
   for (const [i, [name, id, label]] of rows.entries()) {
-    chrome.runtime.sendMessage({ type: 'thanks-progress', i, n: rows.length }).catch(() => undefined)
+    rhqSend({ type: 'thanks-progress', i, n: rows.length }).catch(() => undefined)
     if (folderNode(name) && !document.title.startsWith(name)) {
       rhqSafeClick(folderNode(name), 'outlook-folders')
       await rhqSleep(2500)
@@ -316,7 +316,7 @@ async function thankYous(since) {
 function answerLater(msg, reply, job) {
   reply({ started: true })
   job().catch((e) => ({ ok: false, error: String(e) }))
-    .then((out) => chrome.runtime.sendMessage({ type: 'rhq-result', id: msg.id, out }).catch(() => undefined))
+    .then((out) => rhqSend({ type: 'rhq-result', id: msg.id, out })).catch(() => undefined)
 }
 
 chrome.runtime.onMessage.addListener((msg, _sender, reply) => {
@@ -369,14 +369,14 @@ chrome.runtime.onMessage.addListener((msg, _sender, reply) => {
         continue
       }
       // Each folder is claimed before it is read: without a yes (the refresh was stopped), nothing more is read.
-      if ((await chrome.runtime.sendMessage({ type: 'outlook-claim', name, n: toRead }).catch(() => false)) !== true) continue
+      if ((await rhqSend({ type: 'outlook-claim', name, n: toRead }).catch(() => false)) !== true) continue
       const since = msg.checkpoints[name] || msg.baseline
       const r = await readFolder(name, since, 10000, screenFor(name))
       const b = { source: 'outlook', conversation: name, group_chat: false, ...r }
       // Handed over to be filed now, while the next folders are read (filing marks it so it isn't filed twice). A
       // folder whose list didn't load waits for its second try below.
       if (!/didn't load/.test(r.note || '')) {
-        b.filing = (await chrome.runtime.sendMessage({ type: 'outlook-read', batch: b }).catch(() => false)) === true
+        b.filing = (await rhqSend({ type: 'outlook-read', batch: b }).catch(() => false)) === true
       }
       batches.push(b)
     }
