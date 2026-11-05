@@ -100,7 +100,10 @@ export default function FolderSetup({ onStart }: { onStart: () => void }) {
       </label>
       {failed && <p className="notice error">{failed}</p>}
       <button className="primary" disabled={saving} onClick={start}>Start my first scan</button>
-      <small className="muted"> About 10 to 15 minutes of reading with a Chrome window open; after that you can close the laptop.</small>
+      <small className="muted">
+        {' '}Start it when you can step away for about 15 minutes: a Chrome window reads your Outlook in front of everything else until it
+        closes itself. After that you can close the laptop.
+      </small>
     </div>
   )
 }
