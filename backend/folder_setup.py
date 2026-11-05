@@ -72,7 +72,7 @@ def suggest(uid: int) -> dict:
         elif PERSONAL.search(name):
             pick, why = "skip", "Looks like classes or personal mail"
         else:
-            pick, why = "auto", "Not sure: each email is checked, and only ones that look like recruiting are opened"
+            pick, why = "auto", "Its name doesn't say"
         folders.append({"name": name, "pick": pick, "why": why, "fixed": name in sync.ALWAYS_READ})
     folders.sort(key=lambda f: (not f["fixed"], f["name"].lower()))  # Inbox and Sent Items first
     return {"confirmed": confirmed(uid), "note": note(uid), "folders": folders}
