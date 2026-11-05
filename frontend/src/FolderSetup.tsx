@@ -55,16 +55,18 @@ export default function FolderSetup({ onStart }: { onStart: () => void }) {
     <div className="refresh-warning folder-setup">
       <p>
         <strong>Before your first scan: where do you keep recruiting email?</strong> The reader looked at your {data.folders.length} Outlook
-        folders (it hasn't opened any email). Here's its guess; click to change any folder.
+        folders (it hasn't opened any email). Here's its guess. Check the "Not sure" ones; open a group to change any folder.
       </p>
       {GROUPS.map((g) => {
         const folders = data.folders.filter((f) => f.pick === g.pick)
         if (!folders.length) return null
         return (
-          <section key={g.pick} className="folder-setup-group">
-            <h4>
-              {g.title} <span className="muted">{folders.length}</span>
-            </h4>
+          // "Not sure" starts open: those are the ones to look at; the other two show their names and open on a click
+          <details key={g.pick} className="folder-setup-group" open={g.pick === 'auto'}>
+            <summary>
+              <strong>{g.title}</strong> <span className="muted">{folders.length}</span>
+              <small className="muted folder-setup-names">{folders.map((f) => f.name).join(', ')}</small>
+            </summary>
             <p className="fine">{g.help}</p>
             <ul>
               {folders.map((f) => (
@@ -88,7 +90,7 @@ export default function FolderSetup({ onStart }: { onStart: () => void }) {
                 </li>
               ))}
             </ul>
-          </section>
+          </details>
         )
       })}
       <label className="folder-setup-note">

@@ -61,6 +61,8 @@ def suggest(uid: int) -> dict:
     folders = []
     for f in plan:
         name = f["name"]
+        if "@" in name:  # the mailbox itself (the top of Outlook's folder list), not a folder
+            continue
         if name in sync.ALWAYS_READ:
             pick, why = "always", "Always read: your replies and new contacts land here"
         elif f["mode"] in ("always", "skip"):

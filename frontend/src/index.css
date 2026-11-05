@@ -1479,3 +1479,6 @@ main h1 { text-shadow: 0 2px 16px rgba(4, 10, 26, 0.5); }
 .folder-setup-note { display: flex; flex-direction: column; gap: 4px; margin: 12px 0 8px; }
 .folder-setup-note textarea { width: 100%; box-sizing: border-box; font: inherit; }
 @media (max-width: 760px) { .folder-setup-group li { flex-direction: column; align-items: stretch; } .folder-setup-choices { align-self: flex-start; } }
+.folder-setup-group summary { cursor: pointer; }
+.folder-setup-names { display: block; margin: 2px 0 0 16px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+details[open] > summary .folder-setup-names { display: none; }
