@@ -638,17 +638,29 @@ async function syncCapIQ(lines) {
   }
 }
 
+// A refresh in progress stamps `running` every 20 seconds, so it counts as running however long it takes (a first scan
+// can run past an hour) and stops counting a minute or two after Chrome stops it. A second refresh never starts on top.
+const RUNNING_FRESH = 2 * 60 * 1000
+function heartbeat() {
+  return setInterval(() => {
+    chrome.runtime.getPlatformInfo()
+    chrome.storage.local.set({ running: Date.now() })
+  }, 20000)
+}
+
 async function capiqAll() {
   await ready
   const { running } = await chrome.storage.local.get('running')
-  if (running && Date.now() - running < 20 * 60 * 1000) return
+  if (running && Date.now() - running < RUNNING_FRESH) return
   await chrome.storage.local.set({ running: Date.now(), progress: { pct: 0, label: 'Starting' } })
+  const keepAlive = heartbeat()
   const lines = []
   try {
     await syncCapIQ(lines)
   } catch (e) {
     lines.push(`Capital IQ: ${e.message || e}`)
   } finally {
+    clearInterval(keepAlive)
     await chrome.storage.local.set({ running: 0, progress: { pct: 100, label: 'Done' },
                                      last: { at: new Date().toLocaleString(), lines: lines.length ? lines : ['Nothing new.'] } })
   }
@@ -665,9 +677,9 @@ chrome.runtime.onMessage.addListener((msg, sender) => {
 async function thanksAll() {
   await ready
   const { running } = await chrome.storage.local.get('running')
-  if (running && Date.now() - running < 20 * 60 * 1000) return
+  if (running && Date.now() - running < RUNNING_FRESH) return
   await chrome.storage.local.set({ running: Date.now(), progress: { pct: 0, label: 'Opening Outlook' } })
-  const keepAlive = setInterval(() => chrome.runtime.getPlatformInfo(), 20000)
+  const keepAlive = heartbeat()
   const lines = []
   let tab = null
   try {
@@ -710,9 +722,9 @@ async function thanksAll() {
 async function syncAll() {
   await ready
   const { running } = await chrome.storage.local.get('running')
-  if (running && Date.now() - running < 20 * 60 * 1000) return // a sync is already going
+  if (running && Date.now() - running < RUNNING_FRESH) return // a sync is already going
   await chrome.storage.local.set({ running: Date.now(), progress: { pct: 0, label: 'Starting' } })
-  const keepAlive = setInterval(() => chrome.runtime.getPlatformInfo(), 20000) // keep the background awake while working
+  const keepAlive = heartbeat() // keep the background awake while working, and show the refresh as running
   const lines = []
   share = {}
   outOfAI = false

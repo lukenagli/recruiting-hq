@@ -507,6 +507,25 @@ def save_entry(
     conn = _write(ctx)
     try:
         with conn:
+            if entry_id is None and kind == "coffee_chat" and date and people and _in_preview(uid):
+                # Preview: one chat with a person is often seen twice (the calendar invite and a thank-you a day later):
+                # a chat with them a few days either side is that chat, so it is updated, not logged again.
+                names = [nz.clean(p).lower() for p in people if nz.clean(p)]
+                twin = conn.execute(
+                    f"""SELECT i.id, i.title, i.date FROM interactions i JOIN interaction_people ip ON ip.interaction_id = i.id
+                        JOIN people p ON p.id = ip.person_id
+                        WHERE i.user_id = ? AND i.bank = ? AND i.kind = 'coffee_chat' AND i.date != ''
+                          AND ABS(julianday(i.date) - julianday(?)) <= 3 AND LOWER(p.name) IN ({','.join('?' * len(names))})""",
+                    (uid, bank, date, *names)).fetchone() if names else None
+                if twin:
+                    return _refuse(ctx, "save_entry", args,
+                                   f"{twin['title']} on {twin['date']} (entry {twin['id']}) is already logged: it is the same chat. "
+                                   "Update that entry with its entry_id (the right date, time and notes) instead of logging another.")
+                gone = _called_off_chat(conn, uid, bank, names, date)
+                if gone:
+                    return _refuse(ctx, "save_entry", args,
+                                   f"The {gone['date']} chat with {gone['who']} was called off and taken off the map ({gone['reason']}). "
+                                   "An invite left on the calendar doesn't bring it back; log it again only for a new date it happened on.")
             if entry_id is None:
                 entry_id = conn.execute(
                     """INSERT INTO interactions (user_id, bank, kind, title, date, date_note, format, status, summary, thank_you)
@@ -536,6 +555,15 @@ def save_entry(
                 if (status in ("todo", "upcoming") and row["status"] == "done" and CALLED_OFF.search(row["title"] or "")
                         and date in ("", row["date"]) and _in_preview(uid)):
                     return _refuse(ctx, "save_entry", args, f"{row['title']} is already closed out as cancelled; leave it as it is.")
+                if kind == "coffee_chat" and row["kind"] != "coffee_chat" and people and _in_preview(uid):
+                    # Preview: turning a request into the chat it led to keeps the person (a request to Michael never
+                    # becomes a chat with Parth).
+                    on_it = {r[0] for r in conn.execute(
+                        "SELECT p.name FROM interaction_people ip JOIN people p ON p.id = ip.person_id WHERE ip.interaction_id = ?", (entry_id,))}
+                    if on_it and not {n.lower() for n in on_it} & {nz.clean(p).lower() for p in people}:
+                        return _refuse(ctx, "save_entry", args,
+                                       f"{row['title']} is with {', '.join(sorted(on_it))}, not {', '.join(people)}: log that chat as its own "
+                                       "entry (or update the right person's request).")
                 changed = []
                 if kind != row["kind"]:
                     conn.execute("UPDATE interactions SET kind = ? WHERE id = ? AND user_id = ?", (kind, entry_id, uid))
@@ -576,6 +604,21 @@ def save_entry(
     finally:
         conn.close()
     return _done(ctx, "save_entry", args, {"ok": True, "entry_id": entry_id, "did": did})
+
+
+def _called_off_chats_table(conn) -> None:
+    conn.execute("""CREATE TABLE IF NOT EXISTS called_off_chats (
+        user_id INTEGER NOT NULL, bank TEXT NOT NULL, date TEXT NOT NULL, who TEXT NOT NULL, reason TEXT NOT NULL)""")
+
+
+def _called_off_chat(conn, uid: int, bank: str, names: list[str], date: str):
+    """A chat with one of these people on (or a day either side of) this date that was removed as called off."""
+    _called_off_chats_table(conn)
+    for r in conn.execute("SELECT date, who, reason FROM called_off_chats WHERE user_id = ? AND bank = ? AND ABS(julianday(date) - julianday(?)) <= 1",
+                          (uid, bank, date)):
+        if {w.strip().lower() for w in r["who"].split(",")} & set(names):
+            return r
+    return None
 
 
 @tool
@@ -762,12 +805,20 @@ def remove_entry(ctx: RunContext[Deps], entry_id: int, reason: str) -> dict:
     conn = _write(ctx)
     try:
         with conn:
-            row = conn.execute("SELECT kind, status, title, date_note, summary FROM interactions WHERE id = ? AND user_id = ?", (entry_id, uid)).fetchone()
+            row = conn.execute("SELECT kind, status, title, date, date_note, summary FROM interactions WHERE id = ? AND user_id = ?", (entry_id, uid)).fetchone()
             if row is None:
                 return _refuse(ctx, "remove_entry", args, f"No entry with id {entry_id}. Use lookup to find the right one.")
             happened = row["status"] == "done" and row["kind"] in ("coffee_chat", "event", "interview")
             if happened and not CALLED_OFF.search(" ".join(filter(None, (row["title"], row["date_note"], row["summary"])))):
                 return _refuse(ctx, "remove_entry", args, f"{row['title']} happened, so it stays on the map.")
+            if row["kind"] == "coffee_chat" and row["date"]:
+                # remembered, so the invite still on the calendar (filed later) doesn't log the chat again
+                who = [r[0] for r in conn.execute("SELECT p.name FROM interaction_people ip JOIN people p ON p.id = ip.person_id "
+                                                  "WHERE ip.interaction_id = ?", (entry_id,))]
+                if who:
+                    _called_off_chats_table(conn)
+                    bank = conn.execute("SELECT bank FROM interactions WHERE id = ?", (entry_id,)).fetchone()[0]
+                    conn.execute("INSERT INTO called_off_chats VALUES (?, ?, ?, ?, ?)", (uid, bank, row["date"], ", ".join(who), nz.clean(reason)[:120]))
             did = delete_entry(conn, uid, entry_id)
     finally:
         conn.close()

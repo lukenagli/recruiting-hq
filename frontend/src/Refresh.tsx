@@ -208,7 +208,7 @@ export default function Refresh({ onDone }: { onDone?: () => void }) {
             {preview
               ? "A Chrome window is reading your Outlook calendar and email. Leave it in front and don't click in it; it closes on its own when it's done"
               : "Two Chrome windows, side by side, are reading your Outlook email and calendar. Leave them in front and don't click in them; they close on their own when they're done"}
-            {firstSync ? ". This first one reaches back to September 1, so it can take 10 to 20 minutes." : ', usually within a minute or two.'}
+            {firstSync ? `. This first one reaches back to September 1, so it can take ${preview ? 'about half an hour' : '10 to 20 minutes'}.` : ', usually within a minute or two.'}
           </p>
           <ReaderProgress status={status} />
         </div>
@@ -220,7 +220,7 @@ export default function Refresh({ onDone }: { onDone?: () => void }) {
               ? "the reader opens a Chrome window over yours to read your Outlook calendar and email. Chrome only reads what's on screen, so leave it in front while it works; it closes itself when it's done."
               : "the reader opens two Chrome windows side by side to read your Outlook email and calendar. Chrome only reads what's on screen, so leave them in front while they work; they close themselves when they're done."}{' '}
             {firstSync
-              ? 'This first refresh reads everything since September 1 (every folder, however you organize them), so it can take 10 to 20 minutes; after that, a refresh takes a minute or two.'
+              ? `This first refresh reads everything since September 1 (every folder, however you organize them), so it can take ${preview ? 'about half an hour' : '10 to 20 minutes'}; after that, a refresh takes a minute or two.`
               : 'It usually takes a minute or two.'}{' '}
             It only reads: it never sends, replies or reacts.
           </p>

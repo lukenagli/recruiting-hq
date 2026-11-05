@@ -4,7 +4,7 @@ const status = document.getElementById('status')
 async function show() {
   const { last, running, key } = await chrome.storage.local.get(['last', 'running', 'key'])
   if (key) document.getElementById('key').placeholder = 'Key saved (paste a new one to replace it)'
-  const busy = running && Date.now() - running < 20 * 60 * 1000
+  const busy = running && Date.now() - running < 2 * 60 * 1000
   status.textContent = (busy ? 'Syncing now…\n\n' : '') + (last ? `Last sync ${last.at}:\n${last.lines.join('\n')}` : 'No sync yet.')
 }
 
@@ -18,7 +18,8 @@ document.getElementById('save').addEventListener('click', async () => {
   const now = `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`
   await chrome.storage.local.set({ key: field.value.trim(), baseline: baseline || now })
   field.value = ''
-  show()
+  await show()
+  status.textContent = 'Key saved. Now press Refresh from Outlook on your Recruiting HQ homepage.\n\n' + status.textContent
 })
 
 document.getElementById('sync').addEventListener('click', () => {

@@ -491,7 +491,11 @@ def _message(batch: Batch, items: list[Item], school: str, tags: list[str] | Non
                  "or got an offer); keep only what tells me something about a bank's process or timing, or what mentions me. ")
     if batch.source == "outlook":
         head += ("When an email I sent or scheduled thanks someone for a coffee chat, a call or meeting them at an event, find that "
-                 "chat or event with lookup and record it with record_thank_you (scheduled=True for a scheduled email), passing "
+                 "chat or event with lookup and record it with record_thank_you (scheduled=True for a scheduled email). "
+                 "A SCHEDULED EMAIL's time shown is when I wrote it, not when it sends (usually the next "
+                 "morning), so its \"yesterday\" counts from the send day: a scheduled thank-you saying \"yesterday\" was written "
+                 "the same day as the chat, so the chat is on the day shown. Take a chat's date from the calendar or the emails "
+                 "arranging it when there are any, and never move a chat's date because of a scheduled thank-you. Pass "
                  "the email's own text from the greeting to the closing line as body. A thank-you's opening lines usually say "
                  "the person's group or role (\"what led you to the Industrials group\", \"your summer in Healthcare\"): where "
                  "the tracker doesn't have that person's title or group yet, save it with save_person. "
@@ -524,7 +528,9 @@ def _message(batch: Batch, items: list[Item], school: str, tags: list[str] | Non
                  "or dinner with a banker or a second-year is scheduled for the date, time and place shown (\"Luke Nagli / Sami "
                  "Moufarrij - Coffee Chat\" is a chat with Sami Moufarrij): find that person's entry with lookup and update the "
                  "same entry with save_entry (date, time in date_note, place or call details in format; status upcoming while "
-                 "it is ahead, done once its date has passed), or log it if there is none. Never mark done a chat the tracker "
+                 "it is ahead, done once its date has passed), or log it if there is none. A chat already in the tracker with "
+                 "that person within three days of the event is the same chat: update that entry to the calendar's date and "
+                 "time, never log a second one. Never mark done a chat the tracker "
                  "shows as cancelled, postponed or being rescheduled (its status is todo, or its date note says so): an invite "
                  "left on my calendar doesn't mean it happened, so leave that entry as it is unless the event has a new date. Use the bank the tracker has for "
                  "that person, or one the event names; if neither says which bank, save nothing for it (the invite email "
