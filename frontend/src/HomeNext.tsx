@@ -278,91 +278,168 @@ function Todos({ d, out, onChanged }: { d: HomeData; out: Set<string>; onChanged
   )
 }
 
-type ReviewEntry = { id: number; kind: string; title: string; date: string; status: string; people: string | null }
+type ReviewPerson = { id: number; name: string; title: string }
+type ReviewEntry = { id: number; kind: string; title: string; date: string; status: string; people: string | null; who: ReviewPerson[] }
 type Review = { ready: boolean; banks?: { bank: string; people: number; entries: ReviewEntry[] }[] }
 const KIND_LABEL: Record<string, string> = { coffee_chat: 'Coffee chat', event: 'Event', interview: 'Interview' }
 
-/** After a first scan: everything it found, bank by bank, to look over once. Anything wrong is fixed or removed here. */
-function FirstScanReview({ onChanged }: { onChanged: () => void }) {
+/** One person on one entry (or an entry with no one on it), every detail in its own box, saved as soon as it changes. */
+function ReviewRow({ bank, entry, person, onSaved, onRemove }: {
+  bank: string; entry: ReviewEntry; person: ReviewPerson | null; onSaved: (moved: boolean) => void; onRemove: () => void
+}) {
+  const start = { name: person ? person.name : entry.title, title: person?.title ?? '', bank, date: entry.date }
+  const [f, setF] = useState(start)
+  const [saved, setSaved] = useState(start)
+  const [msg, setMsg] = useState('')
+  const [removing, setRemoving] = useState(false)
+  async function save(field: keyof typeof start) {
+    const value = f[field].trim()
+    if (value === saved[field].trim()) return
+    const ops: Record<string, unknown>[] = []
+    if (field === 'name' && value) ops.push(person ? { op: 'rename_person', id: person.id, name: value } : { op: 'update_entry', id: entry.id, fields: { title: value } })
+    if (field === 'title' && person) ops.push({ op: 'update_person', id: person.id, fields: { title: value } })
+    if (field === 'date' && value) ops.push({ op: 'update_entry', id: entry.id, fields: { date: value } })
+    if (field === 'bank' && value) ops.push(person ? { op: 'move_person', id: person.id, bank: value } : { op: 'move_entry', id: entry.id, bank: value })
+    if (!ops.length) return setF({ ...f, [field]: saved[field] })
+    setMsg('Saving…')
+    try {
+      const r = await post<{ ok: boolean; reason?: string }>('/api/tracker/edits', { note: `Fixed after the first scan: ${entry.title}`, ops })
+      if (!r.ok) {
+        setMsg(r.reason || 'Not saved.')
+        return setF({ ...f, [field]: saved[field] })
+      }
+      setSaved({ ...saved, [field]: value })
+      setMsg('Saved')
+      onSaved(field === 'bank')
+    } catch (e) {
+      setMsg(String((e as Error).message || e))
+    }
+  }
+  const box = (field: keyof typeof start, label: string, extra: Record<string, unknown> = {}) => (
+    <label className={`rv-field rv-${field}`}>
+      <span>{label}</span>
+      <input value={f[field]} onChange={(e) => setF({ ...f, [field]: e.target.value })} onBlur={() => save(field)}
+        onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur() }} {...extra} />
+    </label>
+  )
+  return (
+    <li className="rv-row">
+      <span className="rv-kind">{KIND_LABEL[entry.kind] ?? entry.kind}{entry.status === 'upcoming' ? ' · coming up' : ''}</span>
+      {box('name', person ? 'Name' : 'Event')}
+      {person ? box('title', 'Role', { placeholder: 'Associate', list: 'rv-roles' }) : <span className="rv-field rv-title" />}
+      {box('bank', 'Bank', { list: 'rv-banks' })}
+      {box('date', 'Date', { type: 'date' })}
+      <span className="rv-actions">
+        {msg && <small className={msg === 'Saved' ? 'muted' : 'rv-error'}>{msg}</small>}
+        {removing ? (
+          <button type="button" className="link danger-link" onClick={onRemove}>Sure? Remove</button>
+        ) : (
+          <button type="button" className="link muted" onClick={() => setRemoving(true)} title="Remove this entry: it didn't happen">Remove</button>
+        )}
+      </span>
+    </li>
+  )
+}
+
+/** After a first scan: everything it found, bank by bank and person by person, to look over once. Each name, role, bank
+ *  and date is in its own box: typing a fix saves it (a person moved to the right bank takes their chats along). */
+function FirstScanReview({ onChanged, bankNames }: { onChanged: () => void; bankNames: string[] }) {
   const { data, reload } = useApi<Review>('/api/reader/review')
-  const [removing, setRemoving] = useState<number | null>(null)
   const [removed, setRemoved] = useState<Set<number>>(new Set())
   if (!data?.ready || !data.banks?.length) return null
   async function remove(e: ReviewEntry) {
     await post('/api/tracker/edits', { note: `Removed after the first scan: ${e.title}`, ops: [{ op: 'delete_entry', id: e.id }] })
     setRemoved((s) => new Set(s).add(e.id))
-    setRemoving(null)
     onChanged()
   }
   async function done() {
     await post('/api/reader/review/done', {})
     reload()
   }
+  const saved = (moved: boolean) => {
+    onChanged()
+    if (moved) reload() // the row belongs under its new bank now
+  }
   const left = (b: { entries: ReviewEntry[] }) => b.entries.filter((e) => !removed.has(e.id))
   const total = data.banks.reduce((n, b) => n + left(b).length, 0)
+  const names = [...new Set([...bankNames, ...data.banks.map((b) => b.bank)])].sort()
   return (
     <section className="dash-card scan-review">
       <h2>Check what your first scan found <span className="count">{total}</span></h2>
       <p className="muted">
-        The reader logged these from your email and calendar. Take two minutes to look them over: fix anything that's off (a wrong date or
-        name) and remove anything that didn't happen. Your thank-you drafts and cover letters are built from this.
+        The reader logged these from your email and calendar. Take two minutes to look them over: click into any box to fix a name, role,
+        bank or date (it saves as soon as you click away), and remove anything that didn't happen. Your thank-you drafts and cover
+        letters are built from this.
       </p>
+      <datalist id="rv-banks">{names.map((n) => <option key={n} value={n} />)}</datalist>
+      <datalist id="rv-roles">
+        {['Analyst', 'Associate', 'Vice President', 'Director', 'Managing Director', '2Y', 'Recruiter'].map((r) => <option key={r} value={r} />)}
+      </datalist>
       {data.banks.map((b) => (
-        <details key={b.bank} className="scan-review-bank">
+        <details key={b.bank} className="scan-review-bank" open>
           <summary>
             <strong>{b.bank}</strong> <span className="muted">{left(b).length} logged · {b.people} {b.people === 1 ? 'person' : 'people'}</span>
           </summary>
           <ul>
-            {left(b).map((e) => (
-              <li key={e.id}>
-                <span>
-                  <b>{KIND_LABEL[e.kind] ?? e.kind}</b> {e.date ? fmtDate(e.date) : 'no date'}
-                  {e.kind === 'coffee_chat' && e.people ? ` · ${e.people}` : ` · ${e.title}${e.people ? ` (${e.people})` : ''}`}
-                  {e.status === 'upcoming' && <small className="muted"> (coming up)</small>}
-                </span>
-                <span className="rq-actions">
-                  <button type="button" className="link" onClick={() => ask({ draft: `Fix the ${(KIND_LABEL[e.kind] ?? e.kind).toLowerCase()} "${e.title}" (${b.bank}, ${e.date || 'no date'}): ` })}>Fix</button>
-                  {removing === e.id ? (
-                    <button type="button" className="link danger-link" onClick={() => remove(e)}>Sure? Remove</button>
-                  ) : (
-                    <button type="button" className="link muted" onClick={() => setRemoving(e.id)}>Remove</button>
-                  )}
-                </span>
-              </li>
-            ))}
+            {left(b).flatMap((e) => (e.who?.length ? e.who : [null]).map((p) => (
+              <ReviewRow key={`${e.id}-${p ? p.id : 'none'}`} bank={b.bank} entry={e} person={p}
+                onSaved={saved} onRemove={() => remove(e)} />
+            )))}
           </ul>
         </details>
       ))}
       <div className="scan-review-done">
         <button type="button" className="primary" onClick={done}>Looks right</button>
-        <small className="muted">Anything you remove can be put back with Undo in the assistant.</small>
+        <small className="muted">Anything you change or remove can be put back with Undo in the assistant.</small>
       </div>
     </section>
   )
 }
 
-/** What the reader couldn't file without the student: answering opens the assistant with the question filled in. */
-function ReaderQuestions() {
+/** What the reader couldn't file without the student: they type the answer right here, and Recruiting HQ files it. */
+function ReaderQuestion({ q, onDone }: { q: { id: number; question: string }; onDone: () => void }) {
+  const [answer, setAnswer] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [reply, setReply] = useState('')
+  async function send(e: React.FormEvent) {
+    e.preventDefault()
+    if (!answer.trim()) return
+    setBusy(true)
+    try {
+      const r = await post<{ reply: string }>(`/api/reader/questions/${q.id}/answer`, { answer })
+      setReply(r.reply || 'Done.')
+      setTimeout(onDone, 2500)
+    } catch (err) {
+      setReply(String((err as Error).message || err))
+    } finally {
+      setBusy(false)
+    }
+  }
+  return (
+    <li>
+      <span>{q.question}</span>
+      {reply ? (
+        <p className="rq-reply">{reply}</p>
+      ) : (
+        <form className="rq-answer" onSubmit={send}>
+          <input value={answer} onChange={(e) => setAnswer(e.target.value)} placeholder="Your answer, e.g. Goldman Sachs" aria-label={`Answer: ${q.question}`} />
+          <button type="submit" className="btn" disabled={busy || !answer.trim()}>{busy ? 'Filing…' : 'Save'}</button>
+          <button type="button" className="link muted" onClick={async () => { await post(`/api/reader/questions/${q.id}/done`, {}); onDone() }}>Dismiss</button>
+        </form>
+      )}
+    </li>
+  )
+}
+
+function ReaderQuestions({ onChanged }: { onChanged: () => void }) {
   const { data, reload } = useApi<{ id: number; asked_at: string; question: string }[]>('/api/reader/questions')
   if (!data || data.length === 0) return null
-  async function done(id: number) {
-    await post(`/api/reader/questions/${id}/done`, {})
-    reload()
-  }
   return (
     <section className="dash-card reader-questions">
       <h2>The reader needs you <span className="count">{data.length}</span></h2>
-      <p className="muted">It found these in your email and calendar but couldn't file them without you.</p>
+      <p className="muted">It found these in your email and calendar but couldn't file them without you. Type the answer and press Save.</p>
       <ul>
-        {data.map((q) => (
-          <li key={q.id}>
-            <span>{q.question}</span>
-            <span className="rq-actions">
-              <button type="button" className="link" onClick={() => { ask({ draft: `About "${q.question}": ` }); done(q.id) }}>Answer</button>
-              <button type="button" className="link muted" onClick={() => done(q.id)}>Dismiss</button>
-            </span>
-          </li>
-        ))}
+        {data.map((q) => <ReaderQuestion key={q.id} q={q} onDone={() => { reload(); onChanged() }} />)}
       </ul>
     </section>
   )
@@ -512,8 +589,8 @@ export default function HomeNext({ name }: { name: string }) {
             onAdded={(msg) => { setAdded(msg); setAdding(false); api.reload(); banks.reload() }} />
         )}
         <Refresh onDone={() => { api.reload(); banks.reload() }} />
-        <FirstScanReview onChanged={() => { api.reload(); banks.reload() }} />
-        <ReaderQuestions />
+        <FirstScanReview onChanged={() => { api.reload(); banks.reload() }} bankNames={(banks.data ?? []).map((b) => b.bank)} />
+        <ReaderQuestions onChanged={() => { api.reload(); banks.reload() }} />
         {ai.data && !ai.data.ready && (
           <a className="notice key-callout" href="#/settings">
             <strong>One thing first:</strong> paste your Yale class (Portkey) key in Settings to turn on the assistant.

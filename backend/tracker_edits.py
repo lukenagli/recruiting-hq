@@ -100,6 +100,29 @@ def _op(conn, uid: int, op: dict) -> str:
         return f"Updated the {bank} application: {', '.join(changes)}"
     if kind == "add_chat":
         return add_chat(conn, uid, op)
+    if kind == "rename_person":  # {id, name}: the reader spelled a name wrong
+        person, name = _person(conn, uid, int(op["id"])), nz.clean(op.get("name"))[:120]
+        if not name:
+            raise EditError("A name is needed.")
+        twin = conn.execute("SELECT id FROM people WHERE user_id = ? AND bank = ? AND LOWER(name) = LOWER(?) AND id != ?",
+                            (uid, person["bank"], name, person["id"])).fetchone()
+        if twin:
+            raise EditError(f"{name} is already in your tracker at {person['bank']}.")
+        conn.execute("UPDATE people SET name = ? WHERE id = ? AND user_id = ?", (name, person["id"], uid))
+        for e in conn.execute("SELECT i.id, i.title FROM interactions i JOIN interaction_people ip ON ip.interaction_id = i.id "
+                              "WHERE ip.person_id = ? AND i.title LIKE ?", (person["id"], f"%{person['name']}%")).fetchall():
+            conn.execute("UPDATE interactions SET title = ? WHERE id = ?", (e["title"].replace(person["name"], name), e["id"]))
+        return f"Renamed {person['name']} to {name}"
+    if kind == "move_person":  # {id, bank}: the reader put someone at the wrong bank; their own chats go with them
+        return _move_person(conn, uid, int(op["id"]), nz.bank(op.get("bank")))
+    if kind == "move_entry":  # {id, bank}: an entry with no one on it (an info session) filed under the wrong bank
+        entry, bank = _entry(conn, uid, int(op["id"])), nz.bank(op.get("bank"))
+        if not bank or bank == nz.UNKNOWN:
+            raise EditError("A bank is needed.")
+        _own_bank(conn, uid, bank)
+        conn.execute("UPDATE interactions SET bank = ? WHERE id = ? AND user_id = ?", (bank, entry["id"], uid))
+        conn.execute("UPDATE links SET bank = ? WHERE user_id = ? AND (src = ? OR dst = ?)", (bank, uid, f"interaction:{entry['id']}", f"interaction:{entry['id']}"))
+        return f"Moved {entry['title']} to {bank}"
     if kind == "delete_person":  # someone the student never spoke with (a roster name): only if no entry or draft has them
         person = _person(conn, uid, int(op["id"]))
         if conn.execute("SELECT 1 FROM interaction_people WHERE person_id = ?", (person["id"],)).fetchone() or conn.execute(
@@ -175,6 +198,41 @@ def add_chat(conn, uid: int, op: dict) -> str:
                VALUES (?, ?, 'coffee_chat', ?, ?, '', '', ?, ?, '')""", (uid, bank, f"Coffee chat with {name}", day, status, notes)).lastrowid
         conn.execute("INSERT OR IGNORE INTO interaction_people VALUES (?, ?, '')", (eid, pid))
     return f"Added a coffee chat with {name} ({bank}) on {day}"
+
+
+def _own_bank(conn, uid: int, bank: str) -> None:
+    conn.execute("INSERT OR IGNORE INTO my_banks (user_id, bank, applied, deadline, link, prefs, notes) VALUES (?, ?, '', '', '', '', '')", (uid, bank))
+
+
+def _move_person(conn, uid: int, pid: int, bank: str) -> str:
+    """Move someone to the bank they're really at. Their chats and anything only they are on go too; on an entry with
+    other people (an event at the old bank) they're taken off it. Someone of the same name already at the new bank is
+    the same person: the two become one."""
+    person = _person(conn, uid, pid)
+    if not bank or bank == nz.UNKNOWN:
+        raise EditError("A bank is needed.")
+    if bank == person["bank"]:
+        return f"{person['name']} is already at {bank}"
+    _own_bank(conn, uid, bank)
+    for e in conn.execute("SELECT interaction_id AS id FROM interaction_people WHERE person_id = ?", (pid,)).fetchall():
+        others = conn.execute("SELECT COUNT(*) FROM interaction_people WHERE interaction_id = ? AND person_id != ?", (e["id"], pid)).fetchone()[0]
+        if others:
+            conn.execute("DELETE FROM interaction_people WHERE interaction_id = ? AND person_id = ?", (e["id"], pid))
+        else:
+            conn.execute("UPDATE interactions SET bank = ? WHERE id = ? AND user_id = ?", (bank, e["id"], uid))
+            conn.execute("UPDATE links SET bank = ? WHERE user_id = ? AND (src = ? OR dst = ?)", (bank, uid, f"interaction:{e['id']}", f"interaction:{e['id']}"))
+    conn.execute("UPDATE links SET bank = ? WHERE user_id = ? AND (src = ? OR dst = ?)", (bank, uid, f"person:{pid}", f"person:{pid}"))
+    twin = conn.execute("SELECT id FROM people WHERE user_id = ? AND bank = ? AND LOWER(name) = LOWER(?)", (uid, bank, person["name"])).fetchone()
+    if twin:
+        conn.execute("UPDATE OR IGNORE interaction_people SET person_id = ? WHERE person_id = ?", (twin["id"], pid))
+        conn.execute("DELETE FROM interaction_people WHERE person_id = ?", (pid,))
+        conn.execute("UPDATE thank_you_drafts SET person_id = ? WHERE user_id = ? AND person_id = ?", (twin["id"], uid, pid))
+        for end in ("src", "dst"):
+            conn.execute(f"UPDATE links SET {end} = ? WHERE user_id = ? AND {end} = ?", (f"person:{twin['id']}", uid, f"person:{pid}"))
+        conn.execute("DELETE FROM people WHERE id = ? AND user_id = ?", (pid, uid))
+        return f"Moved {person['name']} to {bank} (already there, so the two are one now)"
+    conn.execute("UPDATE people SET bank = ? WHERE id = ? AND user_id = ?", (bank, pid, uid))
+    return f"Moved {person['name']} to {bank}"
 
 
 def add_entry(conn, uid: int, op: dict) -> str:

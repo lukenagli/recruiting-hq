@@ -152,12 +152,16 @@ def review(uid: int) -> dict:
             return {"ready": False}
         banks: dict[str, dict] = {}
         for e in conn.execute(
-                """SELECT i.id, i.bank, i.kind, i.title, i.date, i.status, i.thank_you,
-                          (SELECT GROUP_CONCAT(p.name, ', ') FROM interaction_people ip JOIN people p ON p.id = ip.person_id
-                           WHERE ip.interaction_id = i.id) AS people
+                """SELECT i.id, i.bank, i.kind, i.title, i.date, i.status, i.thank_you
                    FROM interactions i WHERE i.user_id = ? AND i.kind IN ('coffee_chat', 'event', 'interview')
-                   ORDER BY i.bank, i.date""", (uid,)):
-            banks.setdefault(e["bank"], {"bank": e["bank"], "entries": [], "people": 0})["entries"].append(dict(e))
+                   ORDER BY i.bank, i.date""", (uid,)).fetchall():
+            item = dict(e)
+            # each person on it, to fix their name, role or bank in place
+            item["who"] = [dict(p) for p in conn.execute(
+                "SELECT p.id, p.name, p.title FROM interaction_people ip JOIN people p ON p.id = ip.person_id WHERE ip.interaction_id = ? ORDER BY p.name",
+                (e["id"],))]
+            item["people"] = ", ".join(p["name"] for p in item["who"])
+            banks.setdefault(e["bank"], {"bank": e["bank"], "entries": [], "people": 0})["entries"].append(item)
         for r in conn.execute("SELECT bank, COUNT(*) AS n FROM people WHERE user_id = ? GROUP BY bank", (uid,)):
             if r["bank"] in banks:
                 banks[r["bank"]]["people"] = r["n"]

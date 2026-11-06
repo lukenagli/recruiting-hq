@@ -53,7 +53,7 @@ export default function Settings({ user, onSignOut }: { user: User; onSignOut?: 
         </p>
       ) : (
         <p className="lede">
-          Signed in as {user.name} ({user.email}). New here? <a href="#/tour">Take the 2-minute tour</a>.
+          Signed in as {user.name} ({user.email}). <a href="#/tour">Replay the 2-minute tour</a>.
         </p>
       )}
 

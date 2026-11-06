@@ -15,7 +15,7 @@ import Prep from './Prep'
 import Settings from './Settings'
 import Setup from './Setup'
 import Start from './Start'
-import Tour from './Tour'
+import Tour, { TOUR_SEEN } from './Tour'
 import { PreviewContext, SchoolContext, useSchool } from './ui'
 
 /** The logo in the top bar: the app icon for preview accounts, the plain "R" for everyone else until it ships. */
@@ -46,6 +46,13 @@ export default function App() {
   const [user, setUser] = useState<User | null | undefined>(undefined)
   const [school, setSchool] = useState<School | undefined>(undefined)
   const [needsSetup, setNeedsSetup] = useState(false)
+  const [tourSeen, setTourSeen] = useState(() => {
+    try {
+      return localStorage.getItem(TOUR_SEEN) === '1'
+    } catch {
+      return false
+    }
+  })
   const [offline, setOffline] = useState(false)
   const fallback = useSchool()
 
@@ -95,6 +102,8 @@ export default function App() {
   if (user === undefined) return <p className="notice">Loading…</p>
   if (user === null) return <Login onDone={() => loadSession()} />
   if (!user.email_verified) return <VerifyEmail user={user} onDone={() => loadSession()} onSignOut={signOut} />
+  // Preview: someone setting up for the first time sees the tour first (once per browser), then setup.
+  const tourFirst = !!user.preview && needsSetup && section !== 'setup' && !tourSeen
   if (needsSetup || section === 'setup')
     return (
       <SchoolContext.Provider value={school ?? fallback}>
@@ -107,13 +116,17 @@ export default function App() {
           </nav>
         </header>
         <main>
-          <Setup
-            preview={!!user.preview}
-            onDone={() => {
-              window.location.hash = '#/tour'
-              loadSession()
-            }}
-          />
+          {tourFirst ? (
+            <Tour beforeSetup={() => { setTourSeen(true); window.scrollTo(0, 0) }} />
+          ) : (
+            <Setup
+              preview={!!user.preview}
+              onDone={() => {
+                window.location.hash = user.preview ? '#/' : '#/tour' // preview: the tour came first
+                loadSession()
+              }}
+            />
+          )}
         </main>
       </SchoolContext.Provider>
     )

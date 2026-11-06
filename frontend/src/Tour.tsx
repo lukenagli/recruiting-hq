@@ -308,7 +308,8 @@ const START: [string, string, string][] = [
   ['Tell it about your first coffee chat', 'The "Anything happen?" box on your homepage.', '#/'],
 ]
 
-export default function Tour() {
+/** `beforeSetup` (preview): a new account sees the tour first; its end leads into setup instead of the homepage. */
+export default function Tour({ beforeSetup }: { beforeSetup?: () => void } = {}) {
   const [step, setStep] = useState(0)
   const last = step === STEPS.length
   useEffect(() => {
@@ -334,9 +335,15 @@ export default function Tour() {
         {[...STEPS, null].map((_, i) => (
           <button key={i} className={i === step ? 'on' : i < step ? 'past' : ''} onClick={() => setStep(i)} aria-label={`Go to step ${i + 1}`} />
         ))}
-        <a className="tour-skip" href="#/">
-          Skip tour
-        </a>
+        {beforeSetup ? (
+          <button type="button" className="tour-skip link" onClick={beforeSetup}>
+            Skip tour
+          </button>
+        ) : (
+          <a className="tour-skip" href="#/">
+            Skip tour
+          </a>
+        )}
       </div>
 
       {!last ? (
@@ -348,6 +355,18 @@ export default function Tour() {
             <p className="fine">Example data: Alex and everyone here are made up.</p>
           </div>
           <div className="tour-demo">{s.demo}</div>
+        </div>
+      ) : beforeSetup ? (
+        <div className="tour-stage tour-start" key="start">
+          <div className="tour-copy">
+            <span className="tour-kicker">Your turn</span>
+            <h1>Next: five minutes of setup</h1>
+            <p>
+              One step at a time: your AI key, your resume, the banks you're recruiting with, your writing templates, and the Outlook
+              reader that fills in your tracker from your email and calendar. Every step can be skipped and finished later in Settings,
+              and you can replay this tour from Settings any time.
+            </p>
+          </div>
         </div>
       ) : (
         <div className="tour-stage tour-start" key="start">
@@ -373,7 +392,11 @@ export default function Tour() {
         <button className="ghost" disabled={step === 0} onClick={() => setStep(step - 1)}>
           Back
         </button>
-        {last ? (
+        {last && beforeSetup ? (
+          <button className="primary big" onClick={beforeSetup}>
+            Set up my account
+          </button>
+        ) : last ? (
           <a className="primary big" href="#/">
             Go to my homepage
           </a>

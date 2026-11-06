@@ -549,9 +549,12 @@ def _message(batch: Batch, items: list[Item], school: str, tags: list[str] | Non
         head += ("Each email is marked with the folder it was read from. End your reply with one line \"Folders used: \" and "
                  "the folders of the emails you saved something from, or \"none\". ")
     if batch.source == "outlook":
-        head += ("When a chat, interview or event can't be filed without something only I know (which bank the person is at, "
-                 "whether it happened), ask me with ask_student, one short question naming the person and the date, instead of "
-                 "guessing, dropping it or asking in your reply. ")
+        head += ("A person's bank is almost always in their email address (the part after the @: gs.com is Goldman Sachs, "
+                 "citi.com is Citi) or named in the outreach, scheduling or thank-you emails with them; the banks of the "
+                 "addresses in these messages are listed below. Use those before asking me. "
+                 "When a chat, interview or event still can't be filed without something only I know (which bank the person is "
+                 "at when no address or email says, whether it happened), ask me with ask_student, one short question naming "
+                 "the person and the date, instead of guessing, dropping it or asking in your reply. ")
         head += ("Work in as few steps as you can: each step resends everything. What lookup would show for the banks and people "
                  "named is below, so make all your saves together, as several tool calls in one response, and call lookup "
                  "only for someone or something that isn't there. ")
@@ -562,6 +565,17 @@ def _message(batch: Batch, items: list[Item], school: str, tags: list[str] | Non
         if told:
             head += f"What I told you about how I keep my recruiting email: \"{told}\". "
     head += "Do not draft emails. If nothing is worth saving, save nothing and say so.\n\n"
+    if batch.source == "outlook":
+        # who is at which bank, from the email addresses in these messages (a calendar invite or a thank-you rarely says)
+        seen: dict[str, str] = {}
+        for i in items:
+            for address in re.findall(r"[\w.+'-]+@[\w-]+(?:\.[\w-]+)+", i.text):
+                bank = bank_info.bank_for_email(address)
+                if bank and address.lower() not in seen:
+                    seen[address.lower()] = bank
+        if seen:
+            head += ("Banks from the email addresses in these messages:\n"
+                     + "\n".join(f"  {a}: {b}" for a, b in list(seen.items())[:40]) + "\n\n")
     if brief:
         head += brief + "\n\nThe messages:\n"
     tag = (lambda n: f"({tags[n]}) ") if len(folders) > 1 else (lambda n: "")

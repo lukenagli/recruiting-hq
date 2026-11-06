@@ -1484,3 +1484,22 @@ main h1 { text-shadow: 0 2px 16px rgba(4, 10, 26, 0.5); }
 .folder-setup-group summary { cursor: pointer; }
 .folder-setup-names { display: block; margin: 2px 0 0 16px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 details[open] > summary .folder-setup-names { display: none; }
+.folder-setup-legend { display: grid; grid-template-columns: max-content 1fr; gap: 4px 12px; margin: 10px 0 4px; font-size: 13px; }
+.folder-setup-legend dt { font-weight: 600; }
+.folder-setup-legend dd { margin: 0; color: var(--muted, #5d6880); }
+@media (max-width: 760px) { .folder-setup-legend { grid-template-columns: 1fr; } .folder-setup-legend dd { margin-bottom: 6px; } }
+
+/* Preview: the first-scan review, one editable row per person */
+.scan-review-bank .rv-row { display: grid; grid-template-columns: 90px 1.4fr 1fr 1.1fr 140px auto; gap: 8px; align-items: end; padding: 8px 0 8px 8px; border-top: 1px solid var(--line); }
+.rv-kind { font-size: 12px; font-weight: 600; color: var(--muted, #5d6880); padding-bottom: 8px; }
+.rv-field { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.rv-field span { font-size: 11px; color: var(--muted, #5d6880); }
+.rv-field input { width: 100%; box-sizing: border-box; padding: 5px 7px; font: inherit; font-size: 14px; border: 1px solid var(--line); border-radius: 6px; background: transparent; color: inherit; }
+.rv-field input:hover { border-color: #9aa6bd; }
+.rv-actions { display: flex; gap: 8px; align-items: center; padding-bottom: 6px; white-space: nowrap; }
+.rv-error { color: var(--red, #c0392b); }
+@media (max-width: 760px) { .scan-review-bank .rv-row { grid-template-columns: 1fr 1fr; } .rv-kind, .rv-actions { grid-column: 1 / -1; } }
+.rq-answer { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 6px; }
+.rq-answer input { flex: 1; min-width: 180px; padding: 6px 8px; font: inherit; border: 1px solid var(--line); border-radius: 6px; background: transparent; color: inherit; }
+.rq-reply { margin: 6px 0 0; font-size: 14px; }
+.reader-questions li { flex-direction: column; align-items: stretch; }

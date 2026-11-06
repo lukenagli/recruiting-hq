@@ -165,6 +165,31 @@ LETTER_NAMES = {
 }
 
 
+# Email domains bankers write from, beyond the website domains above (a person's bank is in their address).
+EMAIL_DOMAINS = {
+    "gs.com": "Goldman Sachs", "ms.com": "Morgan Stanley", "jpmorgan.com": "J.P. Morgan", "jpmchase.com": "J.P. Morgan",
+    "chase.com": "J.P. Morgan", "bofa.com": "Bank of America", "ml.com": "Bank of America", "barcap.com": "Barclays",
+    "citigroup.com": "Citi", "guggenheimsecurities.com": "Guggenheim", "centerview.com": "Centerview",
+    "rbc.com": "RBC", "rothschild.com": "Rothschild", "mizuho-sc.com": "Mizuho", "mizuhoamericas.com": "Mizuho",
+    "allenco.com": "Allen & Company", "tdcowen.com": "TD Cowen", "cowen.com": "TD Cowen", "td.com": "TD Cowen",
+    "us.hsbc.com": "HSBC", "us.bnpparibas.com": "BNP Paribas", "mufgsecurities.com": "MUFG", "us.mufg.jp": "MUFG",
+    "cainbrothers.com": "Cain Brothers", "ducerapartners.com": "Ducera", "lincolninternational.com": "Lincoln International",
+    "keybanccm.com": "KeyBanc", "stifel.com": "Stifel", "solomonpartners.com": "Solomon Partners",
+}
+
+
+def bank_for_email(address: str) -> str:
+    """The bank an email address belongs to ('' when it isn't a bank's): its domain, or the domain it is a part of."""
+    domain = address.rsplit("@", 1)[-1].lower().strip(" >.;,")
+    known = {**{d: b for b, d in DOMAINS.items() if d}, **EMAIL_DOMAINS}
+    parts = domain.split(".")
+    for i in range(len(parts) - 1):
+        hit = known.get(".".join(parts[i:]))
+        if hit:
+            return hit
+    return ""
+
+
 # What accounts outside the preview (the graded version, the demo) get until the project is graded: the first list.
 GRADED_ADDRESSES = {b: ADDRESSES[b] for b in ("Bank of America", "Barclays", "Centerview", "Citi", "Evercore", "Goldman Sachs",
                                               "Guggenheim", "Houlihan Lokey", "J.P. Morgan", "Lazard", "Morgan Stanley", "RBC")}

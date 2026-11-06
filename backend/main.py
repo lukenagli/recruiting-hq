@@ -832,6 +832,23 @@ def reader_questions(user: dict = Depends(preview_user)):
     return sync.questions(user["id"])
 
 
+class QuestionAnswer(BaseModel):
+    answer: str = Field(min_length=1, max_length=2000)
+
+
+@app.post("/api/reader/questions/{qid}/answer")
+async def reader_question_answer(qid: int, req: QuestionAnswer, user: dict = Depends(preview_user)):
+    """The student answers one of the reader's questions right on the home page: the assistant files it (as if they'd
+    typed it in the update box) and the question is closed."""
+    q = next((q for q in sync.questions(user["id"]) if q["id"] == qid), None)
+    if q is None:
+        raise HTTPException(status_code=404, detail="That question was already answered.")
+    out = await assistant.run(user, ai_for(user), f'You asked me: "{q["question"]}" My answer: {req.answer.strip()} '
+                                                   "File what this settles (update the entry or person it's about).", [])
+    sync.question_done(user["id"], qid)
+    return {"reply": out.get("reply", "")[:600], "run_id": out.get("run_id")}
+
+
 @app.post("/api/reader/questions/{qid}/done")
 def reader_question_done(qid: int, user: dict = Depends(preview_user)):
     return sync.question_done(user["id"], qid)

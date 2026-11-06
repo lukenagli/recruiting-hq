@@ -57,6 +57,17 @@ export default function FolderSetup({ onStart }: { onStart: () => void }) {
         <strong>Before your first scan: where do you keep recruiting email?</strong> The reader looked at your {data.folders.length} Outlook
         folders (it hasn't opened any email). Here's its guess. Check the "Not sure" ones; open a group to change any folder.
       </p>
+      <dl className="folder-setup-legend">
+        <dt>Read every email</dt>
+        <dd>Every email in the folder is opened and read. Best for folders that are all recruiting, like one per bank.</dd>
+        <dt>Check each one</dt>
+        <dd>
+          The reader looks at each email's sender, subject and first line, and opens only the ones that mention a bank, a banker, someone
+          in your tracker or recruiting. Faster for mixed folders, but an email with a plain subject from someone new can be passed over.
+        </dd>
+        <dt>Skip</dt>
+        <dd>Never opened. For classes, personal mail and anything else that's never about recruiting.</dd>
+      </dl>
       {GROUPS.map((g) => {
         const folders = data.folders.filter((f) => f.pick === g.pick)
         if (!folders.length) return null
