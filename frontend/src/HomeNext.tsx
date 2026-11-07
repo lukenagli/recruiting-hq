@@ -456,14 +456,28 @@ function Pipeline({ banks, today }: { banks: BankSummary[]; today: string }) {
       </div>
       <div className="pipe-grid">
         {live.map((b) => {
-          const stage = [...b.stage].reverse().find((s) => s.done)?.label ?? 'Not started'
+          const p = b.progress
+          const at = p?.steps.find((s) => s.state === 'current') ?? (p?.reached === 3 ? p.steps[3] : undefined)
+          const stage = p
+            ? at ? `${at.label}${at.key === 'network' ? ` · ${p.checks.filter((c) => c.done).length} of 4` : at.note ? ` · ${at.note}` : ''}` : 'Not started'
+            : [...b.stage].reverse().find((s) => s.done)?.label ?? 'Not started'
           return (
             <a key={b.bank} className="pipe-tile" href={`#/bank/${encodeURIComponent(b.bank)}`}>
               <span className="pipe-top">
                 <Logo bank={b.bank} domain={b.domain} size={30} />
                 <strong>{b.bank}</strong>
               </span>
-              <StagePips stage={b.stage} />
+              {p ? (
+                <span className="pips" title={p.checks.map((c) => `${c.done ? '✓' : '○'} ${c.label}`).join('\n')}>
+                  {p.steps.map((s) => (
+                    <span key={s.key} className={`pip ${s.state === 'done' ? 'done' : ''} ${s.state === 'current' ? 'now' : ''}`}
+                      style={s.key === 'network' && s.state === 'current' ? ({ '--fill': `${Math.max(12, Math.round(p.fill * 100))}%` } as React.CSSProperties) : undefined}
+                      title={s.label} />
+                  ))}
+                </span>
+              ) : (
+                <StagePips stage={b.stage} />
+              )}
               <span className="pipe-stage">{stage}</span>
               <small>
                 {b.next_up ? `Next: ${b.next_up.title}, ${inDays(daysUntil(b.next_up.date, today))}` : b.last_touch ? `Last contact ${fmtDate(b.last_touch)}` : `${b.people} people`}

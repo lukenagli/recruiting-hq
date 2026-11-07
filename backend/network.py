@@ -103,6 +103,76 @@ def _stage(people: list[dict], app: dict) -> tuple[str, list[dict]]:
     return current, [{"key": k, "label": label, "done": i <= reached} for i, (k, label) in enumerate(STAGES)]
 
 
+# Preview: how far along a bank really is. Not how many contacts (some banks are high touch, some low touch), but
+# what the bank has done back: met the people who matter, invited you to something only some candidates get (a
+# dinner), then Super Week, where first rounds and the superday come back to back, then an offer.
+PROGRESS = [("network", "Networking"), ("invited", "Invite-only"), ("superweek", "Super Week"), ("offer", "Offer")]
+MANUAL_STAGE = {"yale": 0, "bank": 0, "dinner": 1, "superday": 2, "offer": 3}  # a stage the student set by hand
+SCREEN = re.compile(r"hire ?vue|online (?:test|assessment)|assessment|screener|pymetrics|codility|video interview", re.I)
+FINAL = re.compile(r"superday|super day|final round", re.I)
+INVITED_STEP = re.compile(r"\binvited\b|invitation|next round|second round|round (?:2|3|two|three)\b", re.I)
+SENIOR = re.compile(r"\b(?:vp|vice president|director|md|managing director|partner|principal|head)\b", re.I)
+
+
+def _day(iso: str) -> str:
+    try:
+        d = date.fromisoformat(iso[:10])
+    except ValueError:
+        return ""
+    return f"{d:%b} {d.day}"
+
+
+def _progress(data: dict, bank: str, app: dict) -> dict:
+    people = {p["id"]: p for p in data["people"] if p["bank"] == bank}
+    entries = [i for i in data["interactions"] if i["bank"] == bank]
+    spoken = [p for p in people.values() if p["status"] in ("spoke", "met")]
+    chats = [i for i in entries if i["kind"] == "coffee_chat" and i["status"] == "done"]
+    # Networking runs in parallel, not in order (Yale people and your group's bankers at the same time): what counts is
+    # who you have met, not how many.
+    targets = [g.strip().lower() for g in re.split(r"[>,;/]", app["prefs"] or "") if len(g.strip()) > 2]
+    in_group = lambda p: bool(p["grp"]) and (not targets or any(t in p["grp"].lower() or p["grp"].lower() in t for t in targets))  # noqa: E731
+    repeat = any(sum(c["status"] == "done" for c in p["chats"]) > 1 for p in people.values())
+    checks = [
+        {"key": "yale", "label": f"A {data['school']} alum or 2Y" if data.get("school") else "An alum or 2Y", "done": any(p["alum"] in ("yes", "student") or p["origin"] == "classmate" for p in spoken)},
+        {"key": "group", "label": "Someone in your group" if targets else "Someone in a group you want", "done": any(in_group(p) for p in spoken)},
+        {"key": "senior", "label": "A VP or more senior", "done": any(SENIOR.search(p["title"] or "") for p in spoken)},
+        {"key": "back", "label": "Introduced on or asked back",
+         "done": repeat or any(l["bank"] == bank for l in data["links"])},
+    ]
+    invites = sorted((i for i in entries if (i["kind"] == "event" and (i.get("invite_only") == "yes" or re.search(r"dinner", i["title"], re.I)))
+                      or (i["kind"] == "step" and INVITED_STEP.search(i["title"]))), key=lambda i: i["date"] or "9")
+    interviews = [i for i in entries if i["kind"] == "interview"]
+    screens = [i for i in interviews if SCREEN.search(i["title"]) and not FINAL.search(i["title"])]  # part of applying
+    rounds = sorted((i for i in interviews if i not in screens), key=lambda i: i["date"] or "9")
+    reached = 0 if (spoken or chats or any(i["status"] == "done" for i in entries)) else -1
+    if invites:
+        reached = 1
+    if rounds:
+        reached = 2
+    if app["status"] == "offer":
+        reached = 3
+    reached = max(reached, MANUAL_STAGE.get(app["stage"], -1))
+    n = sum(c["done"] for c in checks)
+    inv = invites[-1] if invites else None
+    finals = [i for i in rounds if FINAL.search(i["title"])]
+    sw = []
+    if [i for i in rounds if i not in finals]:
+        first = [i for i in rounds if i not in finals][0]
+        sw.append(f"Round 1 {_day(first['date'])}".strip())
+    if finals:
+        sw.append(f"Superday {_day(finals[0]['date'])}".strip())
+    notes = {
+        "network": f"{len(chats)} chat{'s' if len(chats) != 1 else ''} · {n} of 4" if reached >= 0 else "",
+        "invited": f"{'Dinner' if re.search('dinner', inv['title'], re.I) else 'Invited'} {_day(inv['date'])}".strip() if inv else "",
+        "superweek": " · ".join(sw) or ("Date not set" if rounds else ""),
+        "offer": "",
+    }
+    steps = [{"key": k, "label": label, "state": "done" if i < reached or (i == 3 and reached == 3) else "current" if i == reached else "todo",
+              "note": notes[k]} for i, (k, label) in enumerate(PROGRESS)]
+    return {"steps": steps, "checks": checks, "fill": n / 4, "reached": reached,
+            "screens": [i["title"] for i in screens if i["status"] == "done"]}
+
+
 def _bank_summary(data: dict, bank: str, today: str) -> dict:
     people = [p for p in data["people"] if p["bank"] == bank and p["origin"] != "listed"]
     interactions = [i for i in data["interactions"] if i["bank"] == bank]
@@ -126,6 +196,7 @@ def _bank_summary(data: dict, bank: str, today: str) -> dict:
         "application": app,
         "stage": stage,
         "questions_on_file": data["question_counts"].get(bank, 0),
+        **({"progress": _progress(data, bank, app)} if data.get("preview") else {}),
     }
 
 
@@ -139,8 +210,11 @@ def bank_list(uid: int) -> list[dict]:
     today = date.today().isoformat()
     with connect(read_only=True) as conn:
         data = _load(conn, uid)
+        data["preview"], data["school"] = _preview(uid), schools.for_user(uid)["short"]
     rows = [_bank_summary(data, b, today) for b in _bank_names(data)]
     furthest = lambda r: STAGE_KEYS.index(r["current_stage"]) if r["current_stage"] else -1
+    if data["preview"]:  # furthest along first, by what the bank has done back
+        furthest = lambda r: r["progress"]["reached"] + r["progress"]["fill"] / 2  # noqa: E731
     return sorted(rows, key=lambda r: (r["application"]["status"] == "out", -furthest(r), -r["people"], r["bank"]))
 
 
@@ -158,6 +232,12 @@ def _short(title: str) -> str:
     return _initials(title)
 
 
+def _preview(uid: int) -> bool:
+    from . import accounts  # changes being tried out on preview accounts first
+
+    return accounts.in_preview_uid(uid)
+
+
 def timeline(uid: int) -> dict:
     """Every bank as a row of touchpoints on one shared calendar: one-on-one chats (with bankers or with Yale 2Ys),
     events where the user met several people at once, interviews, next steps, and people reached out to but not met.
@@ -167,6 +247,8 @@ def timeline(uid: int) -> dict:
     with connect(read_only=True) as conn:
         data = _load(conn, uid)
     people = {p["id"]: p for p in data["people"]}
+    preview = _preview(uid)
+    data["school"] = schools.for_user(uid)["short"]
     yale = lambda p: p["alum"] == "student" or p["origin"] == "classmate"
     rows = []
     for bank in _bank_names(data):
@@ -219,6 +301,7 @@ def timeline(uid: int) -> dict:
             "interviews": [{"title": m["title"], "date": m["date"], "status": m["status"]} for m in marks if m["kind"] == "interview"],
             "invites": [m["title"] for m in marks if m.get("invite_only")],
             "chat_dates": sorted(m["date"] for m in marks if m["kind"] == "chat" and m["status"] == "done" and m["date"]),
+            **({"progress": _progress(data, bank, app)} if preview else {}),
         })
     rows.sort(key=lambda r: (r["out"], not r["marks"], -int((r["next"] or {}).get("date", "0000-00-00").replace("-", "") or 0) * 0, r["last"] == "", ""))
     rows.sort(key=lambda r: (r["out"], not r["marks"], -(int(r["last"].replace("-", "")) if r["last"] else 0)))

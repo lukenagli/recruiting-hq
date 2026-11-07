@@ -1503,3 +1503,8 @@ details[open] > summary .folder-setup-names { display: none; }
 .rq-answer input { flex: 1; min-width: 180px; padding: 6px 8px; font: inherit; border: 1px solid var(--line); border-radius: 6px; background: transparent; color: inherit; }
 .rq-reply { margin: 6px 0 0; font-size: 14px; }
 .reader-questions li { flex-direction: column; align-items: stretch; }
+
+/* Preview: progress by what the bank has done back. Networking fills by who you have met. */
+.pm-step.current i.filled { background: linear-gradient(90deg, var(--blue) var(--fill, 50%), var(--blue-soft) var(--fill, 50%)); }
+.pm-applied small { font-size: 10px; color: var(--green); font-weight: 600; margin-top: 1px; white-space: nowrap; }
+.pipe-tile .pips .pip.now { background: linear-gradient(90deg, #9cc2ff var(--fill, 50%), rgba(255, 255, 255, 0.18) var(--fill, 50%)); }

@@ -1,4 +1,4 @@
-import type { CalendarItem } from './api'
+import type { CalendarItem, Progress } from './api'
 import { Loading, Logo, daysUntil, fmtDate, useApi } from './ui'
 
 /**
@@ -24,14 +24,16 @@ type Row = {
   invites: string[]
   chat_dates: string[]
   last: string
+  progress?: Progress
 }
 type Timeline = { today: string; rows: Row[] }
-type Step = { label: string; state: 'done' | 'current' | 'todo'; note: string }
+type Step = { label: string; state: 'done' | 'current' | 'todo'; note: string; fill?: number; title?: string }
 
 const short = (iso: string) => (iso ? fmtDate(iso) : '')
 
 /** Coffee chats, interviews, superday, offer: each done, in progress (or coming up), or not reached yet. */
 function steps(r: Row): Step[] {
+  if (r.progress) return progressSteps(r.progress)
   const isFinal = (t: string) => /superday|super day|final round/i.test(t)
   const rounds = r.interviews.filter((i) => !isFinal(i.title))
   const finals = r.interviews.filter((i) => isFinal(i.title))
@@ -56,12 +58,22 @@ function steps(r: Row): Step[] {
   return raw.map((s, i) => (i < furthest && s.state === 'todo' ? { ...s, state: 'done' } : s))
 }
 
+/** Preview: networking (filled by who you have met, not how many), invite-only, Super Week, offer. */
+function progressSteps(p: Progress): Step[] {
+  const met = p.checks.map((c) => `${c.done ? '✓' : '○'} ${c.label}`).join('\n')
+  return p.steps.map((s) => ({
+    ...s,
+    ...(s.key === 'network' ? { fill: s.state === 'current' ? p.fill : undefined, title: `Who you have met here:\n${met}` } : {}),
+  }))
+}
+
 function Applied({ r }: { r: Row }) {
   const yes = r.applied === 'Yes'
   return (
     <span className={`pm-applied ${yes ? 'yes' : 'no'}`} title={yes ? 'Application submitted' : 'Not applied yet'}>
       <b aria-hidden>{yes ? '✓' : '✗'}</b> Applied
       {!yes && r.deadline && <em>due {short(r.deadline)}</em>}
+      {r.progress?.screens.length ? <small>{r.progress.screens.length === 1 && /hire ?vue/i.test(r.progress.screens[0]) ? 'HireVue done' : 'Screens done'}</small> : null}
     </span>
   )
 }
@@ -103,8 +115,9 @@ function BankRow({ r }: { r: Row }) {
       <div className="pm-middle">
         <div className="pm-progress" aria-label={state.map((s) => `${s.label}: ${s.state}`).join(', ')}>
           {state.map((s) => (
-            <div key={s.label} className={`pm-step ${s.state}`}>
-              <i />
+            <div key={s.label} className={`pm-step ${s.state}`} title={s.title}>
+              <i style={s.fill !== undefined ? ({ '--fill': `${Math.max(12, Math.round(s.fill * 100))}%` } as React.CSSProperties) : undefined}
+                className={s.fill !== undefined ? 'filled' : undefined} />
               <span>{s.label}</span>
               {s.note && <small>{s.note}</small>}
             </div>

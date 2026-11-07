@@ -116,6 +116,15 @@ export type Application = {
   notes: string
 }
 
+/** Preview: how far along a bank is, from what the bank has done back rather than how many contacts. */
+export type Progress = {
+  steps: { key: string; label: string; state: 'done' | 'current' | 'todo'; note: string }[]
+  checks: { key: string; label: string; done: boolean }[]
+  fill: number
+  reached: number
+  screens: string[]
+}
+
 export type BankSummary = {
   bank: string
   domain: string
@@ -127,6 +136,7 @@ export type BankSummary = {
   next_up: { title: string; date: string } | null
   application: Application
   stage: Stage[]
+  progress?: Progress
   current_stage: string
   yale_contacts: number
   yale_spoken: number
