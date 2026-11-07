@@ -33,6 +33,13 @@ MAX_CHARS = 40_000            # per filing run
 MAX_ITEMS = 12                # emails or calendar events per filing run (each can mean a person and a chat to save)
 
 SCHEMA = """
+CREATE TABLE IF NOT EXISTS sync_behind (
+    user_id       INTEGER NOT NULL,
+    conversation  TEXT NOT NULL,
+    more          INTEGER NOT NULL DEFAULT 0,
+    updated_at    TEXT NOT NULL DEFAULT '',
+    PRIMARY KEY (user_id, conversation)
+);
 CREATE TABLE IF NOT EXISTS sync_state (
     user_id       INTEGER NOT NULL,
     source        TEXT NOT NULL,
@@ -158,6 +165,7 @@ class Batch(BaseModel):
     group_chat: bool = False
     baseline: str = ""    # the reader's starting line, local ISO time; used for a conversation with no checkpoint yet
     seen_until: str = ""  # a screened Outlook folder: everything up to here was looked at, even what wasn't sent
+    more: int = 0         # an Outlook folder: emails the reader left for next time (it opens only so many a refresh)
     items: list[Item]
 
 
@@ -210,7 +218,26 @@ def state(uid: int) -> dict:
             whatsapp.append(chat["name"])
     return {"checkpoints": out, "season_start": SEASON_START, "log": log, "has_key": has_key, "config": config,
             "outlook": {"watch": sorted(_watched_folders(uid)), "screen": _screen(uid),
-                        "plan": {f["name"]: f["plan"] for f in folder_plan(uid)}}}
+                        "plan": {f["name"]: f["plan"] for f in folder_plan(uid)},
+                        # Preview: folders still catching up get the first scan's larger allowance until they have
+                        "behind": behind(uid) if accounts.in_preview_uid(uid) else []}}
+
+
+def behind(uid: int) -> list[str]:
+    """Outlook folders whose last read left emails for next time, or whose filing stopped partway."""
+    with connect(read_only=True) as conn:
+        return [r[0] for r in conn.execute("SELECT conversation FROM sync_behind WHERE user_id = ? AND more > 0", (uid,))]
+
+
+def _mark_behind(uid: int, now: str, batch: Batch, done: bool) -> None:
+    """A folder is behind while the reader left emails in it (more) or its filing didn't finish; caught up otherwise."""
+    with connect() as conn:
+        if batch.more > 0 or not done:
+            conn.execute("""INSERT INTO sync_behind (user_id, conversation, more, updated_at) VALUES (?, ?, ?, ?)
+                            ON CONFLICT(user_id, conversation) DO UPDATE SET more = excluded.more, updated_at = excluded.updated_at""",
+                         (uid, batch.conversation, max(1, batch.more), now))
+        else:
+            conn.execute("DELETE FROM sync_behind WHERE user_id = ? AND conversation = ?", (uid, batch.conversation))
 
 
 FIRST_SYNC_FROM = "2026-09-01T00:00:00"  # a new reader catches up on everything since fall recruiting began
@@ -825,6 +852,7 @@ async def ingest_many(user: dict, chosen: Chosen, batches: list[Batch]) -> dict:
             pass
     for w in work:
         batch, fresh = w["batch"], w["fresh"]
+        _mark_behind(uid, now, batch, w["done"])
         if not w["done"]:
             why = ("Today's AI allowance ran out partway" if out_of_ai else f"Filing stopped partway ({w.get('failed', '')})")
             results[w["n"]] = _log(uid, now, batch, len(batch.items), len(fresh), w["filed"], f"{why}; the rest is read again on the next refresh.")

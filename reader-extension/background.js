@@ -563,6 +563,8 @@ async function syncOutlook(state, lines, first = true, last = true) {
   const msg = { type: 'outlook-collect', checkpoints: state.checkpoints.outlook || {}, baseline: state.baseline,
                 watch: (state.outlook || {}).watch || [], screen: (state.outlook || {}).screen || '',
                 plan: (state.outlook || {}).plan || {},
+                // folders a first scan (or a big week) left emails in keep its larger allowance until they've caught up
+                behind: queueMode ? (state.outlook || {}).behind || [] : [],
                 max_open: queueMode && state.start_from ? 400 : 0 } // a first scan reads each folder in one pass
   const started = Date.now()
   let tab = null

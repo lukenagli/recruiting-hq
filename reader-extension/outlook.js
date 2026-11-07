@@ -5,6 +5,7 @@
 
 const PANE_DATE = /(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun) (\d{1,2}\/\d{1,2}\/\d{4}) (\d{1,2}:\d{2} [AP]M)/g
 const MAX_OPEN = 60 // conversations opened per folder per refresh (a first scan asks for more, so it reads in one pass)
+const CATCH_UP = 400 // the same for a folder the last refresh left emails in, until it has caught up
 // Conversations opened this refresh: one conversation shows in every folder holding one of its emails (Sent Items has
 // most of them again), and opening it shows the whole thread, so it is opened once.
 let opened = new Set()
@@ -396,7 +397,11 @@ chrome.runtime.onMessage.addListener((msg, _sender, reply) => {
   }
   if (msg.type !== 'outlook-collect') return
   opened = new Set()
-  maxOpen = Math.max(MAX_OPEN, Math.min(600, Number(msg.max_open) || 0))
+  const base = Math.max(MAX_OPEN, Math.min(600, Number(msg.max_open) || 0))
+  const behind = new Set(msg.behind || [])
+  // A folder still catching up (the last read left emails in it) is read with the first scan's allowance.
+  const limitFor = (name) => (behind.has(name) ? Math.max(base, CATCH_UP) : base)
+  maxOpen = base
   answerLater(msg, reply, async () => {
     if (!(await rhqWaitFor(() => document.querySelector('[role="tree"] [role="treeitem"]'), 30000))) {
       throw new Error(`Outlook's folder list didn't show (window ${window.innerWidth}×${window.innerHeight}, ${document.visibilityState}), so nothing was read.`)
@@ -435,6 +440,7 @@ chrome.runtime.onMessage.addListener((msg, _sender, reply) => {
       // Each folder is claimed before it is read: without a yes (the refresh was stopped), nothing more is read.
       if ((await rhqSend({ type: 'outlook-claim', name, n: toRead }).catch(() => false)) !== true) continue
       const since = msg.checkpoints[name] || msg.baseline
+      maxOpen = limitFor(name)
       const r = await readFolder(name, since, 25000, screenFor(name))
       const b = { source: 'outlook', conversation: name, group_chat: false, ...r }
       // Handed over to be filed now, while the next folders are read (filing marks it so it isn't filed twice). A
@@ -452,6 +458,7 @@ chrome.runtime.onMessage.addListener((msg, _sender, reply) => {
         await rhqWaitFor(() => document.querySelector('[role="listbox"] [role="option"]'), 20000)
         await rhqSleep(1000)
       }
+      maxOpen = limitFor(b.conversation)
       const again = await readFolder(b.conversation, msg.checkpoints[b.conversation] || msg.baseline, 40000, screenFor(b.conversation))
       b.items = again.items
       b.more = again.more
