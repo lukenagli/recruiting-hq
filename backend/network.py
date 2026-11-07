@@ -122,6 +122,15 @@ def _day(iso: str) -> str:
     return f"{d:%b} {d.day}"
 
 
+def _invite_label(title: str) -> str:
+    for key, label in (("dinner", "Dinner"), ("happy hour", "Happy hour"), ("day on wall street", "Day on Wall Street"),
+                       ("days on wall street", "Day on Wall Street"), ("lunch", "Lunch"), ("breakfast", "Breakfast"),
+                       ("round", "Next round")):
+        if key in title.lower():
+            return label
+    return "Invited"
+
+
 def _progress(data: dict, bank: str, app: dict) -> dict:
     people = {p["id"]: p for p in data["people"] if p["bank"] == bank}
     entries = [i for i in data["interactions"] if i["bank"] == bank]
@@ -163,7 +172,7 @@ def _progress(data: dict, bank: str, app: dict) -> dict:
         sw.append(f"Superday {_day(finals[0]['date'])}".strip())
     notes = {
         "network": f"{len(chats)} chat{'s' if len(chats) != 1 else ''} · {n} of 4" if reached >= 0 else "",
-        "invited": f"{'Dinner' if re.search('dinner', inv['title'], re.I) else 'Invited'} {_day(inv['date'])}".strip() if inv else "",
+        "invited": f"{_invite_label(inv['title'])} {_day(inv['date'])}".strip() if inv else "",
         "superweek": " · ".join(sw) or ("Date not set" if rounds else ""),
         "offer": "",
     }
