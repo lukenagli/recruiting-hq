@@ -116,6 +116,9 @@ SEASON = [
     ("interviews", "Interviews", "2026-12-01", "2026-12-04"),
     ("superday", "Superday", "2026-12-05", "2026-12-09"),
 ]
+# The invite-only dinners on the Finance Club's calendar (Meeting #9 deck, Nov 3): before an invite is logged, the bank's
+# Dinner step shows the date so it's clear the dinner is still ahead.
+CLUB_DINNERS = {"Goldman Sachs": "2026-11-16", "Citi": "2026-11-17", "Barclays": "2026-11-18", "Bank of America": "2026-11-19"}
 MANUAL_STAGE = {"yale": 0, "bank": 1, "dinner": 2, "superday": 4, "offer": 4}  # a stage the student set by hand
 SCREEN = re.compile(r"hire ?vue|online (?:test|assessment)|assessment|screener|pymetrics|codility|video interview", re.I)
 FINAL = re.compile(r"superday|super day|final round", re.I)
@@ -200,7 +203,8 @@ def _progress(data: dict, bank: str, app: dict) -> dict:
     notes = [
         f"{yale_n} chat{'s' if yale_n != 1 else ''}" if yale_n else "",
         (f"{group_n} in your group" if targets and group_n else f"{len(bankers)} banker{'s' if len(bankers) != 1 else ''}") if bankers or early else "",
-        _day(dinners[-1]["date"]) or "Invited" if dinners else "",  # the step is the dinner: its date says enough
+        (_day(dinners[-1]["date"]) or "Invited") if dinners else
+        (f"{_day(CLUB_DINNERS[bank])}?" if bank in CLUB_DINNERS and CLUB_DINNERS[bank] >= today else ""),  # the club's date
         _day(rounds[0]["date"]) if rounds else "",
         _day(finals[0]["date"]) if finals else "",
     ]

@@ -27,17 +27,21 @@ export default function SeasonBar({ p, labels = false, dark = false }: { p: Prog
         <span className={`sb-offer ${p.offer ? 'done' : ''}`} title="Offer" />
       </div>
       {labels && (
+        // Laid out exactly like the bar above (same shares, same gaps), so each label starts where its step starts.
+        // Super Week's two short steps share one label, set flush with the end of the bar.
         <div className="sb-labels">
-          {p.steps.slice(0, 3).map((s) => (
-            <span key={s.key} className={state(s.fill)} style={{ flexGrow: s.share }}>
-              <b>{s.label}</b>
-              {s.note && <small>{s.note}</small>}
+          {p.steps.map((s, i) => (
+            <span key={s.key} className={i < 3 ? state(s.fill) : ''} style={{ flexGrow: s.share }}>
+              {i < 3 && <b>{s.label}</b>}
+              {i < 3 && s.note && <small className={s.fill === 0 ? 'sb-ahead' : ''}>{s.note}</small>}
+              {i === 3 && (
+                <span className={`sb-week ${state(Math.max(...week.map((w) => w.fill)))}`}>
+                  <b>Super Week</b>
+                  {weekNote && <small>{weekNote}</small>}
+                </span>
+              )}
             </span>
           ))}
-          <span className={`sb-week ${state(Math.max(...week.map((s) => s.fill)))}`} style={{ flexGrow: week.reduce((n, s) => n + s.share, 0) }}>
-            <b>Super Week</b>
-            {weekNote && <small>{weekNote}</small>}
-          </span>
         </div>
       )}
     </div>
