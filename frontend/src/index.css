@@ -1522,3 +1522,31 @@ details[open] > summary .folder-setup-names { display: none; }
 .connect-steps small { color: var(--muted); font-size: 14px; }
 .install-steps { margin: 4px 0 0; padding-left: 20px; display: grid; gap: 8px; font-size: 14px; }
 .reader-log-box summary { cursor: pointer; color: var(--muted); font-size: 14px; margin: 8px 0; }
+
+/* Preview: simpler setup. Folded help, a bigger single field, quiet skip links */
+.setup-card details.help { margin: 6px 0; }
+.setup-card details.help summary { cursor: pointer; color: var(--link, var(--blue)); font-size: 14px; font-weight: 600; }
+.setup-card details.help p, .setup-card details.help .choice-row { margin: 8px 0 4px; font-size: 14px; color: var(--muted); }
+.setup-card .big-field { font-size: 16px; }
+.setup-card .big-field input { font-size: 16px; padding: 12px 14px; }
+.setup-nav .link.muted { font-size: 14px; }
+
+/* Preview: simpler Settings */
+.simple-settings .settings-who { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
+.simple-settings .settings-who span { display: inline-flex; gap: 16px; align-items: center; }
+.simple-settings .card > h2 { margin: 0 0 10px; font-size: 20px; }
+.status-line { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 0; font-size: 15px; }
+.status-line b { width: 24px; height: 24px; border-radius: 50%; display: grid; place-items: center; flex: none; font-size: 13px; }
+.status-line.on b { background: var(--green-soft); color: var(--green); }
+.status-line.off b { background: #fdecc8; color: #8a5a00; }
+.ai-form { margin-top: 12px; }
+.ai-form details.help summary { cursor: pointer; color: var(--link, var(--blue)); font-size: 14px; font-weight: 600; }
+.ai-form details.help p { font-size: 14px; color: var(--muted); }
+.ai-form-actions { display: flex; gap: 14px; align-items: center; margin-top: 12px; }
+details.card.fold > summary { cursor: pointer; list-style: none; display: flex; flex-direction: column; gap: 3px; }
+details.card.fold > summary::-webkit-details-marker { display: none; }
+details.card.fold > summary strong { font-size: 18px; }
+details.card.fold > summary strong::after { content: ' ›'; color: var(--muted); }
+details.card.fold[open] > summary strong::after { content: ' ⌄'; }
+details.card.fold > summary small { color: var(--muted); font-size: 14px; }
+details.card.fold > .card, details.card.fold section.card { box-shadow: none; border: 0; padding-left: 0; padding-right: 0; }

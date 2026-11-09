@@ -12,8 +12,8 @@ import { Loading, Logo, useApi } from './ui'
  */
 
 const STEPS = ['AI key', 'Resume', 'Banks', 'Templates', 'Done']
-// Preview: the Outlook reader is a step of its own, before Done
-const PREVIEW_STEPS = ['AI key', 'Resume', 'Banks', 'Templates', 'Outlook', 'Done']
+// Preview: one question per screen, in plain words; templates are already filled in (change them in Settings)
+const PREVIEW_STEPS = ['AI', 'Resume', 'Banks', 'Groups', 'Outlook', 'Done']
 
 const PROVIDERS = [
   {
@@ -148,6 +148,85 @@ function KeyStep({ s, next, back }: { s: SetupState; next: () => void; back: () 
   )
 }
 
+/** Preview: turning the AI on, without the jargon. The Yale class key is the default; anything technical is folded away. */
+function AiStep({ s, next, back }: { s: SetupState; next: () => void; back: () => void }) {
+  const [provider, setProvider] = useState(s.ai.provider || 'portkey')
+  const [key, setKey] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('')
+  const p = PROVIDERS.find((x) => x.id === provider)!
+
+  async function save() {
+    setBusy(true)
+    setError('')
+    try {
+      await post('/api/settings/ai', { provider, key })
+      next()
+    } catch (e) {
+      setError((e as Error).message)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <>
+      <h2>Turn on the AI</h2>
+      <p className="setup-why">
+        Recruiting HQ uses AI to read your emails, log your coffee chats and write your thank-you notes. It runs on your own key, so only
+        you can use it and the cost goes on your account.
+      </p>
+      {s.ai.ready ? (
+        <p className="notice ok">
+          ✓ The AI is on{s.ai.using_site_key ? '.' : ` (your ${s.ai.provider_label} key ending in ${s.ai.hint}).`}
+        </p>
+      ) : null}
+      <label className="field big-field">
+        {provider === 'portkey' ? 'Paste your Yale AI class key' : `Paste your ${p.label} key`}
+        <input type="password" value={key} onChange={(e) => setKey(e.target.value)} autoComplete="off" spellCheck={false}
+          placeholder={s.ai.ready ? 'Paste a new key to replace it' : ''} />
+      </label>
+      <details className="help">
+        <summary>Where do I find it?</summary>
+        {provider === 'portkey' ? (
+          <p>
+            It's the long key from your MGT 409 AI class, the one you pasted when you set up your coding agent. If you saved it in a file, it's
+            the line that starts with <code>PORTKEY_API_KEY=</code>: copy what comes after the equals sign.
+          </p>
+        ) : (
+          <p>
+            Sign in at{' '}
+            <a href={p.url} target="_blank" rel="noreferrer">{p.company}'s keys page</a>, add a few dollars of credit on the{' '}
+            <a href={p.billing} target="_blank" rel="noreferrer">billing page</a> (it's separate from a {p.label} subscription), click Create
+            key and copy it.
+          </p>
+        )}
+      </details>
+      <details className="help">
+        <summary>{provider === 'portkey' ? 'Use a Claude or ChatGPT key instead' : 'Use a different kind of key'}</summary>
+        <div className="choice-row">
+          {PROVIDERS.map((x) => (
+            <button key={x.id} type="button" className={`choice-pill ${provider === x.id ? 'on' : ''}`} onClick={() => setProvider(x.id)}>
+              {x.id === 'portkey' ? 'Yale class key' : x.label}
+            </button>
+          ))}
+        </div>
+      </details>
+      <p className="fine">We check the key works before saving it. It's stored encrypted and never shown again.</p>
+      {error && <p className="notice error">{error}</p>}
+      <Nav step={0} onBack={back}>
+        {key.trim().length >= 20 ? (
+          <button className="primary" disabled={busy} onClick={save}>{busy ? 'Checking…' : 'Continue'}</button>
+        ) : s.ai.ready ? (
+          <button className="primary" onClick={next}>Continue</button>
+        ) : (
+          <button className="link muted" onClick={next}>Skip for now</button>
+        )}
+      </Nav>
+    </>
+  )
+}
+
 function ResumeStep({ s, next, back, reload }: { s: SetupState; next: () => void; back: () => void; reload: () => void }) {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
@@ -187,7 +266,7 @@ function ResumeStep({ s, next, back, reload }: { s: SetupState; next: () => void
   )
 }
 
-function BanksStep({ s, next, back }: { s: SetupState; next: () => void; back: () => void }) {
+function BanksStep({ s, next, back, part = 'all' }: { s: SetupState; next: () => void; back: () => void; part?: 'all' | 'banks' | 'groups' }) {
   const [banks, setBanks] = useState<string[]>(s.banks)
   const [extra, setExtra] = useState('')
   const [groups, setGroups] = useState<string[]>(s.profile.target_groups ? s.profile.target_groups.split(',').map((g) => g.trim()).filter(Boolean) : [])
@@ -217,8 +296,11 @@ function BanksStep({ s, next, back }: { s: SetupState; next: () => void; back: (
     setExtra('')
   }
 
+  const showBanks = part !== 'groups'
+  const showGroups = part !== 'banks'
   return (
     <>
+      {showBanks && (<>
       <h2>Which banks are you recruiting with?</h2>
       <p className="setup-why">Tap every bank you are targeting. You can add or remove banks any time.</p>
       <div className="bank-grid">
@@ -253,9 +335,10 @@ function BanksStep({ s, next, back }: { s: SetupState; next: () => void; back: (
           Add
         </button>
       </div>
-
-      <h3 className="setup-sub">Which groups interest you?</h3>
-      <p className="setup-why">Pick in order of preference; your first pick is what your cover letters focus on. Not sure yet? Skip this.</p>
+      </>)}
+      {showGroups && (<>
+      {part === 'groups' ? <h2>Which groups interest you most?</h2> : <h3 className="setup-sub">Which groups interest you?</h3>}
+      <p className="setup-why">Tap them in order of preference: your first pick is what your cover letters focus on. Not sure yet? Skip this.</p>
       {[
         ['Industry groups', s.options.industry_groups],
         ['Product groups', s.options.product_groups],
@@ -272,15 +355,20 @@ function BanksStep({ s, next, back }: { s: SetupState; next: () => void; back: (
           </div>
         </div>
       ))}
-      <label className="field">
+      {(part !== 'groups' || groups.length > 0) && <label className="field">
         Why are you interested in {groups[0] ?? 'that group'}? <small>(optional, you can add more in Interview Prep → Key information)</small>
         <textarea rows={3} value={why} onChange={(e) => setWhy(e.target.value)} placeholder="A sentence or two your cover letters can build on…" />
-      </label>
+      </label>}
+      </>)}
       {error && <p className="notice error">{error}</p>}
       <Nav step={2} onBack={back}>
-        <button className="primary" disabled={busy} onClick={save}>
-          {busy ? 'Saving…' : banks.length ? `Continue with ${banks.length} ${banks.length === 1 ? 'bank' : 'banks'}` : 'Skip for now'}
-        </button>
+        {part === 'groups' && !groups.length ? (
+          <button className="link muted" onClick={next}>Skip for now</button>
+        ) : (
+          <button className="primary" disabled={busy} onClick={save}>
+            {busy ? 'Saving…' : part === 'groups' ? 'Continue' : banks.length ? `Continue with ${banks.length} ${banks.length === 1 ? 'bank' : 'banks'}` : 'Skip for now'}
+          </button>
+        )}
       </Nav>
     </>
   )
@@ -308,15 +396,16 @@ function ReaderStep({ next, back }: { next: () => void; back: () => void }) {
     <>
       <h2>Connect your Outlook</h2>
       <p className="setup-why">
-        This is what keeps your tracker up to date. The Recruiting HQ Reader, a Chrome extension, reads your Outlook email and calendar when
-        you press Refresh and logs every coffee chat, event, person and thank-you here. It uses your AI key, so add that first. Do this on
-        your laptop in Chrome; it takes about five minutes.
+        This keeps your tracker up to date by itself: press Refresh and every coffee chat, event and thank-you in your Outlook gets logged.
+        Do this on your laptop, in Chrome.
       </p>
       <ReaderSettings bare onChange={reload} />
       <Nav step={4} onBack={back}>
-        <button className={data?.has_key ? 'primary' : 'ghost'} onClick={next}>
-          {data?.has_key ? 'Continue' : 'Skip for now'}
-        </button>
+        {data?.has_key ? (
+          <button className="primary" onClick={next}>Continue</button>
+        ) : (
+          <button className="link muted" onClick={next}>Skip for now</button>
+        )}
       </Nav>
     </>
   )
@@ -324,7 +413,11 @@ function ReaderStep({ next, back }: { next: () => void; back: () => void }) {
 
 function DoneStep({ s, back, finish, preview }: { s: SetupState; back: () => void; finish: () => void; preview: boolean }) {
   const reader = useApi<{ has_key: boolean }>(preview ? '/api/sync/state' : '/api/setup')
-  const items: [keyof SetupState['done'], string, string][] = [
+  const items: [keyof SetupState['done'], string, string][] = preview ? [
+    ['ai', 'AI', s.ai.ready ? 'On' : 'Off for now: add your key in Settings to turn it on'],
+    ['resume', 'Resume', s.profile.has_resume ? 'Uploaded' : 'Not yet: add it in Settings before writing cover letters'],
+    ['banks', 'Banks', s.banks.length ? s.banks.join(', ') : 'None yet: add them any time from the Recruiting Map'],
+  ] : [
     ['ai', 'AI connected', s.ai.ready ? (s.ai.provider_label || 'Site key') : 'Grading, letters and emails stay off until you add a key in Settings'],
     ['resume', 'Resume', s.profile.has_resume ? 'Uploaded' : 'Add it in Settings before writing cover letters'],
     ['banks', 'Banks', s.banks.length ? s.banks.join(', ') : 'Add banks any time from the Recruiting Map'],
@@ -348,8 +441,8 @@ function DoneStep({ s, back, finish, preview }: { s: SetupState; back: () => voi
           <li className={readerOn ? 'ok' : ''}>
             <b aria-hidden>{readerOn ? '✓' : '–'}</b>
             <span>
-              <strong>Outlook reader</strong>
-              <small>{readerOn ? 'Reader key made' : 'Set it up any time in Settings, on your laptop in Chrome'}</small>
+              <strong>Outlook</strong>
+              <small>{readerOn ? 'Connected' : 'Not yet: connect it any time in Settings, on your laptop in Chrome'}</small>
             </span>
           </li>
         )}
@@ -357,10 +450,9 @@ function DoneStep({ s, back, finish, preview }: { s: SetupState; back: () => voi
       {preview ? (
         <p className="setup-why">
           {readerOn
-            ? 'Next, press ↻ Refresh from Outlook on your homepage. The first one reads your email and calendar back to September 1 and fills in your tracker, so it takes a while; after that a refresh takes a minute or two. '
+            ? 'Next, press Refresh on your homepage. The first one reads your email and calendar back to September 1, so it takes a while. After that, a refresh takes a minute or two. '
             : ''}
-          Tell the "Anything happen?" box on your homepage about anything that isn't in your email, in plain words or by voice. A two-minute
-          tour shows you everything else.
+          Anything that isn't in your email, just type into the box at the top of your homepage, in plain words.
         </p>
       ) : (
       <p className="setup-why">
@@ -370,7 +462,7 @@ function DoneStep({ s, back, finish, preview }: { s: SetupState; back: () => voi
       )}
       <Nav step={4} onBack={back}>
         <button className="primary big" onClick={finish}>
-          Show me around
+          {preview ? 'Go to my homepage' : 'Show me around'}
         </button>
       </Nav>
     </>
@@ -395,6 +487,16 @@ export default function Setup({ onDone, preview = false }: { onDone: () => void;
       setStep(2)
       return <Loading error="" />
     }
+    let saved = -1
+    try {
+      saved = Number(sessionStorage.getItem('rhq-setup-step') ?? -1)
+    } catch {
+      saved = -1
+    }
+    if (preview && saved >= 0 && saved < steps.length) {
+      setStep(saved)
+      return <Loading error="" />
+    }
     const order: (keyof SetupState['done'])[] = ['ai', 'resume', 'banks']
     const first = order.findIndex((k) => !data.done[k])
     setStep(first === -1 ? 0 : first)
@@ -403,11 +505,21 @@ export default function Setup({ onDone, preview = false }: { onDone: () => void;
   const go = (n: number) => {
     reload()
     setStep(n)
+    try {
+      sessionStorage.setItem('rhq-setup-step', String(n))
+    } catch {
+      // private window: a reload starts at the first unfinished step instead
+    }
   }
   const next = () => go(step + 1)
   const back = () => go(step - 1)
 
   async function finish() {
+    try {
+      sessionStorage.removeItem('rhq-setup-step')
+    } catch {
+      // nothing saved
+    }
     await post('/api/setup/finish', {})
     onDone()
   }
@@ -423,10 +535,11 @@ export default function Setup({ onDone, preview = false }: { onDone: () => void;
         ))}
       </div>
       <div className="card setup-card" key={`${step}-${version}`}>
-        {step === 0 && <KeyStep s={data} next={next} back={back} />}
+        {step === 0 && (preview ? <AiStep s={data} next={next} back={back} /> : <KeyStep s={data} next={next} back={back} />)}
         {step === 1 && <ResumeStep s={data} next={next} back={back} reload={reload} />}
-        {step === 2 && <BanksStep s={data} next={next} back={back} />}
-        {step === 3 && <TemplatesStep s={data} next={next} back={back} reload={reload} />}
+        {step === 2 && <BanksStep s={data} next={next} back={back} part={preview ? 'banks' : 'all'} />}
+        {step === 3 && (preview ? <BanksStep s={data} next={next} back={back} part="groups" />
+          : <TemplatesStep s={data} next={next} back={back} reload={reload} />)}
         {preview && step === 4 && <ReaderStep next={next} back={back} />}
         {step === steps.length - 1 && <DoneStep s={data} back={back} finish={finish} preview={preview} />}
       </div>
