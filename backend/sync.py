@@ -345,8 +345,9 @@ def folder_plan(uid: int, today: str = "") -> list[dict]:
         if r["last_seen"] < latest:  # no longer in the folder list (deleted or renamed)
             continue
         name = r["folder"]
-        if preview and "@" in name:  # the mailbox itself, at the top of Outlook's list: its folders are listed on their own
-            out.append({"name": name, "plan": "skip", "reason": "your mailbox, not a folder", "mode": r["mode"], "last_read": r["last_read"],
+        if preview and ("@" in name or name == "Search Folders"):
+            # the mailbox itself (top of Outlook's list) and Outlook's saved searches: neither is a folder of its own mail
+            out.append({"name": name, "plan": "skip", "reason": "not a folder of its own", "mode": r["mode"], "last_read": r["last_read"],
                         "mailbox": True})
             continue
         read_at = datetime.fromisoformat(r["last_read"]) if r["last_read"] else None
@@ -556,6 +557,11 @@ def _message(batch: Batch, items: list[Item], school: str, tags: list[str] | Non
                  "or outreach, followed up, sent new times, asked for feedback, sent materials, submitted an application or a "
                  "cover letter), find that to-do with lookup and mark the same entry done with save_entry (status done, date "
                  "the email's date, a one-line summary of what I sent); never leave it open and never log it again. ")
+        if uid and accounts.in_preview_uid(uid):
+            head += ("A step that was only waiting for something (watch for or expect an invite, a decision, a next round) has "
+                     "done its job once that thing arrives: log what arrived (the invitation as the event, the decision on "
+                     "the entry it decides) and remove the waiting step with remove_entry. Keep any date it carried that "
+                     "still matters (when interviews start) as a fact with save_fact, category Recruiting process. ")
     if batch.source == "outlook" and batch.conversation == "Calendar":
         head += ("These are events on my Outlook calendar, new or changed since the last refresh. A coffee chat, call, interview "
                  "or dinner with a banker or a second-year is scheduled for the date, time and place shown (\"Luke Nagli / Sami "
