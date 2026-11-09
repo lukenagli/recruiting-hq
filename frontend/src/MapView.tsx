@@ -1,4 +1,5 @@
 import type { CalendarItem, Progress } from './api'
+import SeasonBar from './SeasonBar'
 import { Loading, Logo, daysUntil, fmtDate, useApi } from './ui'
 
 /**
@@ -27,13 +28,12 @@ type Row = {
   progress?: Progress
 }
 type Timeline = { today: string; rows: Row[] }
-type Step = { label: string; state: 'done' | 'current' | 'todo'; note: string; fill?: number; title?: string }
+type Step = { label: string; state: 'done' | 'current' | 'todo'; note: string }
 
 const short = (iso: string) => (iso ? fmtDate(iso) : '')
 
 /** Coffee chats, interviews, superday, offer: each done, in progress (or coming up), or not reached yet. */
 function steps(r: Row): Step[] {
-  if (r.progress) return progressSteps(r.progress)
   const isFinal = (t: string) => /superday|super day|final round/i.test(t)
   const rounds = r.interviews.filter((i) => !isFinal(i.title))
   const finals = r.interviews.filter((i) => isFinal(i.title))
@@ -56,15 +56,6 @@ function steps(r: Row): Step[] {
   // Reaching a later step means the earlier ones are behind you.
   const furthest = Math.max(-1, ...raw.map((s, i) => (s.state !== 'todo' ? i : -1)))
   return raw.map((s, i) => (i < furthest && s.state === 'todo' ? { ...s, state: 'done' } : s))
-}
-
-/** Preview: networking (filled by who you have met, not how many), invite-only, Super Week, offer. */
-function progressSteps(p: Progress): Step[] {
-  const met = p.checks.map((c) => `${c.done ? '✓' : '○'} ${c.label}`).join('\n')
-  return p.steps.map((s) => ({
-    ...s,
-    ...(s.key === 'network' ? { fill: s.state === 'current' ? p.fill : undefined, title: `Who you have met here:\n${met}` } : {}),
-  }))
 }
 
 function Applied({ r }: { r: Row }) {
@@ -113,16 +104,19 @@ function BankRow({ r }: { r: Row }) {
         </span>
       </div>
       <div className="pm-middle">
+        {r.progress ? (
+          <SeasonBar p={r.progress} labels />
+        ) : (
         <div className="pm-progress" aria-label={state.map((s) => `${s.label}: ${s.state}`).join(', ')}>
           {state.map((s) => (
-            <div key={s.label} className={`pm-step ${s.state}`} title={s.title}>
-              <i style={s.fill !== undefined ? ({ '--fill': `${Math.max(12, Math.round(s.fill * 100))}%` } as React.CSSProperties) : undefined}
-                className={s.fill !== undefined ? 'filled' : undefined} />
+            <div key={s.label} className={`pm-step ${s.state}`}>
+              <i />
               <span>{s.label}</span>
               {s.note && <small>{s.note}</small>}
             </div>
           ))}
         </div>
+        )}
         <Applied r={r} />
       </div>
       <NextLine r={r} />

@@ -1550,3 +1550,29 @@ details.card.fold > summary strong::after { content: ' ›'; color: var(--muted)
 details.card.fold[open] > summary strong::after { content: ' ⌄'; }
 details.card.fold > summary small { color: var(--muted); font-size: 14px; }
 details.card.fold > .card, details.card.fold section.card { box-shadow: none; border: 0; padding-left: 0; padding-right: 0; }
+
+/* Preview: the season bar. Steps sized by their share of the season, filled by progress, today marked */
+.season-bar { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 6px; }
+.sb-track { position: relative; display: flex; gap: 3px; align-items: center; height: 10px; }
+.sb-seg { position: relative; height: 8px; min-width: 10px; border-radius: 99px; background: var(--gray-soft); overflow: hidden; flex-basis: 0; }
+.sb-seg i { position: absolute; inset: 0 auto 0 0; border-radius: 99px; background: var(--blue); }
+.sb-seg.done i { background: var(--green); }
+.sb-offer { width: 10px; height: 10px; border-radius: 50%; border: 2px solid var(--gray-soft); flex: none; margin-left: 2px; }
+.sb-offer.done { background: var(--green); border-color: var(--green); }
+.sb-today { position: absolute; top: -4px; bottom: -4px; width: 2px; border-radius: 2px; background: #e8467c; box-shadow: 0 0 0 2px var(--card, #fff); }
+.sb-labels { display: flex; gap: 3px; padding-right: 14px; }
+.sb-labels > span { flex-basis: 0; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.sb-labels b { font-size: 11px; font-weight: 600; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sb-labels small { font-size: 11px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sb-labels .done b { color: var(--green); }
+.sb-labels .current b { color: var(--blue); font-weight: 700; }
+.sb-labels .sb-week { min-width: 64px; align-items: flex-end; text-align: right; }
+.sb-labels .sb-week b, .sb-labels .sb-week small { overflow: visible; }
+.pm-row.out .sb-seg i { background: #c7ccd8; }
+.season-bar.dark .sb-seg { background: rgba(255, 255, 255, 0.16); }
+.season-bar.dark .sb-seg i { background: #9cc2ff; }
+.season-bar.dark .sb-seg.done i { background: #6fd3a4; }
+.season-bar.dark .sb-offer { border-color: rgba(255, 255, 255, 0.25); }
+.season-bar.dark .sb-today { box-shadow: none; }
+.pipe-tile .season-bar { flex: none; width: 100%; }
+.sb-segs { position: relative; flex: 1; min-width: 0; display: flex; gap: 3px; align-items: center; height: 10px; }

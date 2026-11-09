@@ -116,12 +116,14 @@ export type Application = {
   notes: string
 }
 
-/** Preview: how far along a bank is, from what the bank has done back rather than how many contacts. */
+/** Preview: how far along a bank is, laid out over the season: each step's share of the bar is its share of the
+ *  season's days, filled by what has happened at that bank; today is marked. */
 export type Progress = {
-  steps: { key: string; label: string; state: 'done' | 'current' | 'todo'; note: string }[]
-  checks: { key: string; label: string; done: boolean }[]
-  fill: number
-  reached: number
+  steps: { key: string; label: string; share: number; fill: number; note: string; start: string; end: string }[]
+  today: number
+  where: string
+  offer: boolean
+  score: number
   screens: string[]
 }
 

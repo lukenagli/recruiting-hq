@@ -103,14 +103,23 @@ def _stage(people: list[dict], app: dict) -> tuple[str, list[dict]]:
     return current, [{"key": k, "label": label, "done": i <= reached} for i, (k, label) in enumerate(STAGES)]
 
 
-# Preview: how far along a bank really is. Not how many contacts (some banks are high touch, some low touch), but
-# what the bank has done back: met the people who matter, invited you to something only some candidates get (a
-# dinner), then Super Week, where first rounds and the superday come back to back, then an offer.
-PROGRESS = [("network", "Networking"), ("invited", "Invite-only"), ("superweek", "Super Week"), ("offer", "Offer")]
-MANUAL_STAGE = {"yale": 0, "bank": 0, "dinner": 1, "superday": 2, "offer": 3}  # a stage the student set by hand
+# Preview: how far along a bank is, laid out like the Finance Club's season (kickoff deck): chats with 2Ys and
+# alumni in September, chats with bankers in your group in October, closed-list dinners in mid to late November,
+# then Super Week (first rounds and superdays within days of each other, Dec 1 to 9). Each step's share of the bar
+# is its share of the season's days, so the short interview steps at the end take little room, and a line marks
+# today. Each step fills by what has happened at that bank, not by how many contacts: one dinner invite (a low-touch
+# bank) fills the steps before it, as the bank has decided you're through them.
+SEASON = [
+    ("yale", "2Y & alumni chats", "2026-09-01", "2026-09-30"),
+    ("group", "Group chats", "2026-10-01", "2026-11-12"),
+    ("dinner", "Invite-only dinner", "2026-11-13", "2026-11-30"),
+    ("interviews", "Interviews", "2026-12-01", "2026-12-04"),
+    ("superday", "Superday", "2026-12-05", "2026-12-09"),
+]
+MANUAL_STAGE = {"yale": 0, "bank": 1, "dinner": 2, "superday": 4, "offer": 4}  # a stage the student set by hand
 SCREEN = re.compile(r"hire ?vue|online (?:test|assessment)|assessment|screener|pymetrics|codility|video interview", re.I)
 FINAL = re.compile(r"superday|super day|final round", re.I)
-INVITED_STEP = re.compile(r"\binvited\b|invitation|next round|second round|round (?:2|3|two|three)\b", re.I)
+CLOSED = re.compile(r"dinner|reception|closed[- ]list|cocktail", re.I)
 SENIOR = re.compile(r"\b(?:vp|vice president|director|md|managing director|partner|principal|head)\b", re.I)
 
 
@@ -124,62 +133,82 @@ def _day(iso: str) -> str:
 
 def _invite_label(title: str) -> str:
     for key, label in (("dinner", "Dinner"), ("happy hour", "Happy hour"), ("day on wall street", "Day on Wall Street"),
-                       ("days on wall street", "Day on Wall Street"), ("lunch", "Lunch"), ("breakfast", "Breakfast"), ("reception", "Reception"),
-                       ("round", "Next round")):
+                       ("days on wall street", "Day on Wall Street"), ("lunch", "Lunch"), ("breakfast", "Breakfast"),
+                       ("reception", "Reception"), ("round", "Next round")):
         if key in title.lower():
             return label
     return "Invited"
 
 
 def _progress(data: dict, bank: str, app: dict) -> dict:
+    today = date.today().isoformat()
     people = {p["id"]: p for p in data["people"] if p["bank"] == bank}
     entries = [i for i in data["interactions"] if i["bank"] == bank]
     spoken = [p for p in people.values() if p["status"] in ("spoke", "met")]
-    chats = [i for i in entries if i["kind"] == "coffee_chat" and i["status"] == "done"]
-    # Networking runs in parallel, not in order (Yale people and your group's bankers at the same time): what counts is
-    # who you have met, not how many.
+    yale = lambda p: p["alum"] in ("yes", "student") or p["origin"] == "classmate"  # noqa: E731
     targets = [g.strip().lower() for g in re.split(r"[>,;/]", app["prefs"] or "") if len(g.strip()) > 2]
-    in_group = lambda p: bool(p["grp"]) and (not targets or any(t in p["grp"].lower() or p["grp"].lower() in t for t in targets))  # noqa: E731
-    repeat = any(sum(c["status"] == "done" for c in p["chats"]) > 1 for p in people.values())
-    checks = [
-        {"key": "yale", "label": f"A {data['school']} alum or 2Y" if data.get("school") else "An alum or 2Y", "done": any(p["alum"] in ("yes", "student") or p["origin"] == "classmate" for p in spoken)},
-        {"key": "group", "label": "Someone in your group" if targets else "Someone in a group you want", "done": any(in_group(p) for p in spoken)},
-        {"key": "senior", "label": "A VP or more senior", "done": any(SENIOR.search(p["title"] or "") for p in spoken)},
-        {"key": "back", "label": "Introduced on or asked back",
-         "done": repeat or any(l["bank"] == bank for l in data["links"])},
-    ]
-    invites = sorted((i for i in entries if (i["kind"] == "event" and (i.get("invite_only") == "yes" or re.search(r"dinner", i["title"], re.I)))
-                      or (i["kind"] == "step" and INVITED_STEP.search(i["title"]))), key=lambda i: i["date"] or "9")
-    interviews = [i for i in entries if i["kind"] == "interview"]
-    screens = [i for i in interviews if SCREEN.search(i["title"]) and not FINAL.search(i["title"])]  # part of applying
-    rounds = sorted((i for i in interviews if i not in screens), key=lambda i: i["date"] or "9")
-    reached = 0 if (spoken or chats or any(i["status"] == "done" for i in entries)) else -1
-    if invites:
-        reached = 1
-    if rounds:
-        reached = 2
+    in_group = lambda p: bool(p["grp"]) and any(t in p["grp"].lower() or p["grp"].lower() in t for t in targets)  # noqa: E731
+
+    # 1. Chats with 2Ys and alumni: two is a full step.
+    yale_n = sum(1 for p in spoken if yale(p))
+    # 2. Chats with the bankers themselves, in your group above all: two in your group is a full step (anyone outside
+    # it, or anyone when you haven't picked a group, counts half); an invite-only event before the dinners (a closed
+    # Day on Wall Street) counts as one, as does being introduced on or asked back.
+    bankers = [p for p in spoken if not (p["alum"] == "student" or p["origin"] == "classmate")]
+    group_n = sum(1 for p in bankers if in_group(p))
+    other_n = len(bankers) - group_n
+    early = [i for i in entries if i["kind"] == "event" and i.get("invite_only") == "yes" and not CLOSED.search(i["title"])
+             and (i["date"] or "9") < SEASON[2][2]]
+    back = any(sum(c["status"] == "done" for c in p["chats"]) > 1 for p in people.values()) or any(l["bank"] == bank for l in data["links"])
+    group_score = group_n + other_n / 2 + (1 if early else 0) + (0.5 if back else 0)
+    # 3. The closed-list dinner (or reception): invited is half, been is full.
+    dinners = sorted((i for i in entries if i["kind"] == "event" and (CLOSED.search(i["title"]) or (
+        i.get("invite_only") == "yes" and (i["date"] or "") >= SEASON[2][2]))), key=lambda i: i["date"] or "9")
+    # 4 and 5. Interviews, then the superday: scheduled is half, done is full. A HireVue or online test is applying.
+    interviews = [i for i in entries if i["kind"] == "interview" and not (SCREEN.search(i["title"]) and not FINAL.search(i["title"]))]
+    finals = sorted((i for i in interviews if FINAL.search(i["title"])), key=lambda i: i["date"] or "9")
+    rounds = sorted((i for i in interviews if i not in finals), key=lambda i: i["date"] or "9")
+    stage_fill = lambda items: 0 if not items else 1 if any(i["status"] == "done" for i in items) else 0.5  # noqa: E731
+    fill = [min(1, yale_n / 2), min(1, group_score / 2), stage_fill(dinners), stage_fill(rounds), stage_fill(finals)]
     if app["status"] == "offer":
-        reached = 3
-    reached = max(reached, MANUAL_STAGE.get(app["stage"], -1))
-    n = sum(c["done"] for c in checks)
-    inv = invites[-1] if invites else None
-    finals = [i for i in rounds if FINAL.search(i["title"])]
-    sw = []
-    if [i for i in rounds if i not in finals]:
-        first = [i for i in rounds if i not in finals][0]
-        sw.append(f"Round 1 {_day(first['date'])}".strip())
-    if finals:
-        sw.append(f"Superday {_day(finals[0]['date'])}".strip())
-    notes = {
-        "network": f"{len(chats)} chat{'s' if len(chats) != 1 else ''} · {n} of 4" if reached >= 0 else "",
-        "invited": f"{_invite_label(inv['title'])} {_day(inv['date'])}".strip() if inv else "",
-        "superweek": " · ".join(sw) or ("Date not set" if rounds else ""),
-        "offer": "",
-    }
-    steps = [{"key": k, "label": label, "state": "done" if i < reached or (i == 3 and reached == 3) else "current" if i == reached else "todo",
-              "note": notes[k]} for i, (k, label) in enumerate(PROGRESS)]
-    return {"steps": steps, "checks": checks, "fill": n / 4, "reached": reached,
-            "screens": [i["title"] for i in screens if i["status"] == "done"]}
+        fill = [1, 1, 1, 1, 1]
+    # A later step under way means the bank has passed you through the ones before it (a low-touch bank skips ahead).
+    manual = MANUAL_STAGE.get(app["stage"], -1)
+    for k in range(len(fill)):
+        if any(fill[j] > 0 for j in range(k + 1, len(fill))) and k >= 1 or (k < manual):
+            fill[k] = 1
+    if fill[2] > 0 or fill[3] > 0 or fill[4] > 0:
+        fill[0] = 1  # past the group chats, the 2Y round is behind you too
+    notes = [
+        f"{yale_n} chat{'s' if yale_n != 1 else ''}" if yale_n else "",
+        (f"{group_n} in your group" if targets else f"{len(bankers)} banker{'s' if len(bankers) != 1 else ''}") if bankers or early else "",
+        f"{_invite_label(dinners[-1]['title'])} {_day(dinners[-1]['date'])}".strip() if dinners else "",
+        _day(rounds[0]["date"]) if rounds else "",
+        _day(finals[0]["date"]) if finals else "",
+    ]
+    total = sum((date.fromisoformat(e) - date.fromisoformat(s)).days + 1 for _, _, s, e in SEASON)
+    steps = []
+    for (key, label, s, e), f, note in zip(SEASON, fill, notes):
+        days = (date.fromisoformat(e) - date.fromisoformat(s)).days + 1
+        steps.append({"key": key, "label": label, "share": days / total, "fill": f, "note": note, "start": s, "end": e})
+    first = date.fromisoformat(SEASON[0][2])
+    when = min(1.0, max(0.0, ((date.fromisoformat(today) - first).days + 0.5) / total))
+    furthest = max((k for k, f in enumerate(fill) if f > 0), default=-1)
+    at = steps[furthest] if furthest >= 0 else None
+    if app["status"] == "offer":
+        where = "Offer"
+    elif at is None:
+        where = "Not started"
+    elif at["key"] == "dinner":
+        where = ("Invited to dinner" if fill[2] < 1 else "Dinner done") + (f" · {at['note'].split(' ', 1)[-1]}" if at["note"] else "")
+    elif at["key"] in ("interviews", "superday"):
+        where = f"{at['label']}{' done' if at['fill'] == 1 else ''}" + (f" · {at['note']}" if at["note"] else "")
+    else:
+        where = f"{at['label']}" + (f" · {at['note']}" if at["note"] else "")
+    return {"steps": steps, "today": when, "where": where, "offer": app["status"] == "offer",
+            "score": sum(st["share"] * st["fill"] for st in steps),
+            "screens": [i["title"] for i in entries if i["kind"] == "interview" and SCREEN.search(i["title"])
+                        and not FINAL.search(i["title"]) and i["status"] == "done"]}
 
 
 def _bank_summary(data: dict, bank: str, today: str) -> dict:
@@ -223,7 +252,7 @@ def bank_list(uid: int) -> list[dict]:
     rows = [_bank_summary(data, b, today) for b in _bank_names(data)]
     furthest = lambda r: STAGE_KEYS.index(r["current_stage"]) if r["current_stage"] else -1
     if data["preview"]:  # furthest along first, by what the bank has done back
-        furthest = lambda r: r["progress"]["reached"] + r["progress"]["fill"] / 2  # noqa: E731
+        furthest = lambda r: r["progress"]["score"]  # noqa: E731
     return sorted(rows, key=lambda r: (r["application"]["status"] == "out", -furthest(r), -r["people"], r["bank"]))
 
 

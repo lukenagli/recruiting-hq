@@ -4,6 +4,7 @@ import { useBullets } from './bullets'
 import { useDictation } from './dictation'
 import { ASK_EVENT } from './Assistant'
 import ClubFeed from './ClubFeed'
+import SeasonBar from './SeasonBar'
 import Refresh from './Refresh'
 import { post } from './api'
 import { Loading, Logo, StagePips, daysUntil, fmtDate, useApi, useSchool } from './ui'
@@ -457,10 +458,7 @@ function Pipeline({ banks, today }: { banks: BankSummary[]; today: string }) {
       <div className="pipe-grid">
         {live.map((b) => {
           const p = b.progress
-          const at = p?.steps.find((s) => s.state === 'current') ?? (p?.reached === 3 ? p.steps[3] : undefined)
-          const stage = p
-            ? at ? `${at.label}${at.key === 'network' ? ` · ${p.checks.filter((c) => c.done).length} of 4` : at.note ? ` · ${at.note}` : ''}` : 'Not started'
-            : [...b.stage].reverse().find((s) => s.done)?.label ?? 'Not started'
+          const stage = p ? p.where : [...b.stage].reverse().find((s) => s.done)?.label ?? 'Not started'
           return (
             <a key={b.bank} className="pipe-tile" href={`#/bank/${encodeURIComponent(b.bank)}`}>
               <span className="pipe-top">
@@ -468,13 +466,7 @@ function Pipeline({ banks, today }: { banks: BankSummary[]; today: string }) {
                 <strong>{b.bank}</strong>
               </span>
               {p ? (
-                <span className="pips" title={p.checks.map((c) => `${c.done ? '✓' : '○'} ${c.label}`).join('\n')}>
-                  {p.steps.map((s) => (
-                    <span key={s.key} className={`pip ${s.state === 'done' ? 'done' : ''} ${s.state === 'current' ? 'now' : ''}`}
-                      style={s.key === 'network' && s.state === 'current' ? ({ '--fill': `${Math.max(12, Math.round(p.fill * 100))}%` } as React.CSSProperties) : undefined}
-                      title={s.label} />
-                  ))}
-                </span>
+                <SeasonBar p={p} dark />
               ) : (
                 <StagePips stage={b.stage} />
               )}
