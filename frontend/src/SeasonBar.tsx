@@ -9,7 +9,7 @@ import { fmtDate } from './ui'
  */
 export default function SeasonBar({ p, labels = false, dark = false }: { p: Progress; labels?: boolean; dark?: boolean }) {
   const pct = (x: number) => `${Math.round(x * 1000) / 10}%`
-  const state = (f: number) => (f >= 1 ? 'done' : f > 0 ? 'current' : 'todo')
+  const state = (f: number) => (f >= 1 ? 'sb-done' : f > 0 ? 'sb-current' : 'sb-todo') // own names: a global .todo style exists
   const title = p.steps.map((s) => `${s.label} (${fmtDate(s.start)} to ${fmtDate(s.end)}): ${s.fill >= 1 ? 'done' : s.fill > 0 ? 'under way' : 'not yet'}${s.note ? `, ${s.note}` : ''}`).join('\n')
   const week = p.steps.slice(3) // interviews and superday: a few days at the very end, labelled together
   const weekNote = week.map((s, i) => (s.note ? `${i ? 'SD ' : ''}${s.note}` : '')).filter(Boolean).join(' · ')

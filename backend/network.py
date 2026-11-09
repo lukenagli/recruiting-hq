@@ -110,9 +110,9 @@ def _stage(people: list[dict], app: dict) -> tuple[str, list[dict]]:
 # today. Each step fills by what has happened at that bank, not by how many contacts: one dinner invite (a low-touch
 # bank) fills the steps before it, as the bank has decided you're through them.
 SEASON = [
-    ("yale", "2Y & alumni chats", "2026-09-01", "2026-09-30"),
+    ("yale", "Yale network", "2026-09-01", "2026-09-30"),
     ("group", "Group chats", "2026-10-01", "2026-11-12"),
-    ("dinner", "Invite-only dinner", "2026-11-13", "2026-11-30"),
+    ("dinner", "Dinner", "2026-11-13", "2026-11-30"),
     ("interviews", "Interviews", "2026-12-01", "2026-12-04"),
     ("superday", "Superday", "2026-12-05", "2026-12-09"),
 ]
@@ -121,6 +121,23 @@ SCREEN = re.compile(r"hire ?vue|online (?:test|assessment)|assessment|screener|p
 FINAL = re.compile(r"superday|super day|final round", re.I)
 CLOSED = re.compile(r"dinner|reception|closed[- ]list|cocktail", re.I)
 SENIOR = re.compile(r"\b(?:vp|vice president|director|md|managing director|partner|principal|head)\b", re.I)
+
+
+# Group names are written many ways ("Consumer & Retail", "Consumer (San Francisco)", "Food & Bev (MN)"): compare by
+# sector, not by spelling.
+SECTOR_WORDS = {
+    "consumer": "consumer", "retail": "consumer", "food": "consumer", "bev": "consumer", "beverage": "consumer", "restaurants": "consumer",
+    "transportation": "transport", "logistics": "transport", "health": "health", "healthcare": "health", "tech": "tech",
+    "technology": "tech", "software": "tech", "industrial": "industrials", "industrials": "industrials", "fig": "fig",
+    "financial": "fig", "power": "power", "utility": "power", "utilities": "power", "energy": "power", "media": "media",
+    "telecom": "media", "real": "realestate", "lodging": "realestate", "gaming": "realestate", "sponsors": "sponsors",
+    "leveraged": "levfin", "restructuring": "rx", "m&a": "ma", "ecm": "ecm", "dcm": "dcm",
+}
+
+
+def _sectors(name: str) -> set[str]:
+    words = re.findall(r"[a-z&]+", re.sub(r"\(.*?\)", " ", (name or "").lower()))
+    return {SECTOR_WORDS[w] for w in words if w in SECTOR_WORDS} or {w for w in words[:1] if len(w) > 2}
 
 
 def _day(iso: str) -> str:
@@ -146,8 +163,9 @@ def _progress(data: dict, bank: str, app: dict) -> dict:
     entries = [i for i in data["interactions"] if i["bank"] == bank]
     spoken = [p for p in people.values() if p["status"] in ("spoke", "met")]
     yale = lambda p: p["alum"] in ("yes", "student") or p["origin"] == "classmate"  # noqa: E731
-    targets = [g.strip().lower() for g in re.split(r"[>,;/]", app["prefs"] or "") if len(g.strip()) > 2]
-    in_group = lambda p: bool(p["grp"]) and any(t in p["grp"].lower() or p["grp"].lower() in t for t in targets)  # noqa: E731
+    targets = [g.strip() for g in re.split(r"[>,;/]", app["prefs"] or "") if len(g.strip()) > 2]
+    wanted = set().union(*(_sectors(g) for g in targets)) if targets else set()
+    in_group = lambda p: bool(p["grp"]) and bool(_sectors(p["grp"]) & wanted)  # noqa: E731
 
     # 1. Chats with 2Ys and alumni: two is a full step.
     yale_n = sum(1 for p in spoken if yale(p))
@@ -181,7 +199,7 @@ def _progress(data: dict, bank: str, app: dict) -> dict:
         fill[0] = 1  # past the group chats, the 2Y round is behind you too
     notes = [
         f"{yale_n} chat{'s' if yale_n != 1 else ''}" if yale_n else "",
-        (f"{group_n} in your group" if targets else f"{len(bankers)} banker{'s' if len(bankers) != 1 else ''}") if bankers or early else "",
+        (f"{group_n} in your group" if targets and group_n else f"{len(bankers)} banker{'s' if len(bankers) != 1 else ''}") if bankers or early else "",
         f"{_invite_label(dinners[-1]['title'])} {_day(dinners[-1]['date'])}".strip() if dinners else "",
         _day(rounds[0]["date"]) if rounds else "",
         _day(finals[0]["date"]) if finals else "",
