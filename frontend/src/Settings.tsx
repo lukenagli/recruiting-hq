@@ -162,6 +162,9 @@ function SimpleSettings({ user, onSignOut, ai, reloadAi }: { user: User; onSignO
   )
 }
 
+/** "Yale class key (Portkey)" reads as "Yale class key"; "Claude (Anthropic)" as "Claude key". */
+const keyName = (label: string) => (/key/i.test(label) ? label.replace(/ \(.*\)$/, '') : `${label.replace(/ \(.*\)$/, '')} key`)
+
 /** The AI key as one line saying whether the AI is on; the form only when there's no key, or when asked for. */
 function AiCard({ ai, reload }: { ai: AiSettings; reload: () => void }) {
   const [open, setOpen] = useState(!ai.provider && !ai.using_site_key)
@@ -192,7 +195,7 @@ function AiCard({ ai, reload }: { ai: AiSettings; reload: () => void }) {
       <h2>AI</h2>
       <p className={`status-line ${on ? 'on' : 'off'}`}>
         <b aria-hidden>{on ? '✓' : '!'}</b>
-        {ai.provider ? `On, using your ${ai.provider_label} key ending in ${ai.hint}.` : ai.using_site_key ? "On, using the site's own key." : 'Off: add your key so Recruiting HQ can read your email and write for you.'}
+        {ai.provider ? `On, using your ${keyName(ai.provider_label)} ending in ${ai.hint}.` : ai.using_site_key ? "On, using the site's own key." : 'Off: add your key so Recruiting HQ can read your email and write for you.'}
         {on && !open && <button className="link" onClick={() => setOpen(true)}>Change</button>}
       </p>
       {open && (

@@ -178,7 +178,7 @@ function AiStep({ s, next, back }: { s: SetupState; next: () => void; back: () =
       </p>
       {s.ai.ready ? (
         <p className="notice ok">
-          ✓ The AI is on{s.ai.using_site_key ? '.' : ` (your ${s.ai.provider_label} key ending in ${s.ai.hint}).`}
+          ✓ The AI is on{s.ai.using_site_key ? '.' : ` (your ${/key/i.test(s.ai.provider_label) ? s.ai.provider_label.replace(/ \(.*\)$/, '') : `${s.ai.provider_label} key`} ending in ${s.ai.hint}).`}
         </p>
       ) : null}
       <label className="field big-field">
