@@ -5,7 +5,8 @@ import type { ChangeEvent, KeyboardEvent } from 'react'
  * Bullet lists in a plain textarea, the way a notes app does them:
  * - "- " typed at the start of a line becomes a bullet ("• ");
  * - Tab on a bullet line indents it one level (◦, then ▪), Shift+Tab takes it back out (and off the list at the top);
- * - Enter on a bullet line starts the next bullet at the same level; Enter on an empty bullet ends the list.
+ * - Enter on a bullet line starts the next bullet at the same level; Enter on an empty bullet ends the list. In a box
+ *   where Enter sends (the home page's), Shift+Enter does this instead.
  * The text stays plain (two spaces per level and the bullet character), so it reads the same everywhere it is shown.
  */
 
@@ -24,7 +25,7 @@ function lineEnd(text: string, pos: number) {
   return end === -1 ? text.length : end
 }
 
-export function useBullets(value: string, setValue: (next: string) => void) {
+export function useBullets(value: string, setValue: (next: string) => void, { enterSends = false } = {}) {
   const ref = useRef<HTMLTextAreaElement>(null)
   const pending = useRef<[number, number] | null>(null)
   useLayoutEffect(() => {
@@ -45,7 +46,17 @@ export function useBullets(value: string, setValue: (next: string) => void) {
     const pos = e.target.selectionStart
     const start = lineStart(next, pos)
     const typed = /^( *)- $/.exec(next.slice(start, pos))
-    const deleting = (e.nativeEvent as InputEvent).inputType?.startsWith('delete')
+    const kind = (e.nativeEvent as InputEvent).inputType || ''
+    const deleting = kind.startsWith('delete')
+    if (kind === 'insertFromPaste' || kind === 'insertFromDrop') {
+      // pasted notes: every line starting "- " or "* " becomes a bullet (indented by two spaces a level)
+      const convert = (s: string) => s.replace(/^( *)[-*] (?=\S)/gm, (_m, sp: string) => prefix(Math.min(MAX_LEVEL, Math.floor(sp.length / 2))))
+      const before = convert(next.slice(0, pos))
+      const rest = next.slice(pos)
+      const nl = rest.indexOf('\n') // the rest of the caret's line isn't a line start
+      const all = before + (nl === -1 ? rest : rest.slice(0, nl) + convert(rest.slice(nl)))
+      if (all !== next) return apply(all, before.length)
+    }
     if (typed && !deleting) {
       const p = prefix(Math.min(MAX_LEVEL, Math.floor(typed[1].length / 2)))
       return apply(next.slice(0, start) + p + next.slice(pos), start + p.length)
@@ -79,7 +90,7 @@ export function useBullets(value: string, setValue: (next: string) => void) {
       const from = Math.max(first, selStart + shiftStart)
       return apply(next, from, selEnd === selStart ? from : selEnd + shiftTotal)
     }
-    if (e.key === 'Enter' && !e.shiftKey && selStart === selEnd) {
+    if (e.key === 'Enter' && e.shiftKey === enterSends && selStart === selEnd) {
       const start = lineStart(value, selStart)
       const line = value.slice(start, lineEnd(value, selStart))
       const m = BULLET.exec(line)

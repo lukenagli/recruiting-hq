@@ -43,7 +43,9 @@ function ask(detail: { text?: string; record?: 'recap' | 'conversation'; draft?:
  *  new line, and the box grows with what is typed (up to about six lines, then it scrolls). */
 function UpdateBar({ onAdd, added }: { onAdd: () => void; added: string }) {
   const [text, setText] = useState('')
-  const box = useRef<HTMLTextAreaElement>(null)
+  // "- " starts a bullet, Tab and Shift+Tab indent, Shift+Enter continues the list (Enter sends)
+  const bullets = useBullets(text, setText, { enterSends: true })
+  const box = bullets.ref
   const [tall, setTall] = useState(false)
   useLayoutEffect(() => {
     const el = box.current
@@ -51,7 +53,7 @@ function UpdateBar({ onAdd, added }: { onAdd: () => void; added: string }) {
     el.style.height = 'auto'
     el.style.height = `${el.scrollHeight}px`
     setTall(el.scrollHeight > 44)
-  }, [text])
+  }, [text, tall]) // again once the box changes shape for several lines (its width changes a little)
   const dictation = useDictation((phrase) => setText((t) => `${t}${t && !/\s$/.test(t) ? ' ' : ''}${phrase}`))
   function go(e?: React.FormEvent) {
     e?.preventDefault()
@@ -67,13 +69,15 @@ function UpdateBar({ onAdd, added }: { onAdd: () => void; added: string }) {
           ref={box}
           rows={1}
           value={text}
-          onChange={(e) => setText(e.target.value)}
+          onChange={bullets.onChange}
           onKeyDown={(e) => {
             // Enter sends; Shift+Enter is a new line (and Enter while an accent or Asian character is being composed types it)
             if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
               e.preventDefault()
               go()
+              return
             }
+            bullets.onKeyDown(e)
           }}
           placeholder={dictation.listening ? 'Listening…' : 'What happened? A chat, an email, an invite…'}
           aria-label="Tell the assistant what happened"
