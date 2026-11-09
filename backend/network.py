@@ -111,7 +111,7 @@ def _stage(people: list[dict], app: dict) -> tuple[str, list[dict]]:
 # bank) fills the steps before it, as the bank has decided you're through them.
 SEASON = [
     ("yale", "Yale network", "2026-09-01", "2026-09-30"),
-    ("group", "Group chats", "2026-10-01", "2026-11-12"),
+    ("group", "Group-specific chats", "2026-10-01", "2026-11-12"),
     ("dinner", "Dinner", "2026-11-13", "2026-11-30"),
     ("interviews", "Interviews", "2026-12-01", "2026-12-04"),
     ("superday", "Superday", "2026-12-05", "2026-12-09"),
