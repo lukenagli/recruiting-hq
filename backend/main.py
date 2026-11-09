@@ -764,7 +764,7 @@ def sync_folders_record(req: FolderRecord, user: dict = Depends(reader_user)):
 @app.get("/api/sync/folders")
 def sync_folders(user: dict = Depends(preview_user)):
     """Each Outlook folder: read in full, screened or skipped on the next refresh, and why."""
-    return {"folders": sync.folder_plan(user["id"])}
+    return {"folders": [f for f in sync.folder_plan(user["id"]) if not f.get("mailbox")]}
 
 
 @app.get("/api/sync/folder-setup")
@@ -823,7 +823,7 @@ def sync_state(user: dict = Depends(reader_user)):
             "calendar_from": sync.calendar_from(user["id"]), "test_scan": bool(user.get("test_of")), "queue": True,
             "filing_busy": filing_queue.status(user["id"])["busy"],
             # Preview: before a first scan the student says which folders hold recruiting email (folder_setup)
-            "folders_confirmed": folder_setup.confirmed(user["id"]), "folders_known": len(sync.folder_plan(user["id"]))}
+            "folders_confirmed": folder_setup.confirmed(user["id"]), "folders_known": len([f for f in sync.folder_plan(user["id"]) if not f.get("mailbox")])}
 
 
 @app.get("/api/reader/questions")

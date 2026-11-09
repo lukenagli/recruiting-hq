@@ -124,7 +124,7 @@ def _day(iso: str) -> str:
 
 def _invite_label(title: str) -> str:
     for key, label in (("dinner", "Dinner"), ("happy hour", "Happy hour"), ("day on wall street", "Day on Wall Street"),
-                       ("days on wall street", "Day on Wall Street"), ("lunch", "Lunch"), ("breakfast", "Breakfast"),
+                       ("days on wall street", "Day on Wall Street"), ("lunch", "Lunch"), ("breakfast", "Breakfast"), ("reception", "Reception"),
                        ("round", "Next round")):
         if key in title.lower():
             return label

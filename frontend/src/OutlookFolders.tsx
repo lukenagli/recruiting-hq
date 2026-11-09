@@ -79,8 +79,9 @@ export default function OutlookFolders() {
   // group on each change would jump away, and the page would follow it.
   const order = useRef<string[]>([])
   if (!data) return <Loading error={error} />
+  const top = (name: string) => ['Inbox', 'Sent Items'].indexOf(name) + 1 || 9 // Inbox and Sent Items lead the list
   if (!order.current.length)
-    order.current = [...data.folders].sort((a, b) => ORDER[a.plan] - ORDER[b.plan] || a.name.localeCompare(b.name)).map((f) => f.name)
+    order.current = [...data.folders].sort((a, b) => top(a.name) - top(b.name) || ORDER[a.plan] - ORDER[b.plan] || a.name.localeCompare(b.name)).map((f) => f.name)
   const rank = (name: string) => (order.current.includes(name) ? order.current.indexOf(name) : order.current.length)
   const folders = [...data.folders].sort((a, b) => rank(a.name) - rank(b.name) || a.name.localeCompare(b.name))
   const n = (p: FolderInfo['plan']) => folders.filter((f) => f.plan === p).length

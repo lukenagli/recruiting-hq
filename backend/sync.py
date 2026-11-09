@@ -340,10 +340,15 @@ def folder_plan(uid: int, today: str = "") -> list[dict]:
     except re.error:
         named = None
     out = []
+    preview = accounts.in_preview_uid(uid)
     for r in rows:
         if r["last_seen"] < latest:  # no longer in the folder list (deleted or renamed)
             continue
         name = r["folder"]
+        if preview and "@" in name:  # the mailbox itself, at the top of Outlook's list: its folders are listed on their own
+            out.append({"name": name, "plan": "skip", "reason": "your mailbox, not a folder", "mode": r["mode"], "last_read": r["last_read"],
+                        "mailbox": True})
+            continue
         read_at = datetime.fromisoformat(r["last_read"]) if r["last_read"] else None
         span = (read_at - datetime.fromisoformat(r["covered_from"])).days if read_at and r["covered_from"] else 0
         if name in ALWAYS_READ:
