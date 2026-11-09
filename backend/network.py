@@ -200,7 +200,7 @@ def _progress(data: dict, bank: str, app: dict) -> dict:
     notes = [
         f"{yale_n} chat{'s' if yale_n != 1 else ''}" if yale_n else "",
         (f"{group_n} in your group" if targets and group_n else f"{len(bankers)} banker{'s' if len(bankers) != 1 else ''}") if bankers or early else "",
-        f"{_invite_label(dinners[-1]['title'])} {_day(dinners[-1]['date'])}".strip() if dinners else "",
+        _day(dinners[-1]["date"]) or "Invited" if dinners else "",  # the step is the dinner: its date says enough
         _day(rounds[0]["date"]) if rounds else "",
         _day(finals[0]["date"]) if finals else "",
     ]
@@ -218,7 +218,9 @@ def _progress(data: dict, bank: str, app: dict) -> dict:
     elif at is None:
         where = "Not started"
     elif at["key"] == "dinner":
-        where = ("Invited to dinner" if fill[2] < 1 else "Dinner done") + (f" · {at['note'].split(' ', 1)[-1]}" if at["note"] else "")
+        kind = _invite_label(dinners[-1]["title"]).lower() if dinners else "dinner"
+        kind = kind if kind in ("dinner", "reception", "happy hour", "lunch", "breakfast") else "dinner"
+        where = (f"Invited to {kind}" if fill[2] < 1 else f"{kind.capitalize()} done") + (f" · {at['note']}" if at["note"] and at["note"] != "Invited" else "")
     elif at["key"] in ("interviews", "superday"):
         where = f"{at['label']}{' done' if at['fill'] == 1 else ''}" + (f" · {at['note']}" if at["note"] else "")
     else:
