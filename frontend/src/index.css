@@ -1508,3 +1508,17 @@ details[open] > summary .folder-setup-names { display: none; }
 .pm-step.current i.filled { background: linear-gradient(90deg, var(--blue) var(--fill, 50%), var(--blue-soft) var(--fill, 50%)); }
 .pm-applied small { font-size: 10px; color: var(--green); font-weight: 600; margin-top: 1px; white-space: nowrap; }
 .pipe-tile .pips .pip.now { background: linear-gradient(90deg, #9cc2ff var(--fill, 50%), rgba(255, 255, 255, 0.18) var(--fill, 50%)); }
+
+/* Preview: connecting the reader, one step at a time; the step to do now stands out, finished steps turn green */
+.connect-steps { list-style: none; padding: 0; margin: 6px 0 14px; }
+.connect-steps > li { display: flex; gap: 14px; align-items: flex-start; padding: 14px 0; border-top: 1px solid var(--line); opacity: 0.55; }
+.connect-steps > li:first-child { border-top: 0; }
+.connect-steps > li.now, .connect-steps > li.ok { opacity: 1; }
+.connect-steps > li > b { width: 28px; height: 28px; border-radius: 50%; background: var(--gray-soft); color: var(--muted); display: grid; place-items: center; flex: none; font-size: 14px; }
+.connect-steps > li.now > b { background: var(--blue); color: #fff; }
+.connect-steps > li.ok > b { background: var(--green-soft); color: var(--green); }
+.connect-steps > li > div { display: flex; flex-direction: column; gap: 6px; align-items: flex-start; min-width: 0; }
+.connect-steps strong { font-size: 16px; }
+.connect-steps small { color: var(--muted); font-size: 14px; }
+.install-steps { margin: 4px 0 0; padding-left: 20px; display: grid; gap: 8px; font-size: 14px; }
+.reader-log-box summary { cursor: pointer; color: var(--muted); font-size: 14px; margin: 8px 0; }

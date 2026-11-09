@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { get } from './api'
+import { get, post } from './api'
 import FolderSetup from './FolderSetup'
 import { useApi, usePreview } from './ui'
 
@@ -44,6 +44,52 @@ const phone = () => {
 
 function send(type: 'ping' | 'sync' | 'capiq' | 'thanks' | 'folders') {
   window.postMessage({ source: 'rhq-page', type }, window.origin)
+}
+
+/** Readers from 1.23 take their key from the page, so connecting is one click. */
+export const canConnect = (version?: string) => {
+  const [a, b] = (version || '0.0').split('.').map(Number)
+  return a > 1 || (a === 1 && b >= 23)
+}
+
+/** Make a reader key and hand it straight to the reader. Resolves true once the reader says it has it. */
+export async function connectReader(): Promise<boolean> {
+  const { key } = await post<{ key: string }>('/api/sync/key', {})
+  return new Promise((resolve) => {
+    const done = (ok: boolean) => {
+      window.removeEventListener('message', onMessage)
+      clearTimeout(timer)
+      resolve(ok)
+    }
+    function onMessage(e: MessageEvent) {
+      if (e.source === window && e.data?.source === 'rhq-reader' && e.data.has_key) done(true)
+    }
+    window.addEventListener('message', onMessage)
+    const timer = setTimeout(() => done(false), 5000)
+    window.postMessage({ source: 'rhq-page', type: 'connect', key }, window.origin)
+  })
+}
+
+/** One button: connects the reader on this computer to this account. */
+export function ConnectButton({ onDone, label = 'Connect Outlook' }: { onDone?: () => void; label?: string }) {
+  const [state, setState] = useState<'idle' | 'busy' | 'failed'>('idle')
+  return (
+    <>
+      <button
+        className="primary"
+        disabled={state === 'busy'}
+        onClick={async () => {
+          setState('busy')
+          const ok = await connectReader().catch(() => false)
+          setState(ok ? 'idle' : 'failed')
+          if (ok) onDone?.()
+        }}
+      >
+        {state === 'busy' ? 'Connecting…' : label}
+      </button>
+      {state === 'failed' && <p className="notice error">The reader didn't answer. Reload this page and try again.</p>}
+    </>
+  )
 }
 
 export function useReader() {
@@ -236,7 +282,11 @@ export default function Refresh({ onDone }: { onDone?: () => void }) {
   if (!status!.has_key)
     return (
       <div className="refresh">
-        <a className="btn" href="#/settings">Finish setting up the reader (paste your key)</a>
+        {canConnect(status!.version) ? (
+          <ConnectButton onDone={() => onDone?.()} label="Connect the reader to your account" />
+        ) : (
+          <a className="btn" href="#/settings">Finish setting up the reader (paste your key)</a>
+        )}
       </div>
     )
   // Preview: an account's first scan starts with a 20-second look at the Outlook folders, then the student says which

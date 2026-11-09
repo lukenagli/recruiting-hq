@@ -1,6 +1,7 @@
 // Recruiting HQ Reader, on the Recruiting HQ site only. It lets the site's Refresh button start a read and show its
 // progress: the page posts { source: 'rhq-page', type: 'ping' | 'sync' | 'capiq' | 'thanks' | 'status' } and gets back
-// { source: 'rhq-reader', ... }. It reads nothing from the page and changes nothing on it.
+// { source: 'rhq-reader', ... }. It reads nothing from the page and changes nothing on it. The page's Connect button
+// also hands over the student's reader key ({ type: 'connect', key }), so nobody has to copy and paste it.
 
 function answer(body) {
   window.postMessage({ source: 'rhq-reader', ...body }, window.origin)
@@ -15,6 +16,15 @@ window.addEventListener('message', async (e) => {
   if (e.source !== window || e.origin !== window.origin || !e.data || e.data.source !== 'rhq-page') return
   const { type } = e.data
   try {
+    if (type === 'connect' && typeof e.data.key === 'string' && /^[\w-]{20,200}$/.test(e.data.key)) {
+      // The reader's starting line, as when a key is pasted in the popup: local time, like the messages.
+      const { baseline } = await chrome.storage.local.get('baseline')
+      const d = new Date()
+      const p = (n) => String(n).padStart(2, '0')
+      const now = `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`
+      await chrome.storage.local.set({ key: e.data.key, baseline: baseline || now })
+      answer({ type: 'status', version: chrome.runtime.getManifest().version, ...(await status()) })
+    }
     if (type === 'ping' || type === 'status') answer({ type: 'status', version: chrome.runtime.getManifest().version, ...(await status()) })
     if (type === 'sync' || type === 'capiq' || type === 'thanks' || type === 'folders') {
       chrome.runtime.sendMessage({ type: { capiq: 'capiq-now', thanks: 'thanks-now', folders: 'folders-now' }[type] || 'sync-now' }).catch(() => answer({ type: 'stale' }))
