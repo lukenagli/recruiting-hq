@@ -16,7 +16,7 @@ from starlette.background import BackgroundTask
 
 from . import banks as banks_info
 from . import tracker_edits
-from . import filing_queue, folder_setup, scan_cleanup
+from . import chat_notes, filing_queue, folder_setup, scan_cleanup
 from . import accounts, assistant, attachments, auth, budget, capiq, catch_up, config, cover_letters, deal_docs, deal_recs, deal_sources, deals, importer, legal, llm, market, network, onboarding, practice, profile, schools, reference, research, shared, stars, sync, templates, test_scan, thank_backfill, thank_you, transfer, user_keys
 from .auth import admin_user, current_user
 from .db import connect, init_db
@@ -646,6 +646,24 @@ def ai_for(user: dict) -> llm.Chosen:
     if chosen.provider == "course" or not accounts.in_preview_uid(user["id"]):
         budget.check(user["id"])
     return chosen
+
+class ChatNotes(BaseModel):
+    notes: str = Field(min_length=1, max_length=12000)
+    name: str = ""
+    bank: str = ""
+    group: str = ""
+    title: str = ""
+
+
+@app.post("/api/chat-notes/polish")
+async def polish_chat_notes(req: ChatNotes, user: dict = Depends(preview_user)):
+    """Preview: dictated coffee chat notes, tidied into short bullets under a few headings (nothing added)."""
+    chosen = ai_for(user)
+    try:
+        return {"notes": await chat_notes.polish(user["id"], chosen, req.notes, req.name[:120], req.bank[:80], req.group[:80], req.title[:80])}
+    except Exception as err:  # noqa: BLE001 - the notes stay as dictated
+        raise HTTPException(status_code=502, detail=f"Couldn't tidy the notes ({type(err).__name__}); they're kept as you said them.") from None
+
 
 class AssistantRequest(BaseModel):
     message: str

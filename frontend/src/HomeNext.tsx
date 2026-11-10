@@ -103,22 +103,61 @@ function UpdateBar({ onAdd, added }: { onAdd: () => void; added: string }) {
 }
 
 /** Add a coffee chat by hand: the day you spoke, who (name, role, bank, group, alum or not) and what you talked about.
- *  Saved straight to the tracker, no AI involved; it shows on that bank's Recruiting Map. */
+ *  Saved straight to the tracker; it shows on that bank's Recruiting Map. Dictated notes are tidied into short bullets
+ *  under a few headings when you stop dictating (shown in the box, with Undo), so the chat log is easy to read. */
 function AddChat({ banks, onAdded, onClose }: { banks: string[]; onAdded: (msg: string) => void; onClose: () => void }) {
   const blank = { date: localToday(), name: '', title: '', bank: '', group: '', alum: '', notes: '' }
   const [f, setF] = useState(blank)
   const [busy, setBusy] = useState(false)
   const [msg, setMsg] = useState('')
   const set = (k: keyof typeof blank) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => setF({ ...f, [k]: e.target.value })
-  const dictation = useDictation((phrase) => setF((v) => ({ ...v, notes: `${v.notes}${v.notes && !/\s$/.test(v.notes) ? ' ' : ''}${phrase}` })))
+  const dictated = useRef(false) // something was dictated since the notes were last tidied
+  const latest = useRef(f)
+  latest.current = f
+  const [raw, setRaw] = useState<string | null>(null) // the notes as dictated, for Undo
+  const [polishing, setPolishing] = useState(false)
+  const dictation = useDictation((phrase) => {
+    dictated.current = true
+    setF((v) => ({ ...v, notes: `${v.notes}${v.notes && !/\s$/.test(v.notes) ? ' ' : ''}${phrase}` }))
+  })
   const bullets = useBullets(f.notes, (notes) => setF((v) => ({ ...v, notes })))
+  /** Tidy what was dictated; returns the notes to save (as dictated if the tidy-up fails). */
+  async function tidy(): Promise<string> {
+    const cur = latest.current
+    if (!dictated.current || cur.notes.trim().length < 25) return cur.notes
+    dictated.current = false
+    setPolishing(true)
+    try {
+      const r = await post<{ notes: string }>('/api/chat-notes/polish', { notes: cur.notes, name: cur.name, bank: cur.bank, group: cur.group, title: cur.title })
+      if (!r.notes.trim()) return cur.notes
+      setRaw(cur.notes)
+      setF((v) => ({ ...v, notes: r.notes }))
+      return r.notes
+    } catch {
+      return cur.notes // no AI key, or the call failed: keep them as said
+    } finally {
+      setPolishing(false)
+    }
+  }
+  function toggleDictation() {
+    if (dictation.listening) {
+      dictation.stop()
+      // the last phrase can land just after stopping: tidy once it has
+      setTimeout(() => void tidy(), 400)
+    } else {
+      dictation.toggle()
+    }
+  }
   async function save(e: React.FormEvent) {
     e.preventDefault()
+    const wasListening = dictation.listening
     dictation.stop()
     setBusy(true)
     setMsg('')
     try {
-      const r = await post<{ ok: boolean; reason?: string }>('/api/tracker/edits', { note: 'Added a coffee chat', ops: [{ op: 'add_chat', ...f }] })
+      if (wasListening) await new Promise((r) => setTimeout(r, 400))
+      const notes = await tidy()
+      const r = await post<{ ok: boolean; reason?: string }>('/api/tracker/edits', { note: 'Added a coffee chat', ops: [{ op: 'add_chat', ...latest.current, notes }] })
       if (!r.ok) return setMsg(r.reason || 'Not saved.')
       onAdded(`Saved your chat with ${f.name} (${f.bank}).`)
     } catch (err) {
@@ -152,15 +191,22 @@ function AddChat({ banks, onAdded, onClose }: { banks: string[]; onAdded: (msg: 
       </div>
       <label>What you talked about / notes
         <textarea rows={4} ref={bullets.ref} value={f.notes} onChange={bullets.onChange} onKeyDown={bullets.onKeyDown}
-          placeholder={dictation.listening ? 'Listening…' : 'Their path, the group, advice, anything to follow up on. Start a line with "- " for a bullet; Tab and Shift+Tab indent it.'} />
+          placeholder={dictation.listening ? 'Listening… talk it through; it tidies into bullets when you stop' : 'Their path, the group, advice, anything to follow up on. Start a line with "- " for a bullet; Tab and Shift+Tab indent it. Or dictate: it tidies what you say into bullets.'} />
       </label>
+      {polishing && <p className="add-chat-note muted">Tidying up your notes…</p>}
+      {!polishing && raw !== null && (
+        <p className="add-chat-note muted">
+          Tidied up from what you said. Edit anything you like.{' '}
+          <button type="button" className="link" onClick={() => { setF((v) => ({ ...v, notes: raw })); setRaw(null) }}>Undo</button>
+        </p>
+      )}
       <div className="add-chat-actions">
         {dictation.supported && (
-          <button type="button" className="ghost" onClick={dictation.toggle}>{dictation.listening ? 'Stop dictating' : 'Dictate notes'}</button>
+          <button type="button" className="ghost" onClick={toggleDictation} disabled={polishing}>{dictation.listening ? 'Stop dictating' : 'Dictate notes'}</button>
         )}
         <span className="spacer" />
         <button type="button" className="ghost" onClick={() => { dictation.stop(); onClose() }}>Cancel</button>
-        <button type="submit" className="primary" disabled={busy}>{busy ? 'Saving…' : 'Save chat'}</button>
+        <button type="submit" className="primary" disabled={busy || polishing}>{polishing ? 'Tidying…' : busy ? 'Saving…' : 'Save chat'}</button>
       </div>
       {msg && <p className="add-chat-error">{msg}</p>}
     </form>

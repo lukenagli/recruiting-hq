@@ -157,6 +157,15 @@ def _op(conn, uid: int, op: dict) -> str:
     raise EditError(f"Unknown edit {kind!r}.")
 
 
+def _keep_lines(value) -> str:
+    """Notes as written: each line's indent kept (bullet levels), other runs of spaces tidied, at most one blank line."""
+    lines = []
+    for line in str(value or "").replace("\r", "").split("\n"):
+        indent = len(line) - len(line.lstrip(" "))
+        lines.append(" " * min(indent, 8) + re.sub(r"[ \t\f\v]+", " ", line.strip()))
+    return re.sub(r"\n{3,}", "\n\n", "\n".join(lines)).strip("\n")[:12000]
+
+
 def add_chat(conn, uid: int, op: dict) -> str:
     """A coffee chat the student enters by hand: the date they spoke, who (name, role, bank, group, alum or not) and their notes.
     The person is found or added at that bank, and the bank joins their list if it isn't on it. A chat with that person
@@ -170,6 +179,10 @@ def add_chat(conn, uid: int, op: dict) -> str:
         raise EditError("A coffee chat needs the date you spoke (YYYY-MM-DD).") from None
     alum = {"yes": "yes", "no": "no"}.get(nz.clean(op.get("alum")).lower(), "")
     group, notes = nz.clean(op.get("group")), nz.clean(op.get("notes"))
+    from . import accounts  # the preview switch
+
+    if accounts.in_preview_uid(uid):  # preview: bullets and headings keep their lines and indents
+        notes = _keep_lines(op.get("notes"))
     title = nz.clean(op.get("title"))[:80]
     if title.lower().startswith("2y"):
         title = "2Y"  # a second-year student, as the tracker writes it

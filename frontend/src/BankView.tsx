@@ -211,7 +211,7 @@ function PersonPanel({ p, onChanged }: { p: Person; onChanged: () => void }) {
             <strong>Coffee chat</strong>
             <span>{when(c)}{c.format ? ` · ${c.format}` : ''}</span>
           </div>
-          {c.summary ? <p>{c.summary}</p> : c.status === 'done' && <p className="muted">No notes recorded for this conversation yet.</p>}
+          {c.summary ? <p className="notes-text">{c.summary}</p> : c.status === 'done' && <p className="muted">No notes recorded for this conversation yet.</p>}
           <QuestionList title="They asked me" items={c.asked_me} />
           <QuestionList title="I asked them" items={c.i_asked} />
           {thankYou(c)}
@@ -240,7 +240,7 @@ function EventPanel({ i, detail, onSelect }: { i: Interaction; detail: BankDetai
         <StatusTag status={i.status as 'done'} />
       </div>
       <p className="role">{[i.date || i.date_note ? when(i) : '', i.format].filter(Boolean).join(' · ')}</p>
-      {i.summary && <p>{i.summary}</p>}
+      {i.summary && <p className="notes-text">{i.summary}</p>}
       {i.people.length > 0 && <h4>People I met</h4>}
       {i.people.map((j) => {
         const p = detail.contacts.find((c) => c.id === j.person_id)

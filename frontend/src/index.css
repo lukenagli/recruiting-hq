@@ -1439,7 +1439,7 @@ main h1 { text-shadow: 0 2px 16px rgba(4, 10, 26, 0.5); }
 }
 
 /* A chat or event note keeps the paragraphs it was written in. */
-.convo > p, .panel > p { white-space: pre-line; }
+.notes-text { white-space: pre-wrap; }
 .ov-mine { font-weight: 600; }
 
 /* Preview: the wordmark's "HQ" in the icon's gold; on phones the whole logo shows, the skyline icon a little larger. */
@@ -1577,3 +1577,7 @@ details.card.fold > .card, details.card.fold section.card { box-shadow: none; bo
 .season-bar.dark .sb-today { box-shadow: none; }
 .pipe-tile .season-bar { flex: none; width: 100%; }
 .sb-segs { position: relative; flex: 1; min-width: 0; display: flex; gap: 3px; align-items: center; height: 10px; }
+
+/* Preview: tidied coffee chat notes keep their headings and bullets */
+.add-chat-note { margin: 4px 0 0; font-size: 13px; }
+.notes-text { white-space: pre-wrap; }
