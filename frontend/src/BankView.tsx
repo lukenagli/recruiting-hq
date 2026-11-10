@@ -1,6 +1,7 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useLayoutEffect, useState } from 'react'
 import { post } from './api'
 import type { BankDetail, Interaction, Person, ThankYouDraft } from './api'
+import { useBullets } from './bullets'
 import DraftCard from './DraftCard'
 import JourneyMap from './JourneyMap'
 import ClubFeed from './ClubFeed'
@@ -188,6 +189,66 @@ function Background({ p, onChanged }: { p: Person; onChanged: () => void }) {
   )
 }
 
+/** A chat's notes, which you can edit in place (preview): Edit notes opens them in a box with the same bullets as
+ *  Add a coffee chat ("- ", Tab and Shift+Tab); Save writes them straight to the tracker, no AI involved. */
+function ChatNotes({ c, onChanged }: { c: Interaction; onChanged: () => void }) {
+  const preview = usePreview()
+  const [text, setText] = useState<string | null>(null) // null: not editing
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('')
+  const bullets = useBullets(text ?? '', (v) => setText(v))
+  useLayoutEffect(() => {
+    const el = bullets.ref.current
+    if (!el) return
+    el.style.height = 'auto'
+    el.style.height = `${Math.min(el.scrollHeight + 4, window.innerHeight * 0.7)}px`
+  }, [text, bullets.ref])
+  const shown = c.summary ? <p className="notes-text">{c.summary}</p> : c.status === 'done' ? <p className="muted">No notes recorded for this conversation yet.</p> : null
+  if (!preview) return shown
+  if (text === null)
+    return (
+      <>
+        {shown}
+        <button type="button" className="link notes-edit" onClick={() => { setText(c.summary || ''); setError('') }}>
+          {c.summary ? 'Edit notes' : 'Add notes'}
+        </button>
+      </>
+    )
+  async function save() {
+    setBusy(true)
+    setError('')
+    try {
+      const r = await post<{ ok: boolean; reason?: string }>('/api/tracker/edits', { note: `Edited the notes from ${c.title}`, ops: [{ op: 'update_entry', id: c.id, fields: { summary: text } }] })
+      if (!r.ok) return setError(r.reason || 'Not saved.')
+      setText(null)
+      onChanged()
+    } catch (e) {
+      setError(String((e as Error).message || e))
+    } finally {
+      setBusy(false)
+    }
+  }
+  return (
+    <div className="notes-editor">
+      <textarea ref={bullets.ref} value={text} onChange={bullets.onChange} aria-label={`Notes from ${c.title}`} autoFocus
+        onKeyDown={(e) => {
+          if (e.key === 'Escape') return setText(null)
+          if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+            e.preventDefault()
+            return void save()
+          }
+          bullets.onKeyDown(e)
+        }} />
+      <div className="notes-editor-actions">
+        <button type="button" className="primary" disabled={busy} onClick={save}>{busy ? 'Saving…' : 'Save'}</button>
+        <button type="button" className="link muted" onClick={() => setText(null)}>Cancel</button>
+        <small className="muted">"- " makes a bullet; Tab and Shift+Tab indent it.</small>
+      </div>
+      {error && <p className="notice error">{error}</p>}
+    </div>
+  )
+}
+
 function PersonPanel({ p, onChanged }: { p: Person; onChanged: () => void }) {
   const school = useSchool()
   return (
@@ -211,7 +272,7 @@ function PersonPanel({ p, onChanged }: { p: Person; onChanged: () => void }) {
             <strong>Coffee chat</strong>
             <span>{when(c)}{c.format ? ` · ${c.format}` : ''}</span>
           </div>
-          {c.summary ? <p className="notes-text">{c.summary}</p> : c.status === 'done' && <p className="muted">No notes recorded for this conversation yet.</p>}
+          <ChatNotes c={c} onChanged={onChanged} />
           <QuestionList title="They asked me" items={c.asked_me} />
           <QuestionList title="I asked them" items={c.i_asked} />
           {thankYou(c)}

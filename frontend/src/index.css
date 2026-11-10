@@ -1581,3 +1581,10 @@ details.card.fold > .card, details.card.fold section.card { box-shadow: none; bo
 /* Preview: tidied coffee chat notes keep their headings and bullets */
 .add-chat-note { margin: 4px 0 0; font-size: 13px; }
 .notes-text { white-space: pre-wrap; }
+
+/* Preview: editing a chat's notes in place */
+.notes-edit { font-size: 13px; margin: -4px 0 8px; display: inline-block; }
+.notes-editor textarea { width: 100%; box-sizing: border-box; min-height: 140px; padding: 10px 12px; font: inherit; font-size: 14px; line-height: 1.45;
+  border: 1.5px solid var(--blue); border-radius: 8px; resize: vertical; background: var(--card, #fff); color: inherit; }
+.notes-editor-actions { display: flex; gap: 12px; align-items: center; margin: 8px 0 10px; flex-wrap: wrap; }
+.notes-editor-actions small { font-size: 12px; }
