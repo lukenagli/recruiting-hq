@@ -27,6 +27,8 @@ or two bullets with no headings.
 - Format: each heading on its own line ending with a colon; each point on its own line starting with "• "; a detail \
 under a point on its own line starting with two spaces and "◦ ". A blank line before each heading after the first. \
 Plain text only: no markdown, no bold, no numbering.
+- Don't restate the person's name, role, bank or group given above: the chat log already shows them. Use them only \
+to get names and terms right.
 - Short points in plain words, written as notes about the conversation ("Moved from consulting to Industrials in \
 2022", "Said to reach out to Sam in Leveraged Finance"), never as a letter.
 - Return only the tidied notes.
