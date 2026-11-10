@@ -80,7 +80,10 @@ def _op(conn, uid: int, op: dict) -> str:
     if kind in ("update_entry", "update_person"):
         fields, table = (ENTRY_FIELDS, "interactions") if kind == "update_entry" else (PERSON_FIELDS, "people")
         row = _entry(conn, uid, int(op["id"])) if kind == "update_entry" else _person(conn, uid, int(op["id"]))
-        changes = {k: (nz.clean_text(v) if k in ("summary", "notes") else nz.clean(v)) for k, v in op.get("fields", {}).items()}
+        from . import accounts  # the preview switch
+
+        notes_clean = _keep_lines if accounts.in_preview_uid(uid) else nz.clean_text  # preview: bullet indents kept
+        changes = {k: (notes_clean(v) if k in ("summary", "notes") else nz.clean(v)) for k, v in op.get("fields", {}).items()}
         bad = set(changes) - fields
         if bad:
             raise EditError(f"Can't change {sorted(bad)} on {table}.")
