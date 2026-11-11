@@ -244,7 +244,9 @@ def _fresh(uid: int, pool: list[dict]) -> list[dict]:
 def next_question(uid: int, categories: list[str], topics: list[str], stage: str, difficulty: str, bank: str,
                   seen: list[str], like: dict | None = None, club: bool = True, guides: list[str] | None = None) -> dict | None:
     """One question matching the filters, not already in `seen`. Without `club`, the school question bank is left out.
-    `guides`: questions only from the student's own uploaded guides (an empty list: all of them), instead of a bank."""
+    Where questions come from (all of both by default): `bank` "Any" for every bank plus the standard questions and
+    number problems, one bank's name for only its questions, or "" for no banks; `guides` the student's own uploaded
+    guides to include ([] for all of them, None for none)."""
     init_db()
     rng = random.Random()
     categories = [c for c in categories if c in CATEGORIES] or list(CATEGORIES)
@@ -264,27 +266,24 @@ def next_question(uid: int, categories: list[str], topics: list[str], stage: str
         if stage in STAGES:
             where.append("round = ?")
             params.append(stage)
-        use_bank = club and guides is None
+        use_bank = club and bank != ""
         rows = conn.execute(f"SELECT * FROM questions WHERE {' AND '.join(where)}", params).fetchall() if use_bank else []
 
     pool = [q for q in map(_bank_question, rows) if q["key"] not in seen_set and len(q["question"]) > 12]
-    if guides is not None:  # only the chosen guides of the student's own
-        pool = [q for q in map(_guide_question, answer_library.guide_questions(uid))
-                if q["key"] not in seen_set and q["category"] in categories and (not guides or q["guide"] in guides)]
-    elif not (bank and bank != "Any"):  # the common questions are not tied to a bank
+    if bank == "Any":  # every bank: the standard questions too (they aren't tied to a bank)
         pool += [q for q in map(_core_question, range(len(pb.CORE))) if q["key"] not in seen_set and q["category"] in categories]
         if "Technical" in categories:
             pool += [q for q in map(_tech_question, range(len(core_technicals.QUESTIONS))) if q["key"] not in seen_set]
-        # questions from guides this user uploaded themselves (their own copy)
+    if guides is not None:  # the student's own guides: all of them, or the ones chosen
         pool += [q for q in map(_guide_question, answer_library.guide_questions(uid))
-                 if q["key"] not in seen_set and q["category"] in categories]
+                 if q["key"] not in seen_set and q["category"] in categories and (not guides or q["guide"] in guides)]
     pool = [q for q in pool if q["category"] != "Technical" or q["topic"] in topics]
     # restructuring and LevFin questions only for someone recruiting for them
     pool = [q for q in pool if specialty(q) in ("", *wanted)]
     pool = _fresh(uid, pool)
 
     def allowed(topic: str) -> set[str]:
-        if guides is not None:  # a guide's questions aren't graded by level: all of them
+        if bank == "":  # guides only: a guide's questions aren't graded by level, so all of them
             return set(LEVELS)
         if stage in STAGE_DIFFICULTY:
             return STAGE_DIFFICULTY[stage]
@@ -302,7 +301,7 @@ def next_question(uid: int, categories: list[str], topics: list[str], stage: str
         if q["category"] == "Technical" and q["difficulty"] not in allowed(q["topic"]):
             continue
         by_cat.setdefault(q["category"], []).append(q)
-    templates_ok = "Technical" in categories and guides is None  # number problems aren't from a guide
+    templates_ok = "Technical" in categories and bank == "Any"  # the number problems come with "every bank"
     choices = [c for c in categories if by_cat.get(c) or (c == "Technical" and templates_ok)]
     if not choices:
         return None

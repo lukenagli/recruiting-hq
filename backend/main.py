@@ -218,7 +218,7 @@ class PracticeRequest(BaseModel):
     bank: str = "Any"
     seen: list[str] = []
     like: str = ""  # key of a question to find a similar one to
-    guides: list[str] | None = None  # questions only from these uploaded guides ([] = all of them) instead of a bank
+    guides: list[str] | None = []  # uploaded guides to include: [] all of them (the default), None none
 
 
 class AnswerRequest(BaseModel):

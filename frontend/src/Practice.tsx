@@ -18,14 +18,18 @@ const DIFFICULTIES = [
 ]
 const VERDICT_LABEL: Record<Verdict, string> = { correct: 'Correct', partial: 'Partly right', incorrect: 'Not quite' }
 
-// guides: practice from the student's own uploaded guides instead of a bank ([] = all of them; null = a bank)
+// Where questions come from: bank "Any" (every bank), one bank, or "" (no banks); guides [] (all the student's own
+// guides), some of them, or null (none). Every session starts from all of both; a change lasts for that session only.
 export type Setup = { categories: string[]; topics: string[]; stage: string; difficulty: string; bank: string; guides: string[] | null }
-export const DEFAULT_SETUP: Setup = { categories: ['Technical'], topics: [], stage: '', difficulty: 'adaptive', bank: 'Any', guides: null }
+export const DEFAULT_SETUP: Setup = { categories: ['Technical'], topics: [], stage: '', difficulty: 'adaptive', bank: 'Any', guides: [] }
 const STORE = 'rhq-practice-setup'
 
 function loadSetup(): Setup {
   try {
-    return { ...DEFAULT_SETUP, ...JSON.parse(localStorage.getItem(STORE) ?? '{}') }
+    const saved = JSON.parse(localStorage.getItem(STORE) ?? '{}')
+    delete saved.bank // the sources always start from everything
+    delete saved.guides
+    return { ...DEFAULT_SETUP, ...saved }
   } catch {
     return DEFAULT_SETUP
   }
@@ -143,8 +147,7 @@ function SetupBar({ setup, setSetup, banks, guides }: { setup: Setup; setSetup: 
                       indent
                       on={setup.guides!.length > 0 && setup.guides!.includes(g)}
                       onChange={(v) => {
-                        const cur = setup.guides!.length ? setup.guides! : []
-                        const next = v ? [...new Set([...cur, g])] : cur.filter((x) => x !== g)
+                        const next = v ? [...new Set([...setup.guides!, g])] : setup.guides!.filter((x) => x !== g)
                         setSetup({ ...setup, guides: next.length === guides.length ? [] : next })
                       }}
                     >
@@ -155,19 +158,25 @@ function SetupBar({ setup, setSetup, banks, guides }: { setup: Setup; setSetup: 
               )}
             </>
           ) : (
-            <p className="dd-note">Upload your Breaking Into Wall Street guides in Settings to practice from them.</p>
+            <p className="dd-note">Upload your Breaking Into Wall Street guides in Settings to practice from them too.</p>
           )}
           {banks.length > 0 && (
             <>
-              <span className="dd-heading">Banks</span>
-              <Check on={setup.guides === null && setup.bank === 'Any'} onChange={() => setSetup({ ...setup, bank: 'Any', guides: null })}>
-                Any bank
+              <Check on={setup.bank !== ''} onChange={(v) => setSetup({ ...setup, bank: v ? 'Any' : '' })}>
+                Banks
               </Check>
-              {banks.map((b) => (
-                <Check key={b} on={setup.guides === null && setup.bank === b} onChange={() => setSetup({ ...setup, bank: b, guides: null })}>
-                  {b}
-                </Check>
-              ))}
+              {setup.bank !== '' && (
+                <>
+                  <Check indent on={setup.bank === 'Any'} onChange={(v) => v && setSetup({ ...setup, bank: 'Any' })}>
+                    All banks
+                  </Check>
+                  {banks.map((b) => (
+                    <Check key={b} indent on={setup.bank === b} onChange={(v) => setSetup({ ...setup, bank: v ? b : 'Any' })}>
+                      {b}
+                    </Check>
+                  ))}
+                </>
+              )}
             </>
           )}
         </Dropdown>
@@ -177,8 +186,9 @@ function SetupBar({ setup, setSetup, banks, guides }: { setup: Setup; setSetup: 
 }
 
 function sourceSummary(s: Setup) {
-  if (s.guides !== null) return s.guides.length === 0 ? 'All my guides' : s.guides.length === 1 ? s.guides[0] : `${s.guides.length} guides`
-  return s.bank === 'Any' ? 'Any bank' : s.bank
+  const g = s.guides === null ? '' : s.guides.length === 0 ? 'All guides' : s.guides.length === 1 ? s.guides[0] : `${s.guides.length} guides`
+  const b = s.bank === '' ? '' : s.bank === 'Any' ? 'All banks' : s.bank
+  return [g, b].filter(Boolean).join(' + ') || 'Pick at least one'
 }
 
 function Meta({ q }: { q: PracticeQuestion }) {
@@ -352,7 +362,7 @@ export default function Practice({ options, start }: { options: PrepOptions; sta
     setGraded({ ...graded, verdict })
   }
 
-  const ready = setup.categories.length > 0
+  const ready = setup.categories.length > 0 && (setup.guides !== null || setup.bank !== '')
 
   return (
     <section className="practice">
