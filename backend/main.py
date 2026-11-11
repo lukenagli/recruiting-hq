@@ -16,7 +16,7 @@ from starlette.background import BackgroundTask
 
 from . import banks as banks_info
 from . import tracker_edits
-from . import chat_notes, filing_queue, folder_setup, scan_cleanup
+from . import chat_notes, filing_queue, folder_setup, interviewer, scan_cleanup
 from . import accounts, assistant, attachments, auth, budget, capiq, catch_up, config, cover_letters, deal_docs, deal_recs, deal_sources, deals, importer, legal, llm, market, network, onboarding, practice, profile, schools, reference, research, shared, stars, sync, templates, test_scan, thank_backfill, thank_you, transfer, user_keys
 from .auth import admin_user, current_user
 from .db import connect, init_db
@@ -253,6 +253,21 @@ async def practice_answer(req: AnswerRequest, user: dict = Depends(current_user)
     if out is None:
         raise HTTPException(status_code=404, detail="Question not found")
     return out
+
+
+class SmallTalk(BaseModel):
+    said: str = Field(default="", max_length=1000)
+    bank: str = ""
+
+
+@app.post("/api/practice/interviewer/small-talk")
+async def interviewer_small_talk(req: SmallTalk, user: dict = Depends(current_user)):
+    """A voice interview's opening: the interviewer's short reply to how the student says they're doing."""
+    try:
+        chosen = ai_for(user)
+    except HTTPException:
+        chosen = None  # no key or the day's allowance is used: a set line instead
+    return {"reply": await interviewer.small_talk(user["id"], chosen, req.said, req.bank[:80])}
 
 
 class FollowUpRequest(BaseModel):

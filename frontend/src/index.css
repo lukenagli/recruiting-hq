@@ -508,7 +508,9 @@ main { padding-bottom: 90px; }
 .pq-answer { width: 100%; font: inherit; border: 1.5px solid var(--line); border-radius: 12px; padding: 12px; resize: vertical; }
 .pq-answer:focus { outline: none; border-color: var(--blue); }
 .pq-actions { display: flex; flex-wrap: wrap; gap: 8px 0; margin-top: 12px; }
-.pq-yours { color: var(--muted); font-size: 14px; white-space: pre-wrap; }
+.pq-yours { margin: 10px 0; padding: 10px 14px; border-left: 3px solid var(--blue); background: var(--blue-soft); border-radius: 6px; }
+.pq-yours strong { display: block; font-size: 12px; letter-spacing: 0.04em; text-transform: uppercase; color: var(--muted); margin-bottom: 4px; }
+.pq-yours p { margin: 0; white-space: pre-wrap; }
 .verdict { display: inline-block; font-weight: 700; border-radius: 99px; padding: 4px 14px; margin: 4px 0 8px; }
 .v-correct { background: var(--green-soft); color: var(--green); }
 .v-partial { background: var(--amber-soft); color: var(--amber); }
@@ -1588,3 +1590,26 @@ details.card.fold > .card, details.card.fold section.card { box-shadow: none; bo
   border: 1.5px solid var(--blue); border-radius: 8px; resize: vertical; background: var(--card, #fff); color: inherit; }
 .notes-editor-actions { display: flex; gap: 12px; align-items: center; margin: 8px 0 10px; flex-wrap: wrap; }
 .notes-editor-actions small { font-size: 12px; }
+
+/* Interview Prep: dictated answers and the voice interview */
+.practice-start-buttons { display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; }
+.pq-interim { margin: 4px 0 0; font-size: 14px; font-style: italic; }
+.pq-actions .listening { border-color: #e8467c; color: #e8467c; }
+.voice-interview { padding: 22px 24px; }
+.vi-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+.vi-head h3 { margin: 0; }
+.vi-start { display: flex; flex-direction: column; align-items: flex-start; gap: 12px; }
+.vi-start p { margin: 0; color: var(--muted); }
+.vi-count { display: flex; gap: 8px; align-items: center; font-size: 14px; }
+.vi-thread { list-style: none; padding: 0; margin: 12px 0; display: flex; flex-direction: column; gap: 10px; max-height: 50vh; overflow-y: auto; }
+.vi-turn { max-width: 80%; padding: 10px 14px; border-radius: 14px; }
+.vi-turn small { display: block; font-size: 11px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; opacity: 0.7; margin-bottom: 2px; }
+.vi-turn p { margin: 0; line-height: 1.45; }
+.vi-interviewer { align-self: flex-start; background: var(--gray-soft); }
+.vi-you { align-self: flex-end; background: var(--blue); color: #fff; }
+.vi-live { opacity: 0.7; }
+.vi-controls { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; padding-top: 10px; border-top: 1px solid var(--line); }
+.vi-status { flex: 1; min-width: 200px; font-size: 14px; color: var(--muted); }
+.vi-status.vi-listening { color: #e8467c; font-weight: 600; }
+.vi-results ol { padding-left: 20px; display: grid; gap: 14px; }
+.vi-results li p { margin: 4px 0; }

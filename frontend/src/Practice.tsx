@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
 import { post } from './api'
 import type { Graded, PracticeQuestion, PrepOptions, Verdict } from './api'
+import { useDictation } from './dictation'
 import { useSchool } from './ui'
+import VoiceInterview, { voiceSupported } from './VoiceInterview'
 
 export const TOPICS = ['Accounting', 'Enterprise & Equity Value', 'Valuation', 'DCF', 'Merger Math', 'Diluted Share Count', 'LBO', 'Other']
 const CATEGORY_LABEL: Record<string, string> = { Behavioral: 'Behavioral', Technical: 'Technical', Deal: 'Deal questions', Markets: 'Markets & trends' }
@@ -224,6 +226,9 @@ export default function Practice({ options, start }: { options: PrepOptions; sta
   const [error, setError] = useState('')
   const [seen, setSeen] = useState<string[]>([])
   const [tally, setTally] = useState({ done: 0, correct: 0 })
+  const [voice, setVoice] = useState(false) // a spoken mock interview instead of typed practice
+  // dictating an answer: each finished phrase is added to the box
+  const dictation = useDictation((phrase) => setAnswer((a) => `${a}${a && !/\s$/.test(a) ? ' ' : ''}${phrase}`))
 
   const myBanks = new Set(options.people.map((p) => p.bank))
   const banks = Array.from(new Set(options.counts.map((c) => c.bank)))
@@ -249,6 +254,7 @@ export default function Practice({ options, start }: { options: PrepOptions; sta
       } else {
         setQ(r.question)
         setSeen((s) => [...s, r.question!.key])
+        dictation.stop()
         setAnswer('')
         setGraded(null)
       }
@@ -261,6 +267,7 @@ export default function Practice({ options, start }: { options: PrepOptions; sta
 
   async function submit(text: string) {
     if (!q) return
+    dictation.stop()
     setBusy('grade')
     setError('')
     try {
@@ -290,11 +297,20 @@ export default function Practice({ options, start }: { options: PrepOptions; sta
     <section className="practice">
       <SetupBar setup={setup} setSetup={setSetup} banks={banks} />
 
-      {!q && (
+      {voice && <VoiceInterview setup={setup} onExit={() => setVoice(false)} />}
+
+      {!voice && !q && (
         <div className="practice-start">
-          <button className="primary big" disabled={!ready || busy !== ''} onClick={() => next()}>
-            {busy === 'next' ? 'Finding a question…' : 'Start practicing'}
-          </button>
+          <div className="practice-start-buttons">
+            <button className="primary big" disabled={!ready || busy !== ''} onClick={() => next()}>
+              {busy === 'next' ? 'Finding a question…' : 'Start practicing'}
+            </button>
+            {voiceSupported() && (
+              <button className="ghost big" disabled={!ready} onClick={() => setVoice(true)} title="The interviewer talks to you and listens to your answers">
+                Voice interview
+              </button>
+            )}
+          </div>
           <p className="muted">
             {school.club ? 'Questions come from your club question banks, plus' : 'Questions are common interview questions plus'} technical
             problems with new numbers each time (worked out so the math is doable by hand).
@@ -303,7 +319,7 @@ export default function Practice({ options, start }: { options: PrepOptions; sta
       )}
       {error && <p className="notice error">{error}</p>}
 
-      {q && (
+      {!voice && q && (
         <div className="pq card">
           <div className="pq-head">
             <Meta q={q} />
@@ -321,16 +337,23 @@ export default function Practice({ options, start }: { options: PrepOptions; sta
                 className="pq-answer"
                 value={answer}
                 onChange={(e) => setAnswer(e.target.value)}
-                placeholder={q.category === 'Technical' ? 'Type your answer the way you would say it, including the numbers…' : 'Type what you would say…'}
+                placeholder={dictation.listening ? 'Listening… say your answer' : q.category === 'Technical' ? 'Type or dictate your answer the way you would say it, including the numbers…' : 'Type or dictate what you would say…'}
                 rows={5}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter' && (e.metaKey || e.ctrlKey) && answer.trim()) submit(answer)
                 }}
               />
+              {dictation.interim && <p className="pq-interim muted">{dictation.interim}</p>}
+              {dictation.error && <p className="notice error">{dictation.error}</p>}
               <div className="pq-actions">
                 <button className="primary" disabled={!answer.trim() || busy !== ''} onClick={() => submit(answer)}>
                   {busy === 'grade' ? 'Checking…' : 'Check my answer'}
                 </button>
+                {dictation.supported && (
+                  <button className={`ghost ${dictation.listening ? 'listening' : ''}`} disabled={busy !== ''} onClick={dictation.toggle}>
+                    {dictation.listening ? '● Stop dictating' : 'Dictate my answer'}
+                  </button>
+                )}
                 <button className="ghost" disabled={busy !== ''} onClick={() => submit('')}>
                   Show me the answer
                 </button>
@@ -341,13 +364,18 @@ export default function Practice({ options, start }: { options: PrepOptions; sta
             </>
           ) : (
             <div className="pq-result">
-              {graded.answer && answer && <p className="pq-yours"><strong>You said:</strong> {answer}</p>}
               {graded.verdict ? (
                 <p className={`verdict v-${graded.verdict}`}>{VERDICT_LABEL[graded.verdict]}</p>
               ) : (
                 <p className="verdict v-none">How did you do?</p>
               )}
               {graded.feedback && <p className="pq-feedback">{graded.feedback}</p>}
+              {answer.trim() && (
+                <div className="pq-yours">
+                  <strong>Your answer</strong>
+                  <p>{answer}</p>
+                </div>
+              )}
               {graded.answer && (
                 <p className="pq-key">
                   <strong>Answer:</strong> {graded.answer}
@@ -388,6 +416,11 @@ export default function Practice({ options, start }: { options: PrepOptions; sta
                 <button className="ghost" disabled={busy !== ''} onClick={() => next()}>
                   Next question
                 </button>
+                {voiceSupported() && (
+                  <button className="ghost" disabled={busy !== ''} onClick={() => { setQ(null); setVoice(true) }}>
+                    Switch to a voice interview
+                  </button>
+                )}
               </div>
             </div>
           )}
