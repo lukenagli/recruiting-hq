@@ -3,8 +3,8 @@
 Run:  .venv\\Scripts\\python.exe scripts/smoke_test.py
 
 Works on a fresh database in a temporary folder (never data/app.db), with the AI key unset and the network blocked, so
-it costs nothing and reads nothing private. The accounts: the graders' demo account with its sample tracker, a
-regular student, a preview (early-access) student with the same sample, and the admin. Every GET route without a
+it costs nothing and reads nothing private. The accounts: a new student with an empty tracker, a student with the
+sample tracker (backend/sample_tracker.py), and the admin. Every GET route without a
 path parameter is opened as each of them, then each bank's page and cover letter, and the Word download. A route
 answering 500, or trying to reach the network, fails the run.
 """
@@ -41,7 +41,7 @@ socket.create_connection = _blocked
 
 from fastapi.testclient import TestClient  # noqa: E402
 
-from backend import accounts, config, demo  # noqa: E402
+from backend import accounts, sample_tracker  # noqa: E402
 from backend.db import connect, init_db  # noqa: E402
 from backend.main import app  # noqa: E402
 
@@ -55,23 +55,19 @@ def account(email: str, name: str, *, admin: bool = False, sample: bool = False)
                            "VALUES (?, ?, 'x', ?, '2026-09-01T00:00:00', '2026-09-01T00:00:00')", (email, name, int(admin))).lastrowid
         conn.execute("INSERT OR IGNORE INTO user_profiles (user_id, school, level, onboarded_at) VALUES (?, 'Yale SOM', 'mba', '2026-09-01')", (uid,))
         if sample:
-            demo._fill(conn, uid)
+            sample_tracker._fill(conn, uid)
         return uid, accounts._new_session(conn, uid)
 
 
 def main() -> int:
     init_db()
-    demo.ensure()
-    with connect() as conn:
-        demo_id = conn.execute("SELECT id FROM users WHERE email = ?", (config.DEMO_EMAIL,)).fetchone()["id"]
-        demo_token = accounts._new_session(conn, demo_id)
+    sample_tracker.stars.ensure()
     users = {
-        "demo": (demo_id, demo_token),
         "student": account("student@yale.edu", "Sam Student"),
-        "preview": account("preview@yale.edu", "Pat Preview", sample=True),
+        "sample": account("jane.doe@yale.edu", "Jane Doe", sample=True),
         "admin": account("admin@yale.edu", "Ada Admin", admin=True, sample=True),
     }
-    accounts.set_early_access(["preview@yale.edu"])
+    sample_tracker.fill_profile(users["sample"][0])
     gets = sorted({r.path for r in app.routes if "GET" in getattr(r, "methods", set()) and r.path.startswith("/api")} - SKIP)
     client = TestClient(app, raise_server_exceptions=False)
     problems, opened = [], 0

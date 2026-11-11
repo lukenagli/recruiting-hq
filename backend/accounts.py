@@ -89,10 +89,8 @@ def set_early_access(emails: list[str]) -> list[str]:
 
 def set_admin(by_uid: int, uid: int, admin: bool) -> dict:
     """The admin gives another account admin rights, or takes them back. An admin is in the preview and sees this
-    panel, but uses their own AI key (only the site owner and the demo run on the course key). Nobody changes their
-    own rights (no locking yourself out), nobody takes the owner's, the demo account never becomes an admin, and the
-    site always keeps at least one admin."""
-    from .config import DEMO_EMAIL
+    panel, but uses their own AI key (only the site owner runs on the course key). Nobody changes their own rights
+    (no locking yourself out), nobody takes the owner's, and the site always keeps at least one admin."""
     from .db import owner_id
     if uid == by_uid:
         raise AccountError("You can't change your own admin rights.")
@@ -102,8 +100,6 @@ def set_admin(by_uid: int, uid: int, admin: bool) -> dict:
         user = conn.execute("SELECT id, email, name, is_admin FROM users WHERE id = ? AND password_hash != ''", (uid,)).fetchone()
         if user is None:
             raise AccountError("No such account.")
-        if admin and user["email"].lower() == DEMO_EMAIL:
-            raise AccountError("The demo account can't be an admin.")
         if not admin and user["is_admin"] and conn.execute("SELECT COUNT(*) FROM users WHERE is_admin = 1 AND password_hash != ''").fetchone()[0] <= 1:
             raise AccountError("The site needs at least one admin.")
         conn.execute("UPDATE users SET is_admin = ? WHERE id = ?", (1 if admin else 0, uid))

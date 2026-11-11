@@ -14,7 +14,6 @@ import re
 from datetime import date, datetime
 
 from . import banks as bank_info
-from . import config
 from .db import connect, init_db, owner_id
 
 SCHEMA = """
@@ -196,7 +195,6 @@ def users() -> list[dict]:
                 r["last_sync"] = last_sync.get(r["id"], "")
     owner = owner_id()
     for r in rows:
-        r["is_demo"] = r["email"].lower() == config.DEMO_EMAIL  # never made an admin
         r["is_owner"] = r["id"] == owner  # runs on the course key, and keeps admin rights
         r["last_active"] = max(filter(None, [r.get("last_ai"), r.get("last_login"), r.get("last_sync")]), default="")
     return rows

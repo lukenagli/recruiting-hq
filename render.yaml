@@ -13,8 +13,8 @@ services:
       mountPath: /data
       sizeGB: 1
     envVars:
-      # The course key. Only the site's admin account (the first one created) and the teaching staff's demo
-      # account (backend/demo.py) use it; everyone else adds their own key in Settings.
+      # The course key. Only the site owner's account (the first one created) uses it; everyone else adds their own
+      # key in Settings.
       - key: PORTKEY_API_KEY
         sync: false
       # Encrypts the API keys people save. Generated once by Render; changing it means everyone re-enters their key.

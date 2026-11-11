@@ -18,7 +18,7 @@ PORTKEY_BASE_URL = os.getenv("PORTKEY_BASE_URL", "https://api.portkey.ai/v1")
 DB_PATH = Path(os.getenv("APP_DB_PATH") or ROOT / "data" / "app.db")
 FRONTEND_DIST = ROOT / "frontend" / "dist"
 # Models for people who bring their own key. The course key (Portkey) only ever runs MODEL_NAME above and
-# is used only by the site owner's account and the demo; everyone else, other admins too, pays with their own key.
+# is used only by the site owner's account; everyone else, other admins too, pays with their own key.
 CLAUDE_MODEL = "claude-opus-5-5"
 USER_OPENAI_MODEL = os.getenv("USER_OPENAI_MODEL", MODEL_NAME)
 # Encrypts the API keys people save. Set APP_SECRET on the hosted site; locally a random one is kept in data/.
@@ -30,10 +30,6 @@ DAILY_TOKEN_BUDGET = int(os.getenv("DAILY_TOKEN_BUDGET", "400000"))
 # Preview: the reader filing email has no daily allowance (a first scan takes what it takes). This is only a guard against
 # a bug re-filing the same mail in a loop, far above a whole first scan (about 2.5M tokens).
 FILING_TOKEN_GUARD = int(os.getenv("FILING_TOKEN_GUARD", "20000000"))
-# The shared demo account for the teaching staff (backend/demo.py). It runs on the course key like the admin, under the
-# same daily budget, and is not a Yale address, so it never sees the Finance Club's own material.
-DEMO_EMAIL = "demo@recruiting-hq.demo"
-DEMO_PASSWORD = os.getenv("DEMO_PASSWORD", "TryRecruitingHQ-2026")
 # Real recruiting files stay on the owner's machine; the repo ships a made-up sample set.
 PRIVATE_BANKS_DIR = ROOT / "Recruiting Files" / "Interview Question Banks"
 SAMPLE_BANKS_DIR = ROOT / "data" / "sample" / "Interview Question Banks"
@@ -49,9 +45,9 @@ def banks_dir() -> Path:
 
 
 def on_course_key(is_owner, email: str) -> bool:
-    """Accounts that run on the site owner's course key: the owner (db.owner_id) and the demo account. Other admins
-    use their own key like everyone else."""
-    return PORTKEY_API_KEY_SET and (bool(is_owner) or (email or "").lower() == DEMO_EMAIL)
+    """The account that runs on the site owner's course key: the owner (db.owner_id). Other admins use their own key
+    like everyone else."""
+    return PORTKEY_API_KEY_SET and bool(is_owner)
 
 
 def portkey_api_key() -> str:

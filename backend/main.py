@@ -70,8 +70,8 @@ def _setup_again(user: dict, prof: dict) -> bool:
     """Preview: someone who finished setup before it had the Outlook step, and hasn't connected the reader, goes through
     setup once more (their key, resume and banks are kept, so those steps are already filled in). Finishing it again
     stamps a new date, so it isn't shown twice."""
-    if prof["onboarded_at"][:10] >= READER_STEP_ADDED or user["email"].lower() == config.DEMO_EMAIL:
-        return False  # the demo shows a finished tracker
+    if prof["onboarded_at"][:10] >= READER_STEP_ADDED:
+        return False
     return not sync.state(user["id"])["has_key"]
 
 
@@ -641,7 +641,7 @@ def ai_for(user: dict) -> llm.Chosen:
         chosen = llm.model_for(user)
     except llm.NoModelError as err:
         raise HTTPException(status_code=428, detail=str(err))
-    # Preview: the daily allowance only guards the course key (the owner and the demo). Someone on their own key uses
+    # The daily allowance only guards the course key (the owner). Someone on their own key uses
     # what they need, billed to them.
     if chosen.provider == "course" or not accounts.in_preview_uid(user["id"]):
         budget.check(user["id"])

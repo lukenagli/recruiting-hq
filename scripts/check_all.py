@@ -4,7 +4,7 @@ Run:  .venv\\Scripts\\python.exe scripts/check_all.py
 
   1. Python: no undefined names, unused imports or syntax errors (ruff, from requirements-dev.txt).
   2. The reader extension: its scripts parse, and it still can't type, send, reply or react (check_reader.py).
-  3. The site: every page's data opens without an error for the demo, a student, a preview student and the admin
+  3. The site: every page's data opens without an error for a new student, a student with a sample tracker and the admin
      (smoke_test.py, on a throwaway database with no AI and no network).
   4. The frontend: it type-checks the way the deploy builds it (a type error here once failed every deploy unnoticed).
 """

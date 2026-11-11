@@ -1,23 +1,15 @@
-"""The demo account for the teaching staff: a made-up first-year with a tracker already in progress.
+"""A made-up tracker in progress, for the site's checks (scripts/smoke_test.py): a first-year with banks, contacts,
+chats, letters and a deal, so every page is opened with something on it. Everyone in it is invented; the banks are
+real firms so the pages show their logos. Dates are set relative to today.
 
-    .venv\\Scripts\\python.exe -m backend.demo            create it if it is missing (the hosted site does this on start)
-    .venv\\Scripts\\python.exe -m backend.demo --reset    put its tracker back to the starting sample
-
-Everyone in it is invented (names, emails, notes); the banks are real firms so the map shows their logos. Dates are
-set relative to today, so there is always a thank-you owed, a chat coming up and a deadline close. The account runs on
-the course key (config.on_course_key) under the normal daily token budget, and its address is not a Yale one, so the
-Finance Club's question bank, tracker and calendar are never shown to it.
+(It was the graders' demo account until the project was graded; that account is removed by backend/cleanup.py.)
 """
 import json
-import sys
 from datetime import date, datetime, timedelta
 
-from . import accounts, config, deals, profile, stars
-from .db import connect, init_db
+from . import deals, profile, stars
 
 NAME = "Jane Doe"
-# Bump when the sample below changes: the hosted site refills the demo account once on its next start.
-SAMPLE_VERSION = "2"
 
 RESUME = """JANE DOE
 Yale School of Management, MBA Candidate, Class of 2028
@@ -278,18 +270,8 @@ def _day(offset: int | None) -> str:
     return (date.today() + timedelta(days=offset)).isoformat() if offset is not None else ""
 
 
-def _account(conn) -> int:
-    row = conn.execute("SELECT id FROM users WHERE email = ?", (config.DEMO_EMAIL,)).fetchone()
-    if row:
-        return row["id"]
-    now = datetime.now().isoformat(timespec="seconds")
-    return conn.execute(
-        "INSERT INTO users (email, name, password_hash, is_admin, created_at, email_verified_at) VALUES (?, ?, ?, 0, ?, ?)",
-        (config.DEMO_EMAIL, NAME, accounts._hash_password(config.DEMO_PASSWORD), now, now)).lastrowid
-
-
 def _fill(conn, uid: int) -> None:
-    """Replace the demo tracker with the starting sample."""
+    """Replace an account's tracker with the sample (call stars.ensure() first: the interview stories' table)."""
     mine = "SELECT id FROM interactions WHERE user_id = ?"
     for sql in (f"DELETE FROM interaction_people WHERE interaction_id IN ({mine})",
                 f"DELETE FROM interaction_questions WHERE interaction_id IN ({mine})",
@@ -334,42 +316,16 @@ def _fill(conn, uid: int) -> None:
                         VALUES (?, ?, ?, ?, 0, ?, ?)""", (uid, bank, json.dumps(paragraphs), json.dumps(warnings), now, now))
 
 
-def ensure(reset: bool = False) -> dict:
-    """Create the demo account with its sample tracker if it is missing; with reset, refill the sample."""
-    init_db()
+def fill_profile(uid: int) -> None:
+    """The sample student's resume, profile and interview stories."""
     stars.ensure()
-    conn = connect()
-    try:
-        with conn:
-            row = conn.execute("SELECT name FROM users WHERE email = ?", (config.DEMO_EMAIL,)).fetchone()
-            existed = bool(row)
-            uid = _account(conn)
-            if row and row["name"] != NAME:  # the sample student was renamed: refill so every page uses the new name
-                conn.execute("UPDATE users SET name = ? WHERE id = ?", (NAME, uid))
-                reset = True
-            stored = conn.execute("SELECT value FROM app_settings WHERE key = 'demo_sample_version'").fetchone()
-            if existed and (stored["value"] if stored else "") != SAMPLE_VERSION:
-                reset = True
-            conn.execute("INSERT OR REPLACE INTO app_settings (key, value) VALUES ('demo_sample_version', ?)", (SAMPLE_VERSION,))
-            if reset or not existed:
-                _fill(conn, uid)
-    finally:
-        conn.close()
-    if reset or not existed:
-        profile.save(uid, {"resume_text": RESUME, "school": "Yale SOM", "level": "mba", "class_year": "2028",
-                           "school_line": "a first-year MBA candidate at the Yale School of Management",
-                           "contact_line": f"New Haven, CT | {config.DEMO_EMAIL}", "target_groups": "Technology, M&A",
-                           "why_group": "Four years modelling consumer and software acquisitions from the corporate side; I want to "
-                                        "be the advisor on the other side of the table.",
-                           "highlights": "The $40M bolt-on model; cutting forecast error from 9% to 3%; leading the reporting rebuild.",
-                           "projects": "Brightline bolt-on acquisition model; FP&A dashboard rebuild; middle-market credit memos."})
-        profile.finish_setup(uid)
-        for key, parts in STORIES.items():
-            stars.save(uid, key, parts)
-    return {"user_id": uid, "created": not existed, "filled": reset or not existed}
-
-
-if __name__ == "__main__":
-    out = ensure(reset="--reset" in sys.argv)
-    state = "created" if out["created"] else ("reset to the sample" if out["filled"] else "already there, left as is")
-    print(f"Demo account {config.DEMO_EMAIL} (user {out['user_id']}): {state}.")
+    profile.save(uid, {"resume_text": RESUME, "school": "Yale SOM", "level": "mba", "class_year": "2028",
+                       "school_line": "a first-year MBA candidate at the Yale School of Management",
+                       "contact_line": "New Haven, CT | jane.doe@example.com", "target_groups": "Technology, M&A",
+                       "why_group": "Four years modelling consumer and software acquisitions from the corporate side; I want to "
+                                    "be the advisor on the other side of the table.",
+                       "highlights": "The $40M bolt-on model; cutting forecast error from 9% to 3%; leading the reporting rebuild.",
+                       "projects": "Brightline bolt-on acquisition model; FP&A dashboard rebuild; middle-market credit memos."})
+    profile.finish_setup(uid)
+    for key, parts in STORIES.items():
+        stars.save(uid, key, parts)

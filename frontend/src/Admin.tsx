@@ -11,7 +11,7 @@ type DirectoryChat = { name: string; app: 'slack' | 'whatsapp'; groups: string[]
 type FeedItem = { id: number; source: string; posted_at: string; kind: string; bank: string; happens_on: string; title: string; detail: string }
 type Overview = {
   users: { id: number; name: string; email: string; is_admin: number; created_at: string; own_key: number; banks: number; people: number
-    interactions: number; last_active: string; last_sync?: string; is_demo?: boolean; is_owner?: boolean }[]
+    interactions: number; last_active: string; last_sync?: string; is_owner?: boolean }[]
   bank_defaults: Record<string, BankFields>
   club_chats: string[]
   chat_directory: DirectoryChat[]
@@ -30,7 +30,6 @@ function AdminToggle({ u, me, onChanged }: { u: Overview['users'][number]; me: n
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   if (u.id === me) return <small className="muted">You</small>
-  if (u.is_demo) return <small className="muted">Demo</small>
   if (u.is_owner) return <small className="muted">Owner</small>
   const make = !u.is_admin
   async function go() {
@@ -77,7 +76,7 @@ function Users({ users, me, onChanged }: { users: Overview['users']; me: number;
                 <td>{u.banks}</td>
                 <td>{u.people}</td>
                 <td>{u.interactions}</td>
-                <td>{u.own_key ? 'Yes' : u.is_owner || u.is_demo ? 'Course key' : 'No'}</td>
+                <td>{u.own_key ? 'Yes' : u.is_owner ? 'Course key' : 'No'}</td>
                 <td>{u.last_sync ? `Last ${when(u.last_sync)}` : 'Not set up'}</td>
                 <td><AdminToggle u={u} me={me} onChanged={onChanged} /></td>
               </tr>

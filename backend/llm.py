@@ -2,7 +2,7 @@
 
 Who pays for a request:
 - a user who saved their own key (Claude, OpenAI, or their Yale class Portkey key): their key, always;
-- otherwise the site's admin account and the demo account: the course key through Portkey (MODEL_NAME only);
+- otherwise the site owner's account: the course key through Portkey (MODEL_NAME only);
 - anyone else: no model. They are asked to add their own key in Settings.
 """
 from dataclasses import dataclass

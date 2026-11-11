@@ -360,12 +360,11 @@ def connect(read_only: bool = False) -> sqlite3.Connection:
 
 
 def owner_id() -> int | None:
-    """The site owner: the first account that signed up (it became the first admin). Only the owner and the demo
-    account run on the course AI key; anyone else, admins included, uses their own key."""
+    """The site owner: the first account that signed up (it became the first admin). Only the owner runs on the
+    course AI key; anyone else, admins included, uses their own key."""
     init_db()
     with connect(read_only=True) as conn:
-        row = conn.execute("SELECT MIN(id) FROM users WHERE password_hash != '' AND LOWER(email) != ?",
-                           (config.DEMO_EMAIL,)).fetchone()
+        row = conn.execute("SELECT MIN(id) FROM users WHERE password_hash != ''").fetchone()
     return row[0] if row else None
 
 
