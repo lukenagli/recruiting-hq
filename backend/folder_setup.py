@@ -1,4 +1,4 @@
-"""Preview: before an account's first scan, the student says which Outlook folders hold recruiting email.
+"""Before an account's first scan, the student says which Outlook folders hold recruiting email.
 
 The reader takes a quick look at the folder list (no email is opened), then the site suggests, for each folder, read
 every email (Inbox, Sent Items, folders named after a bank or recruiting), check each email (only ones that look like

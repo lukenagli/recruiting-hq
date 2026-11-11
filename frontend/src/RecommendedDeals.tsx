@@ -3,7 +3,7 @@ import { post } from './api'
 import type { RecommendedDeal, Recommendations } from './api'
 import { fmtDate, useApi } from './ui'
 
-/** Preview: deals to pitch, picked by the Finance Club's rules, either across all the student's banks or for one bank. */
+/** Deals to pitch, picked by the Finance Club's rules, either across all the student's banks or for one bank. */
 export default function RecommendedDeals({ bank = '', mine = [], onAdded }: { bank?: string; mine?: string[]; onAdded?: () => void }) {
   const path = `/api/deals/recommended${bank ? `?bank=${encodeURIComponent(bank)}` : ''}`
   const { data, reload } = useApi<Recommendations>(path)

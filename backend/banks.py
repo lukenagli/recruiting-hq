@@ -24,7 +24,7 @@ DOMAINS = {
     "Wells Fargo": "wellsfargo.com",
 }
 
-# Preview: the rest of the banks on the 2026 group prestige ranking, offered in setup to preview accounts.
+# The rest of the banks on the 2026 group prestige ranking, offered in setup too.
 MORE_DOMAINS = {
     "Qatalyst": "qatalyst.com",
     "Allen & Company": "",

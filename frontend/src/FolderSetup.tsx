@@ -3,7 +3,7 @@ import { post } from './api'
 import { useApi } from './ui'
 
 /**
- * Preview: before an account's first scan, which Outlook folders hold recruiting email. The reader has looked at the
+ * Before an account's first scan, which Outlook folders hold recruiting email. The reader has looked at the
  * folder list (no email opened); the site suggests read every email, check each one, or skip for each folder, and the
  * student clicks to change any. Their choices (and an optional note) steer the first scan.
  */

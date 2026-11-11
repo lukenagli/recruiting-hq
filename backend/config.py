@@ -27,7 +27,7 @@ APP_SECRET_FILE = ROOT / "data" / ".app_secret"
 PORTKEY_API_KEY_SET = bool(os.getenv("PORTKEY_API_KEY", "").strip())
 # Most tokens (input + output) one account may use per day across all AI features.
 DAILY_TOKEN_BUDGET = int(os.getenv("DAILY_TOKEN_BUDGET", "400000"))
-# Preview: the reader filing email has no daily allowance (a first scan takes what it takes). This is only a guard against
+# The reader filing email has no daily allowance (a first scan takes what it takes). This is only a guard against
 # a bug re-filing the same mail in a loop, far above a whole first scan (about 2.5M tokens).
 FILING_TOKEN_GUARD = int(os.getenv("FILING_TOKEN_GUARD", "20000000"))
 # Real recruiting files stay on the owner's machine; the repo ships a made-up sample set.

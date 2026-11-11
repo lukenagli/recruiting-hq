@@ -4,7 +4,6 @@ import type { AssistantReply, AssistantStep } from './api'
 import DraftCard from './DraftCard'
 import { useDictation } from './dictation'
 import Recorder from './Recorder'
-import { usePreview } from './ui'
 
 type Message = { role: 'user' | 'assistant'; text: string; undone?: boolean } & Partial<AssistantReply>
 
@@ -12,8 +11,7 @@ const STORE = 'assistant-thread'
 /** Window event that opens the floating assistant: detail { text?: string to send, record?: 'recap' | 'conversation' }. */
 export const ASK_EVENT = 'rhq-ask-assistant'
 // Files the assistant can read: team cards and rosters, saved emails, screenshots.
-const ACCEPT = '.pdf,.docx,.txt,.eml,.png,.jpg,.jpeg,.webp'
-const ACCEPT_PREVIEW = `${ACCEPT},.msg` // preview: emails dragged straight out of desktop Outlook
+const ACCEPT = '.pdf,.docx,.txt,.eml,.msg,.png,.jpg,.jpeg,.webp' // .msg: emails dragged straight out of desktop Outlook
 const CLIP = <svg viewBox="0 0 24 24" aria-hidden><path d="M20.5 11.5l-8.3 8.3a5 5 0 0 1-7.1-7.1l8.6-8.6a3.4 3.4 0 0 1 4.8 4.8l-8.6 8.6a1.7 1.7 0 0 1-2.4-2.4l7.9-7.9" /></svg>
 const EXAMPLES = [
   'I had a coffee chat with Jordan Lee from Citi this morning on Zoom. We talked about…',
@@ -83,7 +81,6 @@ function Reply({ m, canUndo, onUndo, onChanged }: { m: Message; canUndo: boolean
 
 export default function Assistant({ userId, onChanged, inline = false }: { userId: number; onChanged: () => void; inline?: boolean }) {
   const store = `${STORE}-${userId}` // each account keeps its own thread in this browser
-  const preview = usePreview()
   const [messages, setMessages] = useState<Message[]>(() => load(store))
   // Save on every change, right away, outside React's update queue: a saved change refreshes the page, which
   // remounts this component, and an update still queued for the old copy would be dropped (losing the reply).
@@ -210,7 +207,7 @@ export default function Assistant({ userId, onChanged, inline = false }: { userI
   }
   const attach = (
     <>
-      <input ref={picker} type="file" accept={preview ? ACCEPT_PREVIEW : ACCEPT} hidden onChange={(e) => {
+      <input ref={picker} type="file" accept={ACCEPT} hidden onChange={(e) => {
         setFile(e.target.files?.[0] ?? null)
         e.target.value = ''
       }} />
@@ -304,8 +301,8 @@ export default function Assistant({ userId, onChanged, inline = false }: { userI
     />
   )
 
-  // Preview: once a conversation has started, it reads like a messaging app: the thread, then the reply box under it.
-  if (inline && preview && (messages.length > 0 || busy)) {
+  // Once a conversation has started, it reads like a messaging app: the thread, then the reply box under it.
+  if (inline && (messages.length > 0 || busy)) {
     return (
       <section className={`home-assistant chat ${dragging ? 'dragging' : ''}`} {...drop}>
         <div className="chat-head">
@@ -398,12 +395,6 @@ export default function Assistant({ userId, onChanged, inline = false }: { userI
 
   return (
     <>
-      {!open && !preview && (
-        <button className="assistant-fab" onClick={() => setOpen(true)} aria-label="Open the assistant">
-          <svg viewBox="0 0 24 24" aria-hidden><path d="M4 5h16v10H8l-4 4z" /></svg>
-          Assistant
-        </button>
-      )}
       {open && (
         <aside className={`assistant-panel ${dragging ? 'dragging' : ''}`} aria-label="Tracker assistant" {...drop}>
           <header className="assistant-head">

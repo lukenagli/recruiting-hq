@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react'
 import { post, upload } from './api'
 import ReaderSettings from './ReaderSettings'
-import { CoverTemplate, EmailTemplates } from './Templates'
 import type { SetupState } from './api'
 import { Loading, Logo, useApi } from './ui'
 
@@ -11,9 +10,8 @@ import { Loading, Logo, useApi } from './ui'
  * from Settings. Everyone is a Yale SOM MBA student for now.
  */
 
-const STEPS = ['AI key', 'Resume', 'Banks', 'Templates', 'Done']
-// Preview: one question per screen, in plain words; templates are already filled in (change them in Settings)
-const PREVIEW_STEPS = ['AI', 'Resume', 'Banks', 'Groups', 'Outlook', 'Done']
+// One question per screen, in plain words; templates are already filled in (change them in Settings)
+const STEPS = ['AI', 'Resume', 'Banks', 'Groups', 'Outlook', 'Done']
 
 const PROVIDERS = [
   {
@@ -57,98 +55,7 @@ function Nav({ step, onBack, children }: { step: number; onBack?: () => void; ch
   )
 }
 
-function KeyStep({ s, next, back }: { s: SetupState; next: () => void; back: () => void }) {
-  const [provider, setProvider] = useState(s.ai.provider || 'portkey')
-  const [key, setKey] = useState('')
-  const [busy, setBusy] = useState(false)
-  const [error, setError] = useState('')
-  const p = PROVIDERS.find((x) => x.id === provider)!
-
-  async function save() {
-    setBusy(true)
-    setError('')
-    try {
-      await post('/api/settings/ai', { provider, key })
-      next()
-    } catch (e) {
-      setError((e as Error).message)
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  return (
-    <>
-      <h2>Connect your AI</h2>
-      <p className="setup-why">
-        Grading your practice answers, writing cover letters and thank-you emails, and reading deal documents all run on your own AI key.
-        Most people use the Portkey key from their Yale AI class; a Claude or OpenAI key works too. It stays private to you.
-      </p>
-      {s.ai.ready && (
-        <p className="notice ok">
-          ✓ {s.ai.using_site_key ? "You're using the site's own key." : `Connected: your ${s.ai.provider_label} key ending in ${s.ai.hint}.`} You can
-          continue, or replace it below.
-        </p>
-      )}
-      <div className="choice-row">
-        {PROVIDERS.map((x) => (
-          <button key={x.id} type="button" className={`choice-pill ${provider === x.id ? 'on' : ''}`} onClick={() => setProvider(x.id)}>
-            {x.label} <small>{x.id === 'portkey' ? '(Portkey)' : `by ${x.company}`}</small>
-          </button>
-        ))}
-      </div>
-      {provider === 'portkey' ? (
-        <ol className="setup-steps">
-          <li>
-            Find the Portkey API key from your AI class (MGT 409): the long string you pasted when you set up your coding agent. It is often saved
-            as <code>PORTKEY_API_KEY</code> in that project's <code>.env</code> file.
-          </li>
-          <li>Paste it below. We check that it works before saving, store it encrypted, and never show it again.</li>
-        </ol>
-      ) : (
-      <ol className="setup-steps">
-        <li>
-          Open{' '}
-          <a href={p.url} target="_blank" rel="noreferrer">
-            {p.company}'s API keys page
-          </a>{' '}
-          and sign in (the same login as {p.label} works, or create a free account).
-        </li>
-        <li>
-          Add a few dollars of credit on the{' '}
-          <a href={p.billing} target="_blank" rel="noreferrer">
-            billing page
-          </a>
-          . API use is billed separately from a {p.label} subscription.
-        </li>
-        <li>Click "Create key", give it any name, and copy it.</li>
-        <li>Paste it below. We check that it works before saving, store it encrypted, and never show it again.</li>
-      </ol>
-      )}
-      <label className="field">
-        {provider === 'portkey' ? 'Your Yale class (Portkey) key' : `Your ${p.company} API key`} <small>({p.hint})</small>
-        <input type="password" value={key} onChange={(e) => setKey(e.target.value)} autoComplete="off" spellCheck={false} />
-      </label>
-      {provider !== 'portkey' && (
-      <p className="fine">
-        Why not just sign in with your {p.label} account? {p.company} does not let other websites use a {p.label} subscription; an API key is the only
-        way they allow.
-      </p>
-      )}
-      {error && <p className="notice error">{error}</p>}
-      <Nav step={0} onBack={back}>
-        <button className="ghost" onClick={next}>
-          {s.ai.ready ? 'Continue' : 'Skip for now'}
-        </button>
-        <button className="primary" disabled={busy || key.trim().length < 20} onClick={save}>
-          {busy ? 'Checking the key…' : 'Save key'}
-        </button>
-      </Nav>
-    </>
-  )
-}
-
-/** Preview: turning the AI on, without the jargon. The Yale class key is the default; anything technical is folded away. */
+/** Turning the AI on, without the jargon. The Yale class key is the default; anything technical is folded away. */
 function AiStep({ s, next, back }: { s: SetupState; next: () => void; back: () => void }) {
   const [provider, setProvider] = useState(s.ai.provider || 'portkey')
   const [key, setKey] = useState('')
@@ -266,7 +173,7 @@ function ResumeStep({ s, next, back, reload }: { s: SetupState; next: () => void
   )
 }
 
-function BanksStep({ s, next, back, part = 'all' }: { s: SetupState; next: () => void; back: () => void; part?: 'all' | 'banks' | 'groups' }) {
+function BanksStep({ s, next, back, part }: { s: SetupState; next: () => void; back: () => void; part: 'banks' | 'groups' }) {
   const [banks, setBanks] = useState<string[]>(s.banks)
   const [extra, setExtra] = useState('')
   const [groups, setGroups] = useState<string[]>(s.profile.target_groups ? s.profile.target_groups.split(',').map((g) => g.trim()).filter(Boolean) : [])
@@ -374,22 +281,6 @@ function BanksStep({ s, next, back, part = 'all' }: { s: SetupState; next: () =>
   )
 }
 
-function TemplatesStep({ s, next, back, reload }: { s: SetupState; next: () => void; back: () => void; reload: () => void }) {
-  return (
-    <>
-      <h2>Your templates</h2>
-      <p className="setup-why">Your cover letters and emails follow these exactly. The Finance Club versions are already filled in; change anything you write differently.</p>
-      <CoverTemplate state={s} onChange={reload} />
-      <EmailTemplates state={s} onChange={reload} />
-      <Nav step={3} onBack={back}>
-        <button className="primary" onClick={next}>
-          Continue
-        </button>
-      </Nav>
-    </>
-  )
-}
-
 function ReaderStep({ next, back }: { next: () => void; back: () => void }) {
   const { data, reload } = useApi<{ has_key: boolean }>('/api/sync/state')
   return (
@@ -411,19 +302,14 @@ function ReaderStep({ next, back }: { next: () => void; back: () => void }) {
   )
 }
 
-function DoneStep({ s, back, finish, preview }: { s: SetupState; back: () => void; finish: () => void; preview: boolean }) {
-  const reader = useApi<{ has_key: boolean }>(preview ? '/api/sync/state' : '/api/setup')
-  const items: [keyof SetupState['done'], string, string][] = preview ? [
+function DoneStep({ s, back, finish }: { s: SetupState; back: () => void; finish: () => void }) {
+  const reader = useApi<{ has_key: boolean }>('/api/sync/state')
+  const items: [keyof SetupState['done'], string, string][] = [
     ['ai', 'AI', s.ai.ready ? 'On' : 'Off for now: add your key in Settings to turn it on'],
     ['resume', 'Resume', s.profile.has_resume ? 'Uploaded' : 'Not yet: add it in Settings before writing cover letters'],
     ['banks', 'Banks', s.banks.length ? s.banks.join(', ') : 'None yet: add them any time from the Recruiting Map'],
-  ] : [
-    ['ai', 'AI connected', s.ai.ready ? (s.ai.provider_label || 'Site key') : 'Grading, letters and emails stay off until you add a key in Settings'],
-    ['resume', 'Resume', s.profile.has_resume ? 'Uploaded' : 'Add it in Settings before writing cover letters'],
-    ['banks', 'Banks', s.banks.length ? s.banks.join(', ') : 'Add banks any time from the Recruiting Map'],
-    ['templates', 'Cover letter template', s.cover_template.has_template ? s.cover_template.filename : 'Using the Yale SOM template'],
   ]
-  const readerOn = preview && !!reader.data?.has_key
+  const readerOn = !!reader.data?.has_key
   return (
     <>
       <h2>You're all set</h2>
@@ -437,40 +323,31 @@ function DoneStep({ s, back, finish, preview }: { s: SetupState; back: () => voi
             </span>
           </li>
         ))}
-        {preview && (
-          <li className={readerOn ? 'ok' : ''}>
-            <b aria-hidden>{readerOn ? '✓' : '–'}</b>
-            <span>
-              <strong>Outlook</strong>
-              <small>{readerOn ? 'Connected' : 'Not yet: connect it any time in Settings, on your laptop in Chrome'}</small>
-            </span>
-          </li>
-        )}
+        <li className={readerOn ? 'ok' : ''}>
+          <b aria-hidden>{readerOn ? '✓' : '–'}</b>
+          <span>
+            <strong>Outlook</strong>
+            <small>{readerOn ? 'Connected' : 'Not yet: connect it any time in Settings, on your laptop in Chrome'}</small>
+          </span>
+        </li>
       </ul>
-      {preview ? (
-        <p className="setup-why">
-          {readerOn
-            ? 'Next, press Refresh on your homepage. The first one reads your email and calendar back to September 1, so it takes a while. After that, a refresh takes a minute or two. '
-            : ''}
-          Anything that isn't in your email, just type into the box at the top of your homepage, in plain words.
-        </p>
-      ) : (
       <p className="setup-why">
-        From here, tell the "Anything happen?" box on your homepage about every coffee chat or event, in plain words or by voice. It keeps your map,
-        thank-you emails and cover letters up to date. Next, a two-minute tour shows you everything else.
+        {readerOn
+          ? 'Next, press Refresh on your homepage. The first one reads your email and calendar back to September 1, so it takes a while. After that, a refresh takes a minute or two. '
+          : ''}
+        Anything that isn't in your email, just type into the box at the top of your homepage, in plain words.
       </p>
-      )}
       <Nav step={4} onBack={back}>
         <button className="primary big" onClick={finish}>
-          {preview ? 'Go to my homepage' : 'Show me around'}
+          Go to my homepage
         </button>
       </Nav>
     </>
   )
 }
 
-export default function Setup({ onDone, preview = false }: { onDone: () => void; preview?: boolean }) {
-  const steps = preview ? PREVIEW_STEPS : STEPS
+export default function Setup({ onDone }: { onDone: () => void }) {
+  const steps = STEPS
   const { data, error, reload } = useApi<SetupState>('/api/setup')
   const [step, setStep] = useState(-1)
   const [version, setVersion] = useState(0)
@@ -493,7 +370,7 @@ export default function Setup({ onDone, preview = false }: { onDone: () => void;
     } catch {
       saved = -1
     }
-    if (preview && saved >= 0 && saved < steps.length) {
+    if (saved >= 0 && saved < steps.length) {
       setStep(saved)
       return <Loading error="" />
     }
@@ -535,13 +412,12 @@ export default function Setup({ onDone, preview = false }: { onDone: () => void;
         ))}
       </div>
       <div className="card setup-card" key={`${step}-${version}`}>
-        {step === 0 && (preview ? <AiStep s={data} next={next} back={back} /> : <KeyStep s={data} next={next} back={back} />)}
+        {step === 0 && <AiStep s={data} next={next} back={back} />}
         {step === 1 && <ResumeStep s={data} next={next} back={back} reload={reload} />}
-        {step === 2 && <BanksStep s={data} next={next} back={back} part={preview ? 'banks' : 'all'} />}
-        {step === 3 && (preview ? <BanksStep s={data} next={next} back={back} part="groups" />
-          : <TemplatesStep s={data} next={next} back={back} reload={reload} />)}
-        {preview && step === 4 && <ReaderStep next={next} back={back} />}
-        {step === steps.length - 1 && <DoneStep s={data} back={back} finish={finish} preview={preview} />}
+        {step === 2 && <BanksStep s={data} next={next} back={back} part="banks" />}
+        {step === 3 && <BanksStep s={data} next={next} back={back} part="groups" />}
+        {step === 4 && <ReaderStep next={next} back={back} />}
+        {step === steps.length - 1 && <DoneStep s={data} back={back} finish={finish} />}
       </div>
     </div>
   )

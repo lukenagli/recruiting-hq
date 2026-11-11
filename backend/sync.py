@@ -264,7 +264,7 @@ def first_start(uid: int) -> str:
 
 
 def reread_from(uid: int, since: str) -> int:
-    """Preview: the next refresh reads every Outlook folder again from `since` (YYYY-MM-DD), e.g. after the filing
+    """The next refresh reads every Outlook folder again from `since` (YYYY-MM-DD), e.g. after the filing
     rules changed. The calendar keeps its own record. Returns how many folders were moved back."""
     ensure()
     start = f"{since}T00:00:00"

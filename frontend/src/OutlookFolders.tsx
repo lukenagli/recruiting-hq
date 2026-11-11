@@ -3,7 +3,7 @@ import { post } from './api'
 import { Loading, fmtDate, useApi } from './ui'
 
 /**
- * Preview: what the reader has learned about how you file your Outlook mail. Each folder is read in full, checked
+ * What the reader has learned about how you file your Outlook mail. Each folder is read in full, checked
  * (only emails that look like recruiting are opened) or skipped, with the reason. Your own setting wins over what it
  * learned, and a folder can be read again from a date if something in it was missed.
  */

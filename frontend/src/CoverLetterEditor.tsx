@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { API_URL, post } from './api'
 import type { CoverLetter } from './api'
-import { Loading, useApi, usePreview } from './ui'
+import { Loading, useApi } from './ui'
 
 /** One bank's cover letter: who it is addressed to, the draft (editable), its checks, and a Word download. */
 export default function CoverLetterEditor({ bank }: { bank: string }) {
@@ -20,15 +20,14 @@ export default function CoverLetterEditor({ bank }: { bank: string }) {
     setDirty(false)
   }, [data])
 
-  // preview: edits to the letter save themselves a moment after typing stops, and when the page is left.
-  const preview = usePreview()
+  // Edits to the letter save themselves a moment after typing stops, and when the page is left.
   const [saveNote, setSaveNote] = useState('')
   const latest = useRef(paragraphs)
   const pending = useRef(false)
   pending.current = dirty
   useEffect(() => {
     latest.current = paragraphs
-    if (!preview || !dirty) return
+    if (!dirty) return
     const sent = paragraphs
     const timer = setTimeout(() => {
       setSaveNote('Saving…')
@@ -42,9 +41,8 @@ export default function CoverLetterEditor({ bank }: { bank: string }) {
       )
     }, 800)
     return () => clearTimeout(timer)
-  }, [paragraphs, dirty, preview, path])
+  }, [paragraphs, dirty, path])
   useEffect(() => {
-    if (!preview) return
     const flush = () => {
       if (!pending.current) return
       pending.current = false
@@ -56,7 +54,7 @@ export default function CoverLetterEditor({ bank }: { bank: string }) {
       window.removeEventListener('pagehide', flush)
       flush() // leaving this letter for another page of the site
     }
-  }, [preview, path])
+  }, [path])
 
   if (!data) return <Loading error={error} />
 
@@ -74,7 +72,7 @@ export default function CoverLetterEditor({ bank }: { bank: string }) {
   }
 
   const write = () => {
-    if (preview && data.submitted && !confirm('You marked this letter as submitted. A new draft replaces it. Continue?')) return
+    if (data.submitted && !confirm('You marked this letter as submitted. A new draft replaces it. Continue?')) return
     if ((data.edited || dirty || saveNote === 'Saved') && !confirm('Writing a new draft replaces your edits to this letter. Continue?')) return
     run('write', async () => {
       const out = await post<{ ok: boolean; reason?: string }>(`${path}/write`, {})
@@ -82,7 +80,6 @@ export default function CoverLetterEditor({ bank }: { bank: string }) {
     })
   }
   const saveDetails = () => run('details', () => post(path, { details }))
-  const saveText = () => run('text', () => post(path, { paragraphs }))
   const words = paragraphs.join(' ').split(/\s+/).filter(Boolean).length
 
   return (
@@ -118,26 +115,24 @@ export default function CoverLetterEditor({ bank }: { bank: string }) {
         </button>
         {data.exists && (
           <>
-            <a className="btn" href={`${API_URL}${path}/docx`} title={preview ? 'For a PDF, open it in Word and choose File > Save As > PDF' : undefined}>
+            <a className="btn" href={`${API_URL}${path}/docx`} title="For a PDF, open it in Word and choose File > Save As > PDF">
               Download Word file
             </a>
-            {preview && (
-              <button
-                className={`btn ${data.submitted ? 'on' : ''}`}
-                disabled={!!busy}
-                title="Letters you submitted are where drafts for other banks in the same group start"
-                onClick={() => run('submitted', () => post(`${path}/submitted`, { submitted: !data.submitted }))}
-              >
-                {data.submitted ? '✓ Submitted' : 'Mark as submitted'}
-              </button>
-            )}
+            <button
+              className={`btn ${data.submitted ? 'on' : ''}`}
+              disabled={!!busy}
+              title="Letters you submitted are where drafts for other banks in the same group start"
+              onClick={() => run('submitted', () => post(`${path}/submitted`, { submitted: !data.submitted }))}
+            >
+              {data.submitted ? '✓ Submitted' : 'Mark as submitted'}
+            </button>
             <button className="btn" onClick={() => navigator.clipboard.writeText([data.salutation, ...paragraphs, 'Sincerely,', data.signature].join('\n\n'))}>
               Copy text
             </button>
           </>
         )}
       </div>
-      {preview && data.exists && <p className="muted"><small>For a PDF, open the Word file and choose File &gt; Save As &gt; PDF: only Word lays it out exactly as Word does.</small></p>}
+      {data.exists && <p className="muted"><small>For a PDF, open the Word file and choose File &gt; Save As &gt; PDF: only Word lays it out exactly as Word does.</small></p>}
       {message && <p className="notice error">{message}</p>}
 
       {data.warnings.length > 0 && (
@@ -170,18 +165,13 @@ export default function CoverLetterEditor({ bank }: { bank: string }) {
           <p>{data.signature}</p>
           <div className="letter-foot">
             <small className={words > 460 ? 'urgent' : ''}>{words} words{words > 460 ? ', likely more than one page' : ''}</small>
-            {preview && saveNote && <small className="muted">{saveNote}</small>}
-            {!preview && dirty && (
-              <button className="btn" disabled={!!busy} onClick={saveText}>
-                {busy === 'text' ? 'Saving…' : 'Save my edits'}
-              </button>
-            )}
+            {saveNote && <small className="muted">{saveNote}</small>}
           </div>
         </div>
       ) : (
         <p className="muted">
-          No letter yet. Drafts are written from your profile (Settings), the people you have logged at {bank}, and what you have
-          learned about the bank, in the shape of your cover letter template (or the standard four-paragraph format).
+          No letter yet. Each draft is your own cover letter, tailored to {bank}: its name, the people you have logged there and
+          the group you're recruiting for.
         </p>
       )}
     </div>

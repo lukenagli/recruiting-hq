@@ -207,7 +207,7 @@ def _prompt(ctx: dict, prof: dict, bank: str, ref: dict | None = None) -> str:
     ])
 
 
-# Preview: details from the chats or about how recruiting works, which the 2Y sample letters never include.
+# Details from the chats or about how recruiting works, which the 2Y sample letters never include.
 TOO_SPECIFIC = re.compile(r"homework|case study|final project|super ?day|group[- ]specific|generalist (pool|internship)|staff(ed|ing)|"
                           r"junior and (a )?senior mentor|\b\d+ (analysts|associates|interns|people)\b|team size|I learned that", re.I)
 
@@ -220,7 +220,7 @@ def _group_key(ctx: dict) -> str:
 
 
 def _reference(conn, uid: int, bank: str, ctx: dict) -> dict | None:
-    """Preview: the newest letter the student submitted to another bank for the same group (or the generalist
+    """The newest letter the student submitted to another bank for the same group (or the generalist
     program). Submitted means marked submitted on its page, or the application to that bank is marked as sent."""
     key = _group_key(ctx)
     if not key:
@@ -429,7 +429,7 @@ def _submitted(submitted_at: str | None, applied: str | None) -> bool:
 
 
 def mark_submitted(uid: int, bank: str, submitted: bool) -> dict:
-    """Preview: the student says this letter went out, or that it didn't ("no", which outranks an application marked
+    """The student says this letter went out, or that it didn't ("no", which outranks an application marked
     as sent). Letters sent are where drafts for other banks in the same group start."""
     init_db()
     now = datetime.now().isoformat(timespec="seconds")
@@ -481,7 +481,7 @@ def _set_text(paragraph, text: str, keep_shapes: bool = True) -> None:
 
 
 def docx_bytes(uid: int, bank: str) -> bytes:
-    """The letter as a Word file (preview: tightened to fit on one page)."""
+    """The letter as a Word file (tightened to fit on one page)."""
     doc = _document(uid, bank)
     letter_layout.fit_one_page(doc)
     out = io.BytesIO()
@@ -490,7 +490,7 @@ def docx_bytes(uid: int, bank: str) -> bytes:
 
 
 def page_warning(uid: int, bank: str) -> list[str]:
-    """Preview: a letter too long for one page even with the bottom margin as low as the contact footer allows."""
+    """A letter too long for one page even with the bottom margin as low as the contact footer allows."""
     try:
         over = letter_layout.fit_one_page(_document(uid, bank))
     except Exception:  # a template this can't measure: the Word file is still offered as it is

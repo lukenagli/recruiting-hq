@@ -11,8 +11,7 @@ async function check(res: Response) {
   }
 }
 
-// preview: this account sees changes that haven't shipped to everyone yet.
-export type User = { id: number; email: string; name: string; is_admin: boolean; email_verified: boolean; preview?: boolean }
+export type User = { id: number; email: string; name: string; is_admin: boolean; email_verified: boolean }
 
 export type AiSettings = { provider: string; provider_label: string; hint: string; ready: boolean; using_site_key: boolean; model: string }
 
@@ -57,7 +56,6 @@ export type AssistantReply = {
   changed: boolean
 }
 
-export type Stage = { key: string; label: string; done: boolean }
 
 export type CalendarItem = { date: string; end: string; title: string; detail: string; source: string }
 
@@ -73,7 +71,7 @@ export type DealPoint = {
   quote: string | null
 }
 export type DealDocument = { id: number; deal_id: number; filename: string; kind: string; size: number; uploaded_at: string; pages: number; scanned: string; source_url?: string; source_page?: string }
-// Preview: an analysis piece about a deal, found by web search.
+// An analysis piece about a deal, found by web search.
 export type RecommendedDeal = {
   key: string; title: string; buyer: string; target: string; closed: string; value_usd_bn: number; consideration: string
   industry_group: string; advisors_buyer: string[]; advisors_target: string[]; why: string; sources: string[]
@@ -84,7 +82,7 @@ export type DealReading = { id: number; title: string; outlet: string; url: stri
 export type Deal = {
   id: number
   title: string
-  capiq_url?: string // preview
+  capiq_url?: string
   capiq_at?: string
   banks: string[]
   status: string
@@ -93,7 +91,7 @@ export type Deal = {
   total: number
   sections: { name: string; timing: string; points: DealPoint[] }[]
   documents: DealDocument[]
-  reading?: DealReading[] // preview only
+  reading?: DealReading[]
 }
 export type DealsData = {
   deals: Deal[]
@@ -116,7 +114,7 @@ export type Application = {
   notes: string
 }
 
-/** Preview: how far along a bank is, laid out over the season: each step's share of the bar is its share of the
+/** How far along a bank is, laid out over the season: each step's share of the bar is its share of the
  *  season's days, filled by what has happened at that bank; today is marked. */
 export type Progress = {
   steps: { key: string; label: string; share: number; fill: number; note: string; start: string; end: string }[]
@@ -137,9 +135,7 @@ export type BankSummary = {
   last_touch: string
   next_up: { title: string; date: string } | null
   application: Application
-  stage: Stage[]
-  progress?: Progress
-  current_stage: string
+  progress: Progress
   yale_contacts: number
   yale_spoken: number
   questions_on_file: number
@@ -198,7 +194,7 @@ export type BankDetail = BankSummary & {
 export type HomeData = {
   today: string
   thank_yous_due: { bank: string; who: string; date: string }[]
-  thanks_due?: { bank: string; title: string; kind: string; date: string; who: string[]; who_ids?: number[]; entry_id?: number }[] // preview home
+  thanks_due?: { bank: string; title: string; kind: string; date: string; who: string[]; who_ids?: number[]; entry_id?: number }[]
   upcoming: { bank: string; title: string; date: string; kind: string; date_note?: string }[]
   todos?: { id: number; bank: string; title: string; date: string }[]
   deadlines: { bank: string; date: string; link: string }[]

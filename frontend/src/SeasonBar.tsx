@@ -2,7 +2,7 @@ import type { Progress } from './api'
 import { fmtDate } from './ui'
 
 /**
- * Preview: one bank's progress laid out over the recruiting season. Each step's width is its share of the season's
+ * One bank's progress laid out over the recruiting season. Each step's width is its share of the season's
  * days (2Y and alumni chats in September, group chats through mid-November, the invite-only dinners, then Super
  * Week's interviews and superday in a few days in December), each fills by what has happened at that bank, and a
  * thin line marks today, so a bank behind the line is behind the season.

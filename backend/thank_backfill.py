@@ -1,4 +1,4 @@
-"""Preview: bring in thank-you emails a student already sent, so each shows on the person's page.
+"""Bring in thank-you emails a student already sent, so each shows on the person's page.
 
 The Recruiting HQ Reader reads the student's Sent Items (and their other mail folders, where some students file sent
 mail) back to the start of the season and hands over each email that looks like a thank-you. No AI: a thank-you opens

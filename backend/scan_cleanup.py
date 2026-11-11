@@ -1,4 +1,4 @@
-"""Preview: a last pass after the reader's filing, without the model.
+"""A last pass after the reader's filing, without the model.
 
 - The same person saved twice at one bank under two forms of their name ("Matt Rube" and "Matthew Rube", "Seb" and
   "Sebastian Carpanini") is merged into one, keeping the record with more history.

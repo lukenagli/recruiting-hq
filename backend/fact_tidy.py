@@ -1,4 +1,4 @@
-"""Keeping each bank's overview short (preview).
+"""Keeping each bank's overview short.
 
 Facts are saved one at a time, from every email and chat that mentions them, so a busy bank's "Recruiting process"
 box filled up with the same stage in five wordings. After a refresh, a bank whose overview has grown is rewritten

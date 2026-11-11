@@ -11,7 +11,6 @@
 """
 import hashlib
 import hmac
-import json
 import re
 import secrets
 import time
@@ -60,36 +59,11 @@ def public(user) -> dict:
     # Without email set up on the site nobody can be asked to confirm, so everyone counts as confirmed.
     verified = bool(user["email_verified_at"]) or not mailer.available()
     return {"id": user["id"], "email": user["email"], "name": user["name"], "is_admin": bool(user["is_admin"]),
-            "email_verified": verified, "preview": in_preview(user)}
-
-
-def in_preview(user) -> bool:
-    """Everyone has had the current version since the project was graded (Nov 11, 2026). Kept while the old
-    branches are taken out."""
-    return True
-
-
-def early_access() -> set[str]:
-    """Emails the admin let see the preview (friends trying it before it ships to everyone)."""
-    with connect(read_only=True) as conn:
-        row = conn.execute("SELECT value FROM app_settings WHERE key = 'early_access'").fetchone()
-    try:
-        return {e.lower() for e in json.loads(row["value"])} if row else set()
-    except ValueError:
-        return set()
-
-
-def set_early_access(emails: list[str]) -> list[str]:
-    clean = sorted({e.strip().lower() for e in emails if re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", e.strip())})
-    with connect() as conn:
-        conn.execute("INSERT INTO app_settings (key, value) VALUES ('early_access', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
-                     (json.dumps(clean),))
-    return clean
+            "email_verified": verified}
 
 
 def set_admin(by_uid: int, uid: int, admin: bool) -> dict:
-    """The admin gives another account admin rights, or takes them back. An admin is in the preview and sees this
-    panel, but uses their own AI key (only the site owner runs on the course key). Nobody changes their own rights
+    """The admin gives another account admin rights, or takes them back. An admin sees this panel, but uses their own AI key (only the site owner runs on the course key). Nobody changes their own rights
     (no locking yourself out), nobody takes the owner's, and the site always keeps at least one admin."""
     from .db import owner_id
     if uid == by_uid:
@@ -104,12 +78,6 @@ def set_admin(by_uid: int, uid: int, admin: bool) -> dict:
             raise AccountError("The site needs at least one admin.")
         conn.execute("UPDATE users SET is_admin = ? WHERE id = ?", (1 if admin else 0, uid))
     return {"ok": True, "id": uid, "is_admin": admin}
-
-
-def in_preview_uid(uid: int) -> bool:
-    with connect(read_only=True) as conn:
-        user = conn.execute("SELECT is_admin, email FROM users WHERE id = ?", (uid,)).fetchone()
-    return bool(user) and in_preview(user)
 
 
 def sign_up(email: str, name: str, password: str) -> tuple[dict, str]:

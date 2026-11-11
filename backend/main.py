@@ -710,7 +710,7 @@ async def catch_up_sheet(file: UploadFile, user: dict = Depends(current_user)):
         raise HTTPException(status_code=400, detail=str(err))
 
 
-# ---- Preview: the Recruiting HQ Reader (read-only sync from email, Slack and WhatsApp) ----
+# ---- The Recruiting HQ Reader (read-only sync from email, Slack and WhatsApp) ----
 
 class TrackerEdits(BaseModel):
     ops: list[dict]

@@ -4,7 +4,6 @@ import { post } from './api'
 import type { AssistantReply } from './api'
 import { speechRecognition } from './dictation'
 import type { Recognition } from './dictation'
-import { usePreview } from './ui'
 
 type Mode = 'recap' | 'conversation'
 type Phase = 'setup' | 'recording' | 'review' | 'filing'
@@ -44,11 +43,10 @@ export default function Recorder(props: {
     wanted.current = false
     recognition.current?.stop()
   }, [])
-  // Preview: phones pause a web page when the screen locks, which stops the transcription. Keep the screen on while
+  // Phones pause a web page when the screen locks, which stops the transcription. Keep the screen on while
   // recording; if it locks anyway, pick up again when the page is back and mark the gap.
-  const preview = usePreview()
   useEffect(() => {
-    if (phase !== 'recording' || !preview) return
+    if (phase !== 'recording') return
     let lock: { release: () => Promise<void> } | null = null
     const nav = navigator as Navigator & { wakeLock?: { request: (t: 'screen') => Promise<{ release: () => Promise<void> }> } }
     const keepAwake = () => nav.wakeLock?.request('screen').then((l) => (lock = l), () => undefined)
@@ -75,7 +73,7 @@ export default function Recorder(props: {
       document.removeEventListener('visibilitychange', onVisible)
       lock?.release().catch(() => undefined)
     }
-  }, [phase, preview])
+  }, [phase])
   // While the window is open the page behind it stays still, so scrolling moves only the form.
   useEffect(() => {
     document.documentElement.classList.add('modal-open')
@@ -102,7 +100,7 @@ export default function Recorder(props: {
     rec.onerror = (e) => {
       // "no-speech" and "aborted" are normal pauses; anything else means recognition cannot work here.
       if (e.error === 'no-speech' || e.error === 'aborted') return
-      if (preview && document.hidden && wanted.current) return // the screen locked: it picks up again when the page is back
+      if (document.hidden && wanted.current) return // the screen locked: it picks up again when the page is back
       wanted.current = false
       const reasons: Record<string, string> = {
         'not-allowed': 'The microphone is blocked. Allow microphone access for this page, then start again.',
@@ -233,7 +231,7 @@ export default function Recorder(props: {
               Stop and review
             </button>
             <p className="fine">
-              {preview && 'Keep this page open on your phone: the screen stays on while it records. '}
+              Keep this page open on your phone: the screen stays on while it records.{' '}
               After you stop you can fix the text, then file it. You can also type or paste into the box.
             </p>
           </>

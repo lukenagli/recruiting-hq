@@ -5,7 +5,7 @@ import { ReaderProgress, useReader } from './Refresh'
 import { fmtDate } from './ui'
 
 /**
- * Preview: Capital IQ for one deal. Capital IQ only opens on the Yale network for a signed-in student, so the
+ * Capital IQ for one deal. Capital IQ only opens on the Yale network for a signed-in student, so the
  * Recruiting HQ Reader reads it from their own Chrome, after they confirm they are on Yale Wi-Fi and signed in.
  */
 export default function CapIQ({ deal, onChanged }: { deal: Deal; onChanged: () => void }) {

@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useState } from 'react'
 import { get } from './api'
-import type { PersonStatus, School, Stage } from './api'
+import type { PersonStatus, School } from './api'
 
 export function useApi<T>(path: string, params?: Record<string, string>) {
   const [data, setData] = useState<T | null>(null)
@@ -77,18 +77,6 @@ export function Logo({ bank, domain, size = 40 }: { bank: string; domain: string
   )
 }
 
-export function StagePips({ stage, labels = false }: { stage: Stage[]; labels?: boolean }) {
-  return (
-    <span className={`pips ${labels ? 'with-labels' : ''}`}>
-      {stage.map((s) => (
-        <span key={s.label} className={`pip ${s.done ? 'done' : ''}`} title={s.label}>
-          {labels && <em>{s.label}</em>}
-        </span>
-      ))}
-    </span>
-  )
-}
-
 const ROLES: [RegExp, string][] = [
   [/\b2y\b/i, '2Ys'],
   [/analyst/i, 'Analysts'],
@@ -106,9 +94,6 @@ export function roleOf(title: string) {
 }
 
 /** Who the signed-in user is (school and program), for wording across the app. */
-/** True for an account trying out changes that haven't shipped to everyone yet. Gate every preview change on it. */
-export const PreviewContext = createContext(false)
-export const usePreview = () => useContext(PreviewContext)
 
 export const SchoolContext = createContext<School>({
   school: '', school_full: '', short: '', level: 'mba', class_year: '', role: 'Summer Associate',

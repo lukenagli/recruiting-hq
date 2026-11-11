@@ -1,5 +1,5 @@
 import type { BankDetail, Interaction, Person } from './api'
-import { STATUS_LABEL, fmtDate, usePreview, useSchool } from './ui'
+import { STATUS_LABEL, fmtDate, useSchool } from './ui'
 
 /**
  * How the process at one bank unfolded, step by step in date order. Each column is one date; arrows run from
@@ -30,18 +30,18 @@ function isYale(p: Person) {
   return p.alum === 'student' || p.origin === 'classmate'
 }
 
-// Preview: the notes worth showing on the map are who referred or introduced you, and the chat that came right before
+// The notes worth showing on the map are who referred or introduced you, and the chat that came right before
 // an invitation (a fact, never a claim that the person decided it).
 const KEY_NOTE = /refer|introduc|connected me|put me in touch|determin|decid|before the invitation/i
 
-function build(detail: BankDetail, preview: boolean) {
+function build(detail: BankDetail) {
   const byId = new Map(detail.contacts.map((p) => [p.id, p]))
   const bankSide = detail.contacts.filter((p) => !isYale(p) && p.origin !== 'listed')
   const cards: Card[] = []
   const placed = new Set<number>()
 
   for (const i of detail.interactions) {
-    if (preview && i.status === 'todo') continue // to-dos are on the home page, not the map
+    if (i.status === 'todo') continue // to-dos are on the home page, not the map
     const members = i.people.map((j) => byId.get(j.person_id)).filter((p): p is Person => !!p)
     if (i.kind === 'coffee_chat') {
       const bankers = members.filter((p) => !isYale(p))
@@ -78,7 +78,7 @@ function build(detail: BankDetail, preview: boolean) {
   // People reached out to who have not met yet (awaiting a reply, or a referral not acted on).
   for (const p of bankSide) {
     if (placed.has(p.id)) continue
-    if (preview && !p.outreach) continue // preview: only people you actually reached out to (not a recruiter, not a cancelled chat)
+    if (!p.outreach) continue // only people you actually reached out to (not a recruiter, not a cancelled chat)
     cards.push({
       id: `person:${p.id}`,
       kind: 'waiting',
@@ -101,8 +101,8 @@ function build(detail: BankDetail, preview: boolean) {
     const [kind, raw] = ref.split(':')
     const id = Number(raw)
     if (kind !== 'person') return cards.find((c) => c.id === ref)
-    // preview: a referral sits on your chat with that person, not on an event they also went to
-    return (preview && cards.find((c) => c.kind === 'chat' && c.personIds.includes(id))) || cards.find((c) => c.personIds.includes(id))
+    // a referral sits on your chat with that person, not on an event they also went to
+    return cards.find((c) => c.kind === 'chat' && c.personIds.includes(id)) || cards.find((c) => c.personIds.includes(id))
   }
   const nameOf = (ref: string) => {
     const [kind, raw] = ref.split(':')
@@ -110,10 +110,10 @@ function build(detail: BankDetail, preview: boolean) {
   }
   const notes = new Map<Card, string[]>()
   for (const l of detail.links) {
-    if (preview && !KEY_NOTE.test(l.label || '')) continue
+    if (!KEY_NOTE.test(l.label || '')) continue
     const from = cardFor(l.src)
     const to = cardFor(l.dst)
-    if (from && to && preview) {
+    if (from && to) {
       // one plain sentence naming both ends, on the card it led to
       const [src, dst] = [nameOf(l.src), nameOf(l.dst)]
       const label = l.label || ''
@@ -123,9 +123,6 @@ function build(detail: BankDetail, preview: boolean) {
           ? `${src} referred you to ${dst}`
           : `${src} introduced you to ${dst}`
       notes.set(to, [...(notes.get(to) ?? []), sentence])
-    } else if (from && to) {
-      notes.set(to, [...(notes.get(to) ?? []), `${l.label || 'led here'}: ${nameOf(l.src)}`])
-      notes.set(from, [...(notes.get(from) ?? []), `→ ${l.label || 'led to'} ${nameOf(l.dst)}`])
     }
   }
 
@@ -138,8 +135,7 @@ function build(detail: BankDetail, preview: boolean) {
 
 export default function JourneyMap(props: { detail: BankDetail; selected: string; onSelect: (id: string) => void }) {
   const school = useSchool()
-  const preview = usePreview()
-  const { columns, notes, yale } = build(props.detail, preview)
+  const { columns, notes, yale } = build(props.detail)
 
   return (
     <div className="process">

@@ -4,7 +4,7 @@ import type { CalendarItem, DealsData, HomeData, SetupState } from './api'
 import { fmtDate, useApi, useSchool } from './ui'
 
 /**
- * Preview: "How recruiting works" for someone who has just joined the Finance Club. The season in six steps,
+ * "How recruiting works" for someone who has just joined the Finance Club. The season in six steps,
  * each with what to do and the one place in the app where it gets done. Steps tick off as the account fills in.
  */
 

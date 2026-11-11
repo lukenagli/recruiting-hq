@@ -1,4 +1,4 @@
-"""Preview: direct edits to a student's own tracker, without the AI (corrections when the day's allowance is used up,
+"""Direct edits to a student's own tracker, without the AI (corrections when the day's allowance is used up,
 and removals the assistant can't make: a cancelled chat, a scheduling step, a note that says nothing, a recruiter
 listed on an event they only organised).
 

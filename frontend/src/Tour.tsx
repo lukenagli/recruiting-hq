@@ -304,11 +304,10 @@ const START: [string, string, string][] = [
   ['Add your AI key', 'Powers the assistant, grading and writing. Takes two minutes.', '#/settings'],
   ['Upload your resume and pick your banks', 'Everything else is built from these.', '#/settings'],
   ['Upload your study guides', 'Your own Breaking Into Wall Street PDFs, so practice can use their answers.', '#/settings'],
-  ['Write your pitch and STAR stories', 'Interview Prep → Key information.', '#/prep?tab=stories'],
   ['Tell it about your first coffee chat', 'The "Anything happen?" box on your homepage.', '#/'],
 ]
 
-/** `beforeSetup` (preview): a new account sees the tour first; its end leads into setup instead of the homepage. */
+/** `beforeSetup`: a new account sees the tour first; its end leads into setup instead of the homepage. */
 export default function Tour({ beforeSetup }: { beforeSetup?: () => void } = {}) {
   const [step, setStep] = useState(0)
   const last = step === STEPS.length

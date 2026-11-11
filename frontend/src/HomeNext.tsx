@@ -7,7 +7,7 @@ import ClubFeed from './ClubFeed'
 import SeasonBar from './SeasonBar'
 import Refresh from './Refresh'
 import { post } from './api'
-import { Loading, Logo, StagePips, daysUntil, fmtDate, useApi, useSchool } from './ui'
+import { Loading, Logo, daysUntil, fmtDate, useApi, useSchool } from './ui'
 
 /**
  * Preview home: a dashboard. The header holds a one-line update bar that hands what you type to the assistant
@@ -508,18 +508,14 @@ function Pipeline({ banks, today }: { banks: BankSummary[]; today: string }) {
       <div className="pipe-grid">
         {live.map((b) => {
           const p = b.progress
-          const stage = p ? p.where : [...b.stage].reverse().find((s) => s.done)?.label ?? 'Not started'
+          const stage = p.where
           return (
             <a key={b.bank} className="pipe-tile" href={`#/bank/${encodeURIComponent(b.bank)}`}>
               <span className="pipe-top">
                 <Logo bank={b.bank} domain={b.domain} size={30} />
                 <strong>{b.bank}</strong>
               </span>
-              {p ? (
-                <SeasonBar p={p} dark />
-              ) : (
-                <StagePips stage={b.stage} />
-              )}
+              <SeasonBar p={p} dark />
               <span className="pipe-stage">{stage}</span>
               <small>
                 {b.next_up ? `Next: ${b.next_up.title}, ${inDays(daysUntil(b.next_up.date, today))}` : b.last_touch ? `Last contact ${fmtDate(b.last_touch)}` : `${b.people} people`}

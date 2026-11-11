@@ -1,4 +1,4 @@
-"""Preview: gathering a deal's documents and the analysis worth reading, so the student doesn't have to.
+"""Gathering a deal's documents and the analysis worth reading, so the student doesn't have to.
 
 - Filings: EDGAR full-text search finds every SEC filing that names the companies around the deal (8-K exhibits
   with the announcement, the merger or cooperation agreement, investor presentations, proxies, tender offers).

@@ -4,7 +4,6 @@ import Assistant from './Assistant'
 import BankView from './BankView'
 import CatchUp from './CatchUp'
 import Deals from './Deals'
-import Home from './Home'
 import HomeNext from './HomeNext'
 import Letters from './Letters'
 import Login, { VerifyEmail } from './Login'
@@ -16,11 +15,11 @@ import Settings from './Settings'
 import Setup from './Setup'
 import Start from './Start'
 import Tour, { TOUR_SEEN } from './Tour'
-import { PreviewContext, SchoolContext, useSchool } from './ui'
+import { SchoolContext, useSchool } from './ui'
 
-/** The logo in the top bar: the app icon for preview accounts, the plain "R" for everyone else until it ships. */
-function BrandMark({ preview }: { preview: boolean }) {
-  return preview ? <img className="brand-mark brand-icon" src="/app-192.png" alt="" width={26} height={26} /> : <span className="brand-mark">R</span>
+/** The logo in the top bar: the app icon. */
+function BrandMark() {
+  return <img className="brand-mark brand-icon" src="/app-192.png" alt="" width={26} height={26} />
 }
 
 /** Tiny hash router: #/, #/prep?bank=Citi&round=Superday, #/map, #/bank/Citi */
@@ -73,9 +72,9 @@ export default function App() {
     return () => window.removeEventListener('auth-required', lapsed)
   }, [])
 
-  // Preview: the new app icon (home screen, browser tab, installed app on Windows) once a preview account is signed in.
+  // The app icon (home screen, browser tab, installed app on Windows) once someone is signed in.
   useEffect(() => {
-    if (!user?.preview) return
+    if (!user) return
     const set = (rel: string, href: string) => {
       let el = document.head.querySelector<HTMLLinkElement>(`link[rel="${rel}"]`)
       if (!el) {
@@ -90,7 +89,7 @@ export default function App() {
     set('manifest', '/app.webmanifest')
     document.querySelector('meta[name="theme-color"]')?.setAttribute('content', '#0a183a')
     document.querySelector('meta[name="apple-mobile-web-app-title"]')?.setAttribute('content', 'Recruiting HQ')
-  }, [user?.preview])
+  }, [user])
 
   async function signOut() {
     await post('/api/logout', {}).catch(() => undefined)
@@ -102,14 +101,14 @@ export default function App() {
   if (user === undefined) return <p className="notice">Loading…</p>
   if (user === null) return <Login onDone={() => loadSession()} />
   if (!user.email_verified) return <VerifyEmail user={user} onDone={() => loadSession()} onSignOut={signOut} />
-  // Preview: someone setting up for the first time sees the tour first (once per browser), then setup.
-  const tourFirst = !!user.preview && needsSetup && section !== 'setup' && !tourSeen
+  // Someone setting up for the first time sees the tour first (once per browser), then setup.
+  const tourFirst = needsSetup && section !== 'setup' && !tourSeen
   if (needsSetup || section === 'setup')
     return (
       <SchoolContext.Provider value={school ?? fallback}>
         <header className="topbar">
           <span className="brand">
-            <BrandMark preview={!!user.preview} /> Recruiting HQ
+            <BrandMark /> Recruiting HQ
           </span>
           <nav>
             <button className="signout" onClick={signOut}>Sign out</button>
@@ -120,9 +119,8 @@ export default function App() {
             <Tour beforeSetup={() => { setTourSeen(true); window.scrollTo(0, 0) }} />
           ) : (
             <Setup
-              preview={!!user.preview}
               onDone={() => {
-                window.location.hash = user.preview ? '#/' : '#/tour' // preview: the tour came first
+                window.location.hash = '#/' // the tour came first
                 loadSession()
               }}
             />
@@ -133,26 +131,23 @@ export default function App() {
   const isHome = !section
   // Each section gets its own photo along the top, fading into the navy page.
   const backdrop = ({ prep: 'harkness', map: 'yale-night', bank: 'yale-night', deals: 'nyse', letters: 'sterling', settings: 'yale-night' } as Record<string, string>)[section ?? '']
-  const inlineAssistant = <Assistant key={`inline-${user.id}-${version}`} inline userId={user.id} onChanged={() => setVersion((v) => v + 1)} />
-  const preview = !!user.preview
-  let page = preview ? <HomeNext name={user.name} /> : <Home name={user.name} assistant={inlineAssistant} />
+  let page = <HomeNext name={user.name} />
   if (section === 'prep') page = <Prep bank={query.get('bank') ?? ''} round={query.get('round') ?? ''} who={query.get('who') ?? ''} tab={query.get('tab') ?? ''} />
   if (section === 'map') page = <MapView />
   if (section === 'deals') page = <Deals />
   if (section === 'tour') page = <Tour />
-  if (section === 'settings') page = <Settings user={user} onSignOut={preview ? signOut : undefined} />
-  if (preview && section === 'start') page = <Start />
-  if (preview && section === 'catch-up') page = <CatchUp />
+  if (section === 'settings') page = <Settings user={user} onSignOut={signOut} />
+  if (section === 'start') page = <Start />
+  if (section === 'catch-up') page = <CatchUp />
   if (section === 'letters') page = <Letters bank={arg ?? ''} />
   if (section === 'bank' && arg) page = <BankView bank={arg} initial={query.get('sel') ?? ''} />
   if (section === 'admin' && user.is_admin) page = <Admin me={user.id} />
 
   return (
-    <PreviewContext.Provider value={!!user.preview}>
     <SchoolContext.Provider value={school ?? fallback}>
-      <header className={user.preview ? 'topbar preview-bar' : 'topbar'}>
+      <header className="topbar preview-bar">
         <a className="brand" href="#/">
-          <BrandMark preview={!!user.preview} /> {user.preview ? <span>Recruiting <span className="brand-hq">HQ</span></span> : 'Recruiting HQ'}
+          <BrandMark /> <span>Recruiting <span className="brand-hq">HQ</span></span>
         </a>
         <nav>
           {user.is_admin && (
@@ -172,28 +167,16 @@ export default function App() {
           <a href="#/letters" className={section === 'letters' ? 'active' : ''}>
             <span className="nav-long">Cover </span>Letters
           </a>
-          {preview ? (
-            <a href="#/settings" className={`nav-gear ${section === 'settings' ? 'active' : ''}`} aria-label="Settings" title={`Settings · signed in as ${user.email}`}>
+          <a href="#/settings" className={`nav-gear ${section === 'settings' ? 'active' : ''}`} aria-label="Settings" title={`Settings · signed in as ${user.email}`}>
               <svg viewBox="0 0 24 24" aria-hidden><circle cx="12" cy="12" r="3.2" /><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1Z" /></svg>
             </a>
-          ) : (
-            <>
-              <a href="#/settings" className={section === 'settings' ? 'active' : ''}>
-                Settings
-              </a>
-              <button className="signout" onClick={signOut} title={`Signed in as ${user.email}`}>
-                Sign out
-              </button>
-            </>
-          )}
         </nav>
       </header>
       {backdrop && <div className="page-backdrop" style={{ backgroundImage: `url(/bg-${backdrop}.jpg)` }} aria-hidden />}
       {/* Re-keying the page after the assistant changes something makes it reload its data. */}
-      <main key={version} className={preview ? 'preview-on' : undefined}>{page}</main>
-      {/* preview: the assistant opens only from the home page's update bar (no corner button, no panel on other pages) */}
-      {(preview ? isHome : !isHome) && section !== 'tour' && section !== 'catch-up' && <Assistant key={user.id} userId={user.id} onChanged={() => setVersion((v) => v + 1)} />}
+      <main key={version} className="preview-on">{page}</main>
+      {/* the assistant opens only from the home page's update bar (no corner button, no panel on other pages) */}
+      {isHome && <Assistant key={user.id} userId={user.id} onChanged={() => setVersion((v) => v + 1)} />}
     </SchoolContext.Provider>
-    </PreviewContext.Provider>
   )
 }

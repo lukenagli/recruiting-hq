@@ -10,7 +10,7 @@ type SyncState = {
   log: { at: string; source: string; conversation: string; received: number; new: number; filed: number; note: string }[]
 }
 
-/** Preview: the Recruiting HQ Reader extension, which keeps the tracker up to date from Outlook email and calendar.
+/** The Recruiting HQ Reader extension, which keeps the tracker up to date from Outlook email and calendar.
  *  It shows only the one thing to do next: install the reader, connect it (one click), or nothing (it's connected). */
 export default function ReaderSettings({ bare = false, onChange }: { bare?: boolean; onChange?: () => void }) {
   const { data, reload } = useApi<SyncState>('/api/sync/state')

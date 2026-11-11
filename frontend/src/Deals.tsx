@@ -3,7 +3,7 @@ import { API_URL, del, get, post, uploadWith } from './api'
 import type { Deal, DealDocument, DealPoint, DealsData } from './api'
 import CapIQ from './CapIQ'
 import RecommendedDeals from './RecommendedDeals'
-import { Loading, Logo, useApi, usePreview } from './ui'
+import { Loading, Logo, useApi } from './ui'
 
 const DOMAINS: Record<string, string> = {
   'J.P. Morgan': 'jpmorgan.com',
@@ -46,11 +46,9 @@ function Source({ p, deal }: { p: DealPoint; deal: Deal }) {
   return p.source ? <NotedSource source={p.source} deal={deal} /> : null
 }
 
-/** A source written as text ("Capital IQ, Oct 10, 2026", a web address, "My notes"). Preview: Capital IQ links to the
- *  deal's saved CapIQ summary (or its CapIQ page), and a web address links to itself. */
+/** A source written as text ("Capital IQ, Oct 10, 2026", a web address, "My notes"). Capital IQ links to the deal's
+ *  saved CapIQ summary (or its CapIQ page), and a web address links to itself. */
 function NotedSource({ source, deal }: { source: string; deal: Deal }) {
-  const preview = usePreview()
-  if (!preview) return <span className="src">{source}</span>
   const url = /https?:\/\/[^\s;,)]+/.exec(source)?.[0]
   const capiqDoc = deal.documents.find((d) => d.kind === 'Capital IQ transaction summary')
   const href = url ?? (/capital ?iq|capiq/i.test(source) ? (capiqDoc ? fileUrl(capiqDoc.id) : deal.capiq_url) : '')
@@ -63,7 +61,7 @@ function NotedSource({ source, deal }: { source: string; deal: Deal }) {
   )
 }
 
-/** Preview: fill both companies' share price reaction from Yahoo Finance's daily prices (no AI). */
+/** Fill both companies' share price reaction from Yahoo Finance's daily prices (no AI). */
 function SharePrices({ deal, onChanged }: { deal: Deal; onChanged: () => void }) {
   const [day, setDay] = useState('')
   const [busy, setBusy] = useState(false)
@@ -96,10 +94,9 @@ function SharePrices({ deal, onChanged }: { deal: Deal; onChanged: () => void })
   )
 }
 
-/** Preview: save a document to your computer, and open the page it was found on (the filing on EDGAR, or the
+/** Save a document to your computer, and open the page it was found on (the filing on EDGAR, or the
  *  company's investor relations page). Shown only once that page is known, never the raw file link. */
 function DocLinks({ d }: { d: DealDocument }) {
-  if (!usePreview()) return null
   const page = d.source_page
   return (
     <>
@@ -115,7 +112,7 @@ function DocLinks({ d }: { d: DealDocument }) {
   )
 }
 
-/** Preview: analysis of the deal worth reading, each piece with its own angle. */
+/** Analysis of the deal worth reading, each piece with its own angle. */
 function Reading({ deal, onChanged }: { deal: Deal; onChanged: () => void }) {
   const [busy, setBusy] = useState(false)
   const [message, setMessage] = useState('')
@@ -159,7 +156,6 @@ function Reading({ deal, onChanged }: { deal: Deal; onChanged: () => void }) {
 }
 
 function Documents({ deal, data, onChanged }: { deal: Deal; data: DealsData; onChanged: () => void }) {
-  const preview = usePreview()
   const [kind, setKind] = useState(data.wanted[0]?.kind ?? 'Other')
   const [busy, setBusy] = useState('')
   const [message, setMessage] = useState('')
@@ -167,7 +163,7 @@ function Documents({ deal, data, onChanged }: { deal: Deal; data: DealsData; onC
   // SEC filings saved as web pages earlier are turned into PDFs as soon as the deal is opened.
   const webPages = deal.documents.filter((d) => /\.html?$/i.test(d.filename)).length
   useEffect(() => {
-    if (!webPages || !preview) return
+    if (!webPages) return
     setMessage(`Turning ${webPages} SEC web page${webPages > 1 ? 's' : ''} into PDF${webPages > 1 ? 's' : ''}…`)
     post(`/api/deals/${deal.id}/to-pdf`, {}).then(() => { setMessage(''); onChanged() }, (e) => setMessage((e as Error).message))
   }, [deal.id, webPages]) // eslint-disable-line react-hooks/exhaustive-deps
@@ -222,19 +218,12 @@ function Documents({ deal, data, onChanged }: { deal: Deal; data: DealsData; onC
           Find filings on SEC EDGAR
         </a>
       </div>
-      {preview ? (
-        <div className="gather">
-          <button className="primary" disabled={busy !== ''} onClick={() => run(`/api/deals/${deal.id}/gather`, 'gather')}>
-            {busy === 'gather' ? 'Gathering from SEC EDGAR and the companies’ sites…' : 'Gather the documents for me'}
-          </button>
-          <p className="fine">Pulls the announcement, agreement, presentation, proxy and annual reports as PDFs from the companies' own investor relations pages, and from SEC EDGAR for anything they don't post. Run it again to replace older SEC web-page copies with PDFs. Takes up to a minute.</p>
-        </div>
-      ) : (
-        <p className="fine">
-          Upload these and the checklist fills itself, with every number linked to its page. Download filings from EDGAR as PDF, or save the
-          filing page as .htm.
-        </p>
-      )}
+      <div className="gather">
+        <button className="primary" disabled={busy !== ''} onClick={() => run(`/api/deals/${deal.id}/gather`, 'gather')}>
+          {busy === 'gather' ? 'Gathering from SEC EDGAR and the companies’ sites…' : 'Gather the documents for me'}
+        </button>
+        <p className="fine">Pulls the announcement, agreement, presentation, proxy and annual reports as PDFs from the companies' own investor relations pages, and from SEC EDGAR for anything they don't post. Run it again to replace older SEC web-page copies with PDFs. Takes up to a minute.</p>
+      </div>
       <ul className="doc-checklist">
         {data.wanted.map((w) => {
           const docs = deal.documents.filter((d) => d.kind === w.kind)
@@ -307,7 +296,7 @@ function Documents({ deal, data, onChanged }: { deal: Deal; data: DealsData; onC
           )
         })()}
       </ul>
-      {preview && <CapIQ deal={deal} onChanged={onChanged} />}
+      <CapIQ deal={deal} onChanged={onChanged} />
       <div className="doc-actions">
         <button className="primary" disabled={busy !== '' || deal.documents.length === 0} onClick={() => run(`/api/deals/${deal.id}/fill-from-documents`, 'fill')}>
           {busy === 'fill' ? 'Reading your documents…' : 'Fill from my documents'}
@@ -328,7 +317,6 @@ function Documents({ deal, data, onChanged }: { deal: Deal; data: DealsData; onC
 
 export default function Deals() {
   const { data, error, reload } = useApi<DealsData>('/api/deals')
-  const preview = usePreview()
   const [open, setOpen] = useState(0)
   const [adding, setAdding] = useState(false)
   const [title, setTitle] = useState('')
@@ -359,7 +347,7 @@ export default function Deals() {
       <h1>My Deals</h1>
       <p className="lede">Each deal laid out as a 90-second pitch: background, the deal, market reaction, your take. Every number shows where it came from.</p>
 
-      {preview && <RecommendedDeals mine={data.deals.map((d) => d.title)} onAdded={() => { setOpen(data.deals.length); reload() }} />}
+      <RecommendedDeals mine={data.deals.map((d) => d.title)} onAdded={() => { setOpen(data.deals.length); reload() }} />
 
       <div className="deal-tabs">
         {data.deals.map((d, i) => (
@@ -411,7 +399,7 @@ export default function Deals() {
           {deal.notes && <p className="muted">{deal.notes}</p>}
 
           <Documents key={deal.id} deal={deal} data={data} onChanged={reload} />
-          {preview && <Reading key={`r${deal.id}`} deal={deal} onChanged={reload} />}
+          <Reading key={`r${deal.id}`} deal={deal} onChanged={reload} />
 
           <section className="card deal-section">
             <h3>
@@ -425,7 +413,7 @@ export default function Deals() {
               <h3>
                 {s.name} <small>{s.timing}</small>
               </h3>
-              {preview && s.name === '4. Market reaction' && <SharePrices deal={deal} onChanged={reload} />}
+              {s.name === '4. Market reaction' && <SharePrices deal={deal} onChanged={reload} />}
               <dl>
                 {s.points.map((p) => (
                   <div key={p.id} className={p.value ? '' : 'missing'}>

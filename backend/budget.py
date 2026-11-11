@@ -1,6 +1,6 @@
 """Per-user daily token budget, so no single account (or a bug looping on one) can drain the course key.
 
-The reader filing email (preview) is counted apart: it has no daily allowance, only FILING_TOKEN_GUARD against a bug,
+The reader filing email is counted apart: it has no daily allowance, only FILING_TOKEN_GUARD against a bug,
 and what it uses doesn't count against the rest of the site's allowance.
 """
 from datetime import date

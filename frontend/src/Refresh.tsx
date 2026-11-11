@@ -1,11 +1,11 @@
 import { useEffect, useState } from 'react'
 import { get, post } from './api'
 import FolderSetup from './FolderSetup'
-import { useApi, usePreview } from './ui'
+import { useApi } from './ui'
 
 /**
- * The Refresh button: asks the Recruiting HQ Reader (Chrome extension) to read what's new in the student's Outlook,
- * Slack and WhatsApp (now Outlook only: the button names it for preview accounts). The extension's bridge script answers on window.postMessage; with no extension, nothing answers.
+ * The Refresh button: asks the Recruiting HQ Reader (Chrome extension) to read what's new in the student's Outlook
+ * email and calendar. The extension's bridge script answers on window.postMessage; with no extension, nothing answers.
  */
 
 export type ReaderStatus = {
@@ -162,7 +162,7 @@ export function ThanksCatchUp({ onDone }: { onDone?: () => void }) {
 
 type Filing = { waiting: number; running: number; done: number; failed: number; busy: boolean }
 
-/** Preview: Recruiting HQ files what the reader read in the background; this follows it until it's done. */
+/** Recruiting HQ files what the reader read in the background; this follows it until it's done. */
 function useFiling(on: boolean, readerBusy: boolean, onDone?: () => void) {
   const [filing, setFiling] = useState<Filing | null>(null)
   useEffect(() => {
@@ -196,7 +196,6 @@ function useFiling(on: boolean, readerBusy: boolean, onDone?: () => void) {
 
 export default function Refresh({ onDone }: { onDone?: () => void }) {
   const { status, installed, stale, checked, sync, folders } = useReader()
-  const preview = usePreview()
   // ai_left: the reader can't file anything once it's used up;
   // start_from: the account's first sync, which reaches back to the start of the season
   const allowance = useApi<{ ai_left: number; outlook_only?: boolean; start_from?: string; folders_confirmed?: boolean; folders_known?: number }>('/api/sync/state')
@@ -204,7 +203,7 @@ export default function Refresh({ onDone }: { onDone?: () => void }) {
   const [confirming, setConfirming] = useState(false)
   const [wasBusy, setWasBusy] = useState(false)
   const busy = !!status?.busy
-  const filing = useFiling(preview && !!status?.has_key, busy, onDone)
+  const filing = useFiling(!!status?.has_key, busy, onDone)
   const filingBusy = !!filing?.busy
   useEffect(() => {
     if (busy) setWasBusy(true)
@@ -260,7 +259,7 @@ export default function Refresh({ onDone }: { onDone?: () => void }) {
       </div>
     )
   if (!checked && !installed) return null
-  if (!installed && preview && phone()) return null
+  if (!installed && phone()) return null
   if (!installed)
     return (
       <div className="refresh">
@@ -289,9 +288,9 @@ export default function Refresh({ onDone }: { onDone?: () => void }) {
         )}
       </div>
     )
-  // Preview: an account's first scan starts with a 20-second look at the Outlook folders, then the student says which
+  // An account's first scan starts with a 20-second look at the Outlook folders, then the student says which
   // hold recruiting email (FolderSetup), then the scan itself.
-  const needsFolders = preview && firstSync && allowance.data?.folders_confirmed === false && !busy && !filingBusy
+  const needsFolders = firstSync && allowance.data?.folders_confirmed === false && !busy && !filingBusy
   if (needsFolders && (allowance.data?.folders_known ?? 0) > 0)
     return (
       <div className="refresh">
@@ -340,13 +339,9 @@ export default function Refresh({ onDone }: { onDone?: () => void }) {
         <div className="refresh-warning working">
           <p>
             <strong>Refreshing…</strong>{' '}
-            {preview
-              ? "A Chrome window is reading your Outlook calendar and email. Leave it in front and don't click in it; it closes on its own when it's done"
-              : "Two Chrome windows, side by side, are reading your Outlook email and calendar. Leave them in front and don't click in them; they close on their own when they're done"}
+            A Chrome window is reading your Outlook calendar and email. Leave it in front and don't click in it; it closes on its own when it's done
             {firstSync
-              ? preview
-                ? '. This first one reaches back to September 1: reading takes about 10 to 15 minutes, then the window closes and the rest happens without you.'
-                : '. This first one reaches back to September 1, so it can take 10 to 20 minutes.'
+              ? '. This first one reaches back to September 1: reading takes about 10 to 15 minutes, then the window closes and the rest happens without you.'
               : ', usually within a minute or two.'}
           </p>
           <ReaderProgress status={status} />
@@ -355,13 +350,10 @@ export default function Refresh({ onDone }: { onDone?: () => void }) {
         <div className="refresh-warning">
           <p>
             <strong>Before you refresh:</strong>{' '}
-            {preview
-              ? "the reader opens a Chrome window over yours to read your Outlook calendar and email. Chrome only reads what's on screen, so leave it in front while it works; it closes itself when it's done."
-              : "the reader opens two Chrome windows side by side to read your Outlook email and calendar. Chrome only reads what's on screen, so leave them in front while they work; they close themselves when they're done."}{' '}
+            the reader opens a Chrome window over yours to read your Outlook calendar and email. Chrome only reads what's on screen, so
+            leave it in front while it works; it closes itself when it's done.{' '}
             {firstSync
-              ? preview
-                ? 'This first refresh reads everything since September 1 (every folder, however you organize them). Reading takes about 10 to 15 minutes; after that the window closes, you can close the laptop, and Recruiting HQ files it in the background. Later refreshes take a minute or two.'
-                : 'This first refresh reads everything since September 1 (every folder, however you organize them), so it can take 10 to 20 minutes; after that, a refresh takes a minute or two.'
+              ? 'This first refresh reads everything since September 1 (every folder, however you organize them). Reading takes about 10 to 15 minutes; after that the window closes, you can close the laptop, and Recruiting HQ files it in the background. Later refreshes take a minute or two.'
               : 'It usually takes a minute or two.'}{' '}
             It only reads: it never sends, replies or reacts.
           </p>
@@ -375,11 +367,11 @@ export default function Refresh({ onDone }: { onDone?: () => void }) {
         </div>
       ) : (
         <button className="btn" onClick={() => setConfirming(true)}>
-          {preview ? '↻ Refresh from Outlook' : '↻ Refresh from email, Slack and WhatsApp'}
+          ↻ Refresh from Outlook
         </button>
       )}
       {!busy && !confirming && status!.last && <small className="muted refresh-last">Last refreshed {status!.last.at}</small>}
-      {preview && !busy && !confirming && readNames.length > 0 && (
+      {!busy && !confirming && readNames.length > 0 && (
         <p className="muted refresh-folders">
           Last refresh looked through {readNames.length} folder{readNames.length > 1 ? 's' : ''} ({list(readNames)})
           {skippedNames.length > 0 && <> and skipped {skippedNames.length} where no recruiting email has turned up ({list(skippedNames)})</>}.{' '}

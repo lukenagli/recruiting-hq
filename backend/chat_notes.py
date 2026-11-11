@@ -1,4 +1,4 @@
-"""Tidying dictated coffee chat notes (preview).
+"""Tidying dictated coffee chat notes.
 
 Notes dictated into Add a coffee chat run on, repeat themselves and carry speech-to-text slips. Before they're saved,
 one small model call turns them into short bullets under a few headings, keeping every fact and adding none. The

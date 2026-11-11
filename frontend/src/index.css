@@ -1032,7 +1032,7 @@ main h1 { text-shadow: 0 2px 16px rgba(4, 10, 26, 0.5); }
 }
 @media (max-width: 760px) { .preview-badge { margin-left: 4px; margin-right: 6px; padding: 1px 6px; font-size: 10px; } }
 
-/* ---- Preview: simpler home, start guide, catch-up ---- */
+/* ---- Simpler home, start guide, catch-up ---- */
 .nav-gear { display: grid; place-items: center; width: 36px; padding: 7px !important; }
 .nav-gear svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
 .settings-who { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; }
@@ -1187,7 +1187,7 @@ main h1 { text-shadow: 0 2px 16px rgba(4, 10, 26, 0.5); }
 }
 .cu-extras input[type="file"] { display: none; }
 
-/* Preview: the thank-you that went out, on the contact */
+/* The thank-you that went out, on the contact */
 .sent-note { margin-top: 8px; }
 .sent-note summary { cursor: pointer; font-weight: 600; font-size: 13.5px; color: var(--link); }
 .sent-note pre { white-space: pre-wrap; font: inherit; font-size: 14px; background: var(--gray-soft); border-radius: 10px; padding: 12px; margin: 8px 0; }
@@ -1195,7 +1195,7 @@ main h1 { text-shadow: 0 2px 16px rgba(4, 10, 26, 0.5); }
 .sent-note-actions textarea { width: 100%; font: inherit; border: 1.5px solid var(--line); border-radius: 10px; padding: 9px 11px; }
 .sent-note-actions .btn { margin: 0; }
 
-/* Preview: gathered deal documents and the reading list */
+/* Gathered deal documents and the reading list */
 .gather { margin: 6px 0 12px; }
 .gather .primary { margin: 0 0 6px; }
 .doc-file .link { font-size: 13px; }
@@ -1301,7 +1301,7 @@ main h1 { text-shadow: 0 2px 16px rgba(4, 10, 26, 0.5); }
 }
 .home.next .season-strip { scrollbar-width: thin; scrollbar-color: rgba(255, 255, 255, 0.22) transparent; }
 
-/* Preview: the reader extension card in Settings */
+/* The reader extension card in Settings */
 .reader-steps { padding-left: 20px; margin: 8px 0 12px; }
 .reader-steps li { margin-bottom: 4px; }
 .reader-key { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
@@ -1346,7 +1346,7 @@ main h1 { text-shadow: 0 2px 16px rgba(4, 10, 26, 0.5); }
 .admin-chat { border-top: 1px solid var(--line); padding: 10px 0; display: flex; flex-direction: column; gap: 6px; }
 .admin-chat .danger-link { align-self: flex-start; font-size: 13px; }
 
-/* Preview: Capital IQ on a deal */
+/* Capital IQ on a deal */
 .capiq { border-top: 1px solid var(--line); margin-top: 14px; padding-top: 12px; display: flex; flex-direction: column; gap: 8px; align-items: flex-start; }
 .capiq h4 { margin: 0; }
 .capiq-link { display: flex; gap: 8px; width: 100%; }
@@ -1376,7 +1376,7 @@ main h1 { text-shadow: 0 2px 16px rgba(4, 10, 26, 0.5); }
 .thanks-catch-up { margin-top: 18px; display: flex; flex-direction: column; gap: 8px; align-items: flex-start; }
 .thanks-catch-up h2 { margin: 0; }
 
-/* Preview: add a coffee chat by hand, in the home header */
+/* Add a coffee chat by hand, in the home header */
 .add-chat { display: grid; gap: 10px; margin-bottom: 18px; }
 .add-chat h2 { margin: 0; }
 .add-chat label { display: grid; gap: 4px; font-size: 12.5px; font-weight: 600; color: #3a4560; flex: 1; min-width: 140px; }
@@ -1391,7 +1391,7 @@ main h1 { text-shadow: 0 2px 16px rgba(4, 10, 26, 0.5); }
 .update-links .add-chat-open { font-size: 15px; font-weight: 600; }
 .update-links .add-chat-open span { color: #9cc2ff; font-size: 16px; }
 
-/* Preview: which Outlook folders the reader reads, checks or skips */
+/* Which Outlook folders the reader reads, checks or skips */
 .refresh-folders { margin: 6px 0 0; font-size: 13px; }
 .outlook-folders { margin-top: 18px; }
 .folder-list { list-style: none; padding: 0; margin: 8px 0 0; display: grid; gap: 6px; }
@@ -1408,7 +1408,7 @@ main h1 { text-shadow: 0 2px 16px rgba(4, 10, 26, 0.5); }
 .folder-reread { display: inline-flex; flex-wrap: wrap; gap: 6px 10px; align-items: center; }
 .folder-done { color: #166534; }
 
-/* Preview: a map step not reached yet is class "todo", which also picked up the to-do card's padding and squeezed its bar */
+/* A map step not reached yet is class "todo", which also picked up the to-do card's padding and squeezed its bar */
 .preview-on .pm-step.todo { position: static; margin: 0; padding: 0; }
 
 /* Preview, phones: the menu gets its own row under the logo, with short names, so every page (and Settings) fits
@@ -1442,7 +1442,7 @@ main h1 { text-shadow: 0 2px 16px rgba(4, 10, 26, 0.5); }
 .notes-text { white-space: pre-wrap; }
 .ov-mine { font-weight: 600; }
 
-/* Preview: the wordmark's "HQ" in the icon's gold; on phones the whole logo shows, the skyline icon a little larger. */
+/* The wordmark's "HQ" in the icon's gold; on phones the whole logo shows, the skyline icon a little larger. */
 .preview-bar .brand-hq { color: #ffc45a; }
 @media (max-width: 760px) {
   .topbar.preview-bar .brand { font-size: 18px; gap: 10px; height: 54px; letter-spacing: 0.2px; padding-right: 0; }
@@ -1451,14 +1451,14 @@ main h1 { text-shadow: 0 2px 16px rgba(4, 10, 26, 0.5); }
   body:has(.preview-bar) .assistant-panel { top: calc(100px + env(safe-area-inset-top)); }
 }
 
-/* Preview: the reader's questions on the home page */
+/* The reader's questions on the home page */
 .reader-questions { margin-bottom: 16px; }
 .reader-questions ul { list-style: none; padding: 0; margin: 8px 0 0; }
 .reader-questions li { display: flex; gap: 12px; justify-content: space-between; align-items: baseline; padding: 8px 0; border-top: 1px solid var(--line); }
 .reader-questions .rq-actions { display: flex; gap: 12px; flex: none; }
 @media (max-width: 760px) { .reader-questions li { flex-direction: column; gap: 4px; } }
 
-/* Preview: looking over a first scan */
+/* Looking over a first scan */
 .scan-review { margin-bottom: 16px; }
 .scan-review-bank { border-top: 1px solid var(--line); padding: 8px 0; }
 .scan-review-bank summary { cursor: pointer; display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; }
@@ -1467,7 +1467,7 @@ main h1 { text-shadow: 0 2px 16px rgba(4, 10, 26, 0.5); }
 .scan-review-done { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; margin-top: 12px; }
 @media (max-width: 760px) { .scan-review-bank li { flex-direction: column; gap: 4px; padding-left: 4px; } }
 
-/* Preview: which Outlook folders hold recruiting email, before a first scan */
+/* Which Outlook folders hold recruiting email, before a first scan */
 .folder-setup-group { margin-top: 12px; }
 .folder-setup-group h4 { margin: 0; }
 .folder-setup-group ul { list-style: none; padding: 0; margin: 6px 0 0; }
@@ -1489,7 +1489,7 @@ details[open] > summary .folder-setup-names { display: none; }
 .folder-setup-legend dd { margin: 0; color: var(--muted, #5d6880); }
 @media (max-width: 760px) { .folder-setup-legend { grid-template-columns: 1fr; } .folder-setup-legend dd { margin-bottom: 6px; } }
 
-/* Preview: the first-scan review, one editable row per person */
+/* The first-scan review, one editable row per person */
 .scan-review-bank .rv-row { display: grid; grid-template-columns: 90px 1.4fr 1fr 1.1fr 140px auto; gap: 8px; align-items: end; padding: 8px 0 8px 8px; border-top: 1px solid var(--line); }
 .rv-kind { font-size: 12px; font-weight: 600; color: var(--muted, #5d6880); padding-bottom: 8px; }
 .rv-field { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
@@ -1504,12 +1504,12 @@ details[open] > summary .folder-setup-names { display: none; }
 .rq-reply { margin: 6px 0 0; font-size: 14px; }
 .reader-questions li { flex-direction: column; align-items: stretch; }
 
-/* Preview: progress by what the bank has done back. Networking fills by who you have met. */
+/* Progress by what the bank has done back. Networking fills by who you have met. */
 .pm-step.current i.filled { background: linear-gradient(90deg, var(--blue) var(--fill, 50%), var(--blue-soft) var(--fill, 50%)); }
 .pm-applied small { font-size: 10px; color: var(--green); font-weight: 600; margin-top: 1px; white-space: nowrap; }
 .pipe-tile .pips .pip.now { background: linear-gradient(90deg, #9cc2ff var(--fill, 50%), rgba(255, 255, 255, 0.18) var(--fill, 50%)); }
 
-/* Preview: connecting the reader, one step at a time; the step to do now stands out, finished steps turn green */
+/* Connecting the reader, one step at a time; the step to do now stands out, finished steps turn green */
 .connect-steps { list-style: none; padding: 0; margin: 6px 0 14px; }
 .connect-steps > li { display: flex; gap: 14px; align-items: flex-start; padding: 14px 0; border-top: 1px solid var(--line); opacity: 0.55; }
 .connect-steps > li:first-child { border-top: 0; }
@@ -1523,7 +1523,7 @@ details[open] > summary .folder-setup-names { display: none; }
 .install-steps { margin: 4px 0 0; padding-left: 20px; display: grid; gap: 8px; font-size: 14px; }
 .reader-log-box summary { cursor: pointer; color: var(--muted); font-size: 14px; margin: 8px 0; }
 
-/* Preview: simpler setup. Folded help, a bigger single field, quiet skip links */
+/* Simpler setup. Folded help, a bigger single field, quiet skip links */
 .setup-card details.help { margin: 6px 0; }
 .setup-card details.help summary { cursor: pointer; color: var(--link, var(--blue)); font-size: 14px; font-weight: 600; }
 .setup-card details.help p, .setup-card details.help .choice-row { margin: 8px 0 4px; font-size: 14px; color: var(--muted); }
@@ -1531,7 +1531,7 @@ details[open] > summary .folder-setup-names { display: none; }
 .setup-card .big-field input { font-size: 16px; padding: 12px 14px; }
 .setup-nav .link.muted { font-size: 14px; }
 
-/* Preview: simpler Settings */
+/* Simpler Settings */
 .simple-settings .settings-who { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
 .simple-settings .settings-who span { display: inline-flex; gap: 16px; align-items: center; }
 .simple-settings .card > h2 { margin: 0 0 10px; font-size: 20px; }
@@ -1551,7 +1551,7 @@ details.card.fold[open] > summary strong::after { content: ' ⌄'; }
 details.card.fold > summary small { color: var(--muted); font-size: 14px; }
 details.card.fold > .card, details.card.fold section.card { box-shadow: none; border: 0; padding-left: 0; padding-right: 0; }
 
-/* Preview: the season bar. Steps sized by their share of the season, filled by progress, today marked */
+/* The season bar. Steps sized by their share of the season, filled by progress, today marked */
 .season-bar { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 6px; }
 .sb-track { position: relative; display: flex; gap: 3px; align-items: center; height: 10px; }
 .sb-seg { position: relative; height: 8px; min-width: 10px; border-radius: 99px; background: var(--gray-soft); overflow: hidden; flex-basis: 0; }
@@ -1578,11 +1578,11 @@ details.card.fold > .card, details.card.fold section.card { box-shadow: none; bo
 .pipe-tile .season-bar { flex: none; width: 100%; }
 .sb-segs { position: relative; flex: 1; min-width: 0; display: flex; gap: 3px; align-items: center; height: 10px; }
 
-/* Preview: tidied coffee chat notes keep their headings and bullets */
+/* Tidied coffee chat notes keep their headings and bullets */
 .add-chat-note { margin: 4px 0 0; font-size: 13px; }
 .notes-text { white-space: pre-wrap; }
 
-/* Preview: editing a chat's notes in place */
+/* Editing a chat's notes in place */
 .notes-edit { font-size: 13px; margin: -4px 0 8px; display: inline-block; }
 .notes-editor textarea { width: 100%; box-sizing: border-box; min-height: 140px; padding: 10px 12px; font: inherit; font-size: 14px; line-height: 1.45;
   border: 1.5px solid var(--blue); border-radius: 8px; resize: vertical; background: var(--card, #fff); color: inherit; }

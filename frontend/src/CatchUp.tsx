@@ -6,7 +6,7 @@ import { ThanksCatchUp } from './Refresh'
 import { Logo, fmtDate, useApi, useSchool } from './ui'
 
 /**
- * Preview: catching up someone who has been recruiting before they found the app. Pick the banks you've talked to,
+ * Catching up someone who has been recruiting before they found the app. Pick the banks you've talked to,
  * then one short page per bank: who, their role, where you met, what you talked about. Or drop in the spreadsheet
  * you've been keeping. Each bank is filed by the assistant in the background while you fill in the next one.
  */

@@ -1,4 +1,4 @@
-"""Preview: how each company's shares reacted to a deal, from Yahoo Finance's daily price history.
+"""How each company's shares reacted to a deal, from Yahoo Finance's daily price history.
 
 For the buyer and the target: the move on the day the deal was announced (its close against the close the day
 before), and where the shares stood one month later, six months later (once that has passed) and today, each against

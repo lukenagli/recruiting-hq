@@ -6,7 +6,7 @@ import DraftCard from './DraftCard'
 import JourneyMap from './JourneyMap'
 import ClubFeed from './ClubFeed'
 import RecommendedDeals from './RecommendedDeals'
-import { Loading, Logo, StatusTag, alumLabel, fmtDate, roleOf, useApi, usePreview, useSchool } from './ui'
+import { Loading, Logo, StatusTag, alumLabel, fmtDate, roleOf, useApi, useSchool } from './ui'
 
 function when(i: { date: string; date_note: string }) {
   if (!i.date) return i.date_note || 'date not recorded'
@@ -23,10 +23,9 @@ function thankYou(chat: Interaction) {
 
 /** For a finished chat that still needs a thank-you: the saved draft, or a button to write one. */
 function ChatThankYou({ c, personId, onChanged }: { c: Interaction; personId: number; onChanged: () => void }) {
-  const preview = usePreview()
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
-  if (preview && c.status === 'done' && c.thank_you) return <SentThankYou c={c} personId={personId} onChanged={onChanged} />
+  if (c.status === 'done' && c.thank_you) return <SentThankYou c={c} personId={personId} onChanged={onChanged} />
   if (c.status !== 'done' || c.thank_you) return null
   if (c.draft)
     return <DraftCard id={c.draft.id} body={c.draft.body} check={c.draft.check_line} send={c.draft.send_line} sent={Boolean(c.draft.sent_at)} onSent={onChanged} />
@@ -54,7 +53,7 @@ function ChatThankYou({ c, personId, onChanged }: { c: Interaction; personId: nu
   )
 }
 
-/** Preview: a chat whose thank-you is done (or not needed). Shows the note that went out, to read or copy again;
+/** A chat whose thank-you is done (or not needed). Shows the note that went out, to read or copy again;
  *  lets you save one sent outside the app, or write one anyway when none was needed (a 2Y you've met before). */
 function SentThankYou({ c, personId, onChanged }: { c: Interaction; personId: number; onChanged: () => void }) {
   const [mode, setMode] = useState<'' | 'paste'>('')
@@ -189,10 +188,9 @@ function Background({ p, onChanged }: { p: Person; onChanged: () => void }) {
   )
 }
 
-/** A chat's notes, which you can edit in place (preview): Edit notes opens them in a box with the same bullets as
+/** A chat's notes, which you can edit in place: Edit notes opens them in a box with the same bullets as
  *  Add a coffee chat ("- ", Tab and Shift+Tab); Save writes them straight to the tracker, no AI involved. */
 function ChatNotes({ c, onChanged }: { c: Interaction; onChanged: () => void }) {
-  const preview = usePreview()
   const [text, setText] = useState<string | null>(null) // null: not editing
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
@@ -204,7 +202,6 @@ function ChatNotes({ c, onChanged }: { c: Interaction; onChanged: () => void }) 
     el.style.height = `${Math.min(el.scrollHeight + 4, window.innerHeight * 0.7)}px`
   }, [text, bullets.ref])
   const shown = c.summary ? <p className="notes-text">{c.summary}</p> : c.status === 'done' ? <p className="muted">No notes recorded for this conversation yet.</p> : null
-  if (!preview) return shown
   if (text === null)
     return (
       <>
@@ -345,7 +342,6 @@ function yourChats(entries: { kind: string; status: string }[]): string {
 export default function BankView({ bank, initial = '' }: { bank: string; initial?: string }) {
   const { data, error, reload } = useApi<BankDetail>(`/api/banks/${encodeURIComponent(bank)}`)
   const school = useSchool()
-  const preview = usePreview()
   const [selected, setSelected] = useState('')
   // Arriving from a dot on the recruiting map opens that person or event and scrolls to it.
   useEffect(() => {
@@ -387,8 +383,8 @@ export default function BankView({ bank, initial = '' }: { bank: string; initial
         </div>
         {OVERVIEW_FIELDS.map(([field, label, onlyWhenKnown]) => {
           const items = data.facts.filter((f) => f.category === field)
-          // Preview: how far you've got, counted from your own entries rather than repeated in the facts.
-          const mine = preview && field === 'Recruiting process' ? yourChats(data.interactions) : ''
+          // How far you've got, counted from your own entries rather than repeated in the facts.
+          const mine = field === 'Recruiting process' ? yourChats(data.interactions) : ''
           if (onlyWhenKnown && items.length === 0 && !mine) return null
           return (
             <div className={`ov-item ${items.length || mine ? '' : 'unknown'}`} key={field}>
@@ -410,8 +406,8 @@ export default function BankView({ bank, initial = '' }: { bank: string; initial
         })}
       </div>
 
-      {preview && app.status !== 'out' && <RecommendedDeals bank={data.bank} />}
-      {preview && <ClubFeed bank={data.bank} />}
+      {app.status !== 'out' && <RecommendedDeals bank={data.bank} />}
+      <ClubFeed bank={data.bank} />
 
       <h2>How it has gone</h2>
       <p className="muted">Each step in date order. Click a card for the details.</p>

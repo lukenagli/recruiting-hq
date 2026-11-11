@@ -1,4 +1,4 @@
-"""Preview: the reader hands what it read to Recruiting HQ, which files it in the background.
+"""The reader hands what it read to Recruiting HQ, which files it in the background.
 
 Reading Outlook needs a Chrome window on screen; filing it needs only the model. So the reader reads every folder, hands
 each batch over here at once and closes its window, and the student can close the laptop while the site files it.

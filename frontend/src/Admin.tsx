@@ -17,7 +17,6 @@ type Overview = {
   chat_directory: DirectoryChat[]
   slack_team: string
   feed: FeedItem[]
-  early_access: string[]
   groups: { industry_groups: string[]; product_groups: string[] }
   domains: Record<string, string>
 }
@@ -49,7 +48,7 @@ function AdminToggle({ u, me, onChanged }: { u: Overview['users'][number]; me: n
   return (
     <span className="admin-toggle">
       <button className={`link ${make ? '' : 'danger-link'}`} disabled={busy} onClick={go} onBlur={() => setAsking(false)}
-        title={make ? 'Admins see this panel and the preview. They use their own AI key, not yours.' : ''}>
+        title={make ? 'Admins see this panel. They use their own AI key, not yours.' : ''}>
         {asking ? (make ? `Confirm: make ${u.name.split(' ')[0]} an admin` : 'Confirm: remove admin') : make ? 'Make admin' : 'Remove admin'}
       </button>
       {error && <small className="danger-link"> {error}</small>}
@@ -202,39 +201,6 @@ function Chats({ data }: { data: Overview }) {
   )
 }
 
-function EarlyAccess({ initial }: { initial: string[] }) {
-  const [text, setText] = useState(initial.join('\n'))
-  const [busy, setBusy] = useState(false)
-  const [message, setMessage] = useState('')
-  async function save() {
-    setBusy(true)
-    try {
-      const out = await post<string[]>('/api/admin/early-access', { emails: text.split(/[\s,;]+/) })
-      setText(out.join('\n'))
-      setMessage(`Saved. ${out.length} ${out.length === 1 ? 'person sees' : 'people see'} the preview, once they sign up with that email.`)
-    } catch (e) {
-      setMessage((e as Error).message)
-    } finally {
-      setBusy(false)
-    }
-  }
-  return (
-    <section className="card admin-card">
-      <h2>Early access</h2>
-      <p className="fine">
-        People who see the preview version (everything you see) instead of the version that was graded. One email per line; they sign up on
-        the site with that email. Everyone else, including the demo account, keeps the graded version.
-      </p>
-      <label className="field">
-        Emails
-        <textarea rows={4} value={text} onChange={(e) => setText(e.target.value)} placeholder="friend@yale.edu" />
-      </label>
-      <button className="primary" disabled={busy} onClick={save}>{busy ? 'Saving…' : 'Save'}</button>
-      {message && <p className="notice">{message}</p>}
-    </section>
-  )
-}
-
 type ScanStatus = {
   exists: boolean; active?: boolean; started_at?: string; people?: number; entries?: number; banks?: number; runs?: number; tokens?: number
   refreshes?: number; emails_new?: number; emails_filed?: number; allowance_stops?: number; finished?: boolean
@@ -309,7 +275,6 @@ export default function Admin({ me }: { me: number }) {
       <h1>Admin</h1>
       <p className="lede">Everything here goes to every account. Students' own edits always win over what you push.</p>
       <Users users={data.users} me={me} onChanged={reload} />
-      <EarlyAccess initial={data.early_access} />
       <TestScan />
       <section className="card setup-card admin-card">
         <p className="fine">Email templates: edit and save them here, then click "Make these the standard for every account". Students who never changed a template get yours.</p>

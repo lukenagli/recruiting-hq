@@ -1,4 +1,4 @@
-"""Preview: S&P Capital IQ for a deal, through the student's own Capital IQ login.
+"""S&P Capital IQ for a deal, through the student's own Capital IQ login.
 
 Capital IQ only opens on the Yale network for a signed-in student, so the site never reaches it itself. After the
 student confirms they are on Yale Wi-Fi and signed in, the Recruiting HQ Reader fetches Capital IQ pages from their

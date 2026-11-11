@@ -30,7 +30,7 @@ MAX_SCANNED_PAGES = 30
 MAX_PER_USER = 150_000_000
 KINDS = ["Announcement press release", "Merger agreement", "Proxy / S-4 / tender offer", "Investor presentation",
          "Buyer 10-K or annual report", "Target 10-K or annual report", "Earnings release", "Other"]
-CAPIQ_KIND = "Capital IQ transaction summary"  # preview: saved by capiq.py from the student's Capital IQ
+CAPIQ_KIND = "Capital IQ transaction summary"  # saved by capiq.py from the student's Capital IQ
 
 # What to ask the user for: the documents that answer most of the pitch checklist.
 WANTED = [

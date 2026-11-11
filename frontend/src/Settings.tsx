@@ -14,116 +14,13 @@ const PROVIDERS = [
   { id: 'openai', label: 'OpenAI', where: 'https://platform.openai.com/api-keys', hint: 'Starts with sk-' },
 ]
 
-export default function Settings({ user, onSignOut }: { user: User; onSignOut?: () => void }) {
+export default function Settings({ user, onSignOut }: { user: User; onSignOut: () => void }) {
   const { data, error, reload } = useApi<AiSettings>('/api/settings/ai')
-  const [provider, setProvider] = useState('portkey')
-  const [key, setKey] = useState('')
-  const [busy, setBusy] = useState(false)
-  const [message, setMessage] = useState('')
   if (!data) return <Loading error={error} />
-
-  async function save(e: React.FormEvent) {
-    e.preventDefault()
-    setBusy(true)
-    setMessage('')
-    try {
-      await post('/api/settings/ai', { provider, key })
-      setKey('')
-      reload()
-    } catch (err) {
-      setMessage((err as Error).message)
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  async function remove() {
-    await post('/api/settings/ai/remove', {})
-    reload()
-  }
-
-  const chosen = PROVIDERS.find((p) => p.id === provider)!
-  if (onSignOut) return <SimpleSettings user={user} onSignOut={onSignOut} ai={data} reloadAi={reload} />
-  return (
-    <div className="settings">
-      <h1>Settings</h1>
-      {onSignOut ? (
-        <p className="lede settings-who">
-          Signed in as {user.name} ({user.email}).
-          <button className="btn" onClick={onSignOut}>Sign out</button>
-        </p>
-      ) : (
-        <p className="lede">
-          Signed in as {user.name} ({user.email}). <a href="#/tour">Replay the 2-minute tour</a>.
-        </p>
-      )}
-
-      <section className="card">
-        <h3>Your AI key</h3>
-        <p>
-          The assistant, chat recording, thank-you drafts and background lookups run on <strong>your own</strong> key (your Yale class
-          Portkey key, or a Claude or OpenAI key), so the cost goes on your key, not anyone else's. The tracker, map and question bank work without a key.
-        </p>
-        {data.provider ? (
-          <p className="notice">
-            Using your {data.provider_label} key ending in <strong>{data.hint}</strong> (model {data.model}).{' '}
-            <button className="link" onClick={remove}>Remove key</button>
-          </p>
-        ) : data.using_site_key ? (
-          <p className="notice">This account uses the site's own key (model {data.model}). Add your own below to use that instead.</p>
-        ) : (
-          <p className="notice error">No key yet, so the AI features are off for your account.</p>
-        )}
-
-        <form onSubmit={save}>
-          <div className="chips">
-            {PROVIDERS.map((p) => (
-              <button type="button" key={p.id} className={`chip ${provider === p.id ? 'on' : ''}`} onClick={() => setProvider(p.id)}>
-                {p.label}
-              </button>
-            ))}
-          </div>
-          <label className="field">
-            {data.provider ? 'Replace with a new key' : 'API key'} <small>({chosen.hint})</small>
-            <input type="password" value={key} onChange={(e) => setKey(e.target.value)} autoComplete="off" spellCheck={false} />
-          </label>
-          {chosen.id === 'portkey' ? (
-            <p className="fine">
-              Use the Portkey API key from your AI class (MGT 409): the long string you pasted when you set up your coding agent, often saved as{' '}
-              <code>PORTKEY_API_KEY</code> in that project's <code>.env</code> file. The key is checked before saving, stored encrypted, and never
-              shown again.
-            </p>
-          ) : (
-            <p className="fine">
-              Create one at{' '}
-              <a href={chosen.where} target="_blank" rel="noreferrer">
-                {chosen.where.replace('https://', '')}
-              </a>
-              . A Claude.ai or ChatGPT subscription does not include API access; the API is billed separately by usage. The key is checked
-              before saving, stored encrypted, and never shown again.
-            </p>
-          )}
-          {message && <p className="notice error">{message}</p>}
-          <button className="primary" disabled={busy || key.trim().length < 20}>
-            {busy ? 'Checking the key…' : 'Save key'}
-          </button>
-        </form>
-      </section>
-
-      {onSignOut && <ReaderSettings />}
-
-      <AboutYou />
-
-      <StudyGuides />
-
-      <TemplatesCard />
-
-      <PracticeHistory />
-    </div>
-  )
+  return <SimpleSettings user={user} onSignOut={onSignOut} ai={data} reloadAi={reload} />
 }
 
-/** Preview: Settings as a few plain sections. What you need most is at the top; what you rarely change is folded away. */
+/** Settings as a few plain sections. What you need most is at the top; what you rarely change is folded away. */
 function SimpleSettings({ user, onSignOut, ai, reloadAi }: { user: User; onSignOut: () => void; ai: AiSettings; reloadAi: () => void }) {
   return (
     <div className="settings simple-settings">
