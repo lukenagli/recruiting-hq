@@ -49,19 +49,38 @@ RX_QUESTION = re.compile(
 # on their own they don't make a question restructuring)
 RX_GROUP = re.compile(r"^\s*(rx|restructuring)\b", re.I)
 RX_INTEREST = re.compile(r"\brx\b|restructur", re.I)
+# Leveraged Finance is the same: credit questions (high-yield bonds and leveraged loans, covenants, bond yield and price
+# math, call protection, spreads, debt capacity) come up in LevFin and debt capital markets interviews, not others.
+# "High yield" in passing ("assume the debt is high yield, so no amortization") doesn't make an LBO question LevFin.
+LF_QUESTION = re.compile(
+    r"lev ?fin|leveraged (finance|loans?)|high.yield (bonds?|debt|markets?|issu\w*|notes?)|\bHY (bonds?|markets?)\b|"
+    r"term loan b\b|\bTLB\b|covenant|incurrence|yield to (call|worst|maturity)|\bYT[CMW]\b|call protection|"
+    r"make.whole|\bOID\b|original issue discount|credit spreads?|debt capacity|syndicat|rating agenc|"
+    r"bonds? (is |are )?(trad\w+|priced) at", re.I)
+LF_GROUP = re.compile(r"^\s*(lev ?fin|leveraged finance|lf)\b", re.I)
+LF_INTEREST = re.compile(r"lev ?fin|leveraged finance|\bLF\b|\bDCM\b|debt capital markets", re.I)
+SPECIALTIES = {"rx": (RX_QUESTION, RX_GROUP, RX_INTEREST), "levfin": (LF_QUESTION, LF_GROUP, LF_INTEREST)}
+
+
+def specialty(q: dict) -> str:
+    """"rx" or "levfin" for a question only those interviews ask (by what it asks, or a non-behavioral one asked in
+    such an interview); "" for everything else."""
+    for name, (asks, group, _) in SPECIALTIES.items():
+        if asks.search(q.get("question") or "") or (group.match(q.get("group") or "") and q.get("category") != "Behavioral"):
+            return name
+    return ""
 
 
 def is_rx(q: dict) -> bool:
-    """A restructuring question: about distress or recoveries, or a non-behavioral one asked in an RX interview."""
-    return bool(RX_QUESTION.search(q.get("question") or "")) or (
-        bool(RX_GROUP.match(q.get("group") or "")) and q.get("category") != "Behavioral")
+    return specialty(q) == "rx"
 
 
-def recruiting_rx(uid: int, conn) -> bool:
-    """True when restructuring is one of the student's target groups, in their profile or at any of their banks."""
+def recruiting(uid: int, conn) -> set[str]:
+    """The specialties among the student's target groups, in their profile or at any of their banks."""
     groups = user_profile.get(uid).get("target_groups") or ""
     prefs = " ".join(r[0] or "" for r in conn.execute("SELECT prefs FROM my_banks WHERE user_id = ?", (uid,)))
-    return bool(RX_INTEREST.search(f"{groups} {prefs}"))
+    text = f"{groups} {prefs}"
+    return {name for name, (_, _, interest) in SPECIALTIES.items() if interest.search(text)}
 STAGE_DIFFICULTY = {"Coffee Chat": {"easy"}, "Round 1": {"easy", "medium"}, "Round 2": {"medium", "hard"}, "Superday": {"medium", "hard"}}
 SCORE = {"correct": 1.0, "partial": 0.5, "incorrect": 0.0}
 SOURCE_LABEL = {"live_1y": "Asked this year", "live_2y": "Asked this year (2Ys)", "master": "Asked in prior years",
@@ -205,7 +224,7 @@ def next_question(uid: int, categories: list[str], topics: list[str], stage: str
     seen_set = set(seen)
     with connect(read_only=True) as conn:
         strengths = _strengths(conn, uid)
-        wants_rx = recruiting_rx(uid, conn)
+        wanted = recruiting(uid, conn)  # restructuring or LevFin, if the student is recruiting for them
         where, params = [], []
         types = [t for c in categories for t in CATEGORIES[c]]
         where.append(f"qtype IN ({','.join('?' * len(types))})")
@@ -227,8 +246,8 @@ def next_question(uid: int, categories: list[str], topics: list[str], stage: str
         pool += [q for q in map(_guide_question, answer_library.guide_questions(uid))
                  if q["key"] not in seen_set and q["category"] in categories]
     pool = [q for q in pool if q["category"] != "Technical" or q["topic"] in topics]
-    if not wants_rx:  # restructuring questions only for someone recruiting for it
-        pool = [q for q in pool if not is_rx(q)]
+    # restructuring and LevFin questions only for someone recruiting for them
+    pool = [q for q in pool if specialty(q) in ("", *wanted)]
     pool = _fresh(uid, pool)
 
     def allowed(topic: str) -> set[str]:
