@@ -19,9 +19,10 @@ export default function Recorder(props: {
   const [position, setPosition] = useState('')
   const [alum, setAlum] = useState('')
   const [bank, setBank] = useState('')
+  const [group, setGroup] = useState('')
   const label = [
     who.trim(),
-    [position.trim(), bank.trim()].filter(Boolean).join(' at '),
+    [[position.trim(), group.trim()].filter(Boolean).join(', '), bank.trim()].filter(Boolean).join(' at '),
     alum === 'yes' ? 'SOM alum' : alum === 'no' ? 'not a SOM alum' : alum === '2y' ? 'current SOM 2Y' : '',
   ]
     .filter(Boolean)
@@ -174,11 +175,15 @@ export default function Recorder(props: {
               </label>
               <label className="field">
                 Their position
-                <input value={position} onChange={(e) => setPosition(e.target.value)} placeholder="e.g. Associate, C&R" />
+                <input value={position} onChange={(e) => setPosition(e.target.value)} placeholder="e.g. Associate" />
               </label>
               <label className="field">
                 Bank
                 <input value={bank} onChange={(e) => setBank(e.target.value)} placeholder="e.g. Citi" />
+              </label>
+              <label className="field">
+                Group
+                <input value={group} onChange={(e) => setGroup(e.target.value)} placeholder="e.g. Consumer & Retail" />
               </label>
               <label className="field">
                 SOM connection
