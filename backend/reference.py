@@ -3,7 +3,7 @@
 Sources:
 - shared with every account: the Finance Club technical session decks, and the question bank's own answer notes;
 - private to one account: material only that person may use (for example their own paid Breaking Into Wall
-  Street guides, or their own interview answers). A private passage is only ever shown to its owner.
+  Street guides). A private passage is only ever shown to its owner.
 
 Passages are stored in a SQLite full-text index (FTS5, with stemming) and found by keyword relevance (BM25).
 They are loaded with scripts/push_reference.py, which reads the files on the owner's computer and sends the text

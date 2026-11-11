@@ -4,9 +4,9 @@ Usage:  .venv\\Scripts\\python.exe scripts\\push_reference.py https://your-app.o
 
 - Shared with every account: the Finance Club decks (Recruiting Files/Finance Club Meetings) and the question
   bank's own answer notes.
-- Private to your account only: your Breaking Into Wall Street guides (a paid personal license, so never shared)
-  and your own interview answers, uploaded the same way as Settings > Study guides, so their numbered questions
-  join your practice. (Anyone else adds their own guides in Settings.)
+- Private to your account only: your Breaking Into Wall Street guides (a paid personal license, so never shared),
+  uploaded the same way as Settings > Study guides, so their numbered questions join your practice. Your own
+  Interview Answers.docx is never sent: it's your notes, not study material. (Anyone else adds their own guides in Settings.)
 Shared decks are sent as extracted text; your private guides are sent to your account and only their text is
 kept. Run it again any time a file changes.
 Needs an admin account on the site. Asks for your email and password there (never saved).
@@ -68,14 +68,10 @@ def club_sources() -> list[tuple[str, list[dict]]]:
 
 
 def private_files() -> list[Path]:
-    """Your own guides: the BIWS PDFs and your interview answers (OneDrive copy, else the project's copy)."""
-    biws, banks = folder("Breaking into Wall Street Guides"), folder("Interview Question Banks")
-    files = sorted(biws.glob("*.pdf")) if biws else []
-    for answers in [banks / "Interview Answers.docx" if banks else None, ROOT / "Recruiting Files" / "Interview Question Banks" / "Interview Answers.docx"]:
-        if answers and answers.exists() and read(answers) is not None:
-            files.append(answers)
-            break
-    return files
+    """Your own guides: the Breaking Into Wall Street PDFs. (Interview Answers.docx is the owner's own notes, not
+    study material: it is never loaded, and a copy loaded by an earlier version is removed below.)"""
+    biws = folder("Breaking into Wall Street Guides")
+    return sorted(biws.glob("*.pdf")) if biws else []
 
 
 def call(base: str, path: str, body: dict | None, token: str = "", method: str = "POST", raw: bytes | None = None, ctype: str = ""):
@@ -119,7 +115,7 @@ for name, passages in club:
     out = call(site, "/api/admin/reference", {"source": name, "passages": passages, "private": False}, token)
     print(f"  loaded {name}: {out['passages']} passages")
 # earlier versions of this script loaded your guides as passages only, under these names; replace them
-for legacy in [f"BIWS {f.stem} guide" for f in mine] + ["My interview answers"]:
+for legacy in [f"BIWS {f.stem} guide" for f in mine] + ["My interview answers", "Interview Answers"]:
     call(site, "/api/library/guides?source=" + urllib.parse.quote(legacy), None, token, method="DELETE")
 for f in mine:
     out = upload_file(site, token, f)
