@@ -138,6 +138,16 @@ QUESTION_START = re.compile(r"(?:^|\n)\s*(\d{1,3})\.\s+(?=[A-Z“\"(])")
 ASKING = re.compile(r"^(walk|how|what|why|when|where|which|who|would|could|should|can|do|does|is|are|if|explain|tell|"
                     r"describe|let'?s|say|suppose|assume|give|pitch|imagine|in|a |an |the )", re.I)
 IMPERATIVE = re.compile(r"^(walk|explain|tell|describe|pitch|give|let'?s|say|suppose|assume|imagine|if|a |an )", re.I)
+# A sentence that actually asks for something: a question, or an instruction ("Walk me through...", "Calculate...").
+ASKS = re.compile(r"\?|\b(walk (me|us) through|explain|calculate|compute|describe|tell me|show me|what (is|are|would|will|happens)|"
+                  r"how (do|does|would|will|much|many)|which|estimate|value the|find the)\b", re.I)
+
+
+def asks(question: str) -> bool:
+    """True when the text asks for something, rather than only setting up a scenario."""
+    return bool(ASKS.search(question or ""))
+
+
 BEHAVIORAL = re.compile(r"tell me about (yourself|a time)|walk me through your (resume|story|background)|why (investment )?banking|"
                         r"why (our|this) (bank|firm|group)|strength|weakness|leadership|teamwork|hire you|failure|"
                         r"where do you see yourself|why should we", re.I)
@@ -162,18 +172,27 @@ def extract_questions(pages: list[str]) -> list[dict]:
         block = text[m.end():marks[i + 1].start() if i + 1 < len(marks) else len(text)]
         block = re.sub(r"[ \t]+", " ", block).strip()
         q_end = block.find("?")
-        if 10 < q_end < 450:  # the question runs to its question mark
+        if 10 < q_end < 700:  # the question runs to its question mark
             question, answer = block[:q_end + 1], block[q_end + 1:]
-        else:  # some are instructions ("Walk me through ..."): the first sentence
-            cut = re.search(r"[.:]\s", block[:450])
-            if not cut:
-                continue
-            question, answer = block[:cut.end()], block[cut.end():]
+        else:
+            # An instruction ("Walk me through ...") or a scenario followed by one ("A company issues 500 shares... Then it
+            # pays a dividend... Walk me through both steps."): read sentence by sentence until one asks for something.
+            question, answer, at = "", "", 0
+            for cut in re.finditer(r"[.:]\s", block[:700]):
+                sentence = block[at:cut.end()]
+                at = cut.end()
+                if asks(sentence):
+                    question, answer = block[:at], block[at:]
+                    break
+            if not question:
+                continue  # it never says what to do: not a usable question
         question, answer = " ".join(question.split()), " ".join(answer.split())
         if not ASKING.match(question) or len(answer) < 80 or len(question) < 15:
             continue
         if not question.endswith("?") and not IMPERATIVE.match(question):
             continue  # a heading or intro sentence, not a question
+        if not asks(question):
+            continue
         out.append({"question": question, "answer": answer[:3500], "location": f"p. {page_at(m.start())}",
                     "category": "Behavioral" if BEHAVIORAL.search(question) else "Technical"})
     return out

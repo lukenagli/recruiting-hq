@@ -276,7 +276,8 @@ def next_question(uid: int, categories: list[str], topics: list[str], stage: str
             pool += [q for q in map(_tech_question, range(len(core_technicals.QUESTIONS))) if q["key"] not in seen_set]
     if guides is not None:  # the student's own guides: all of them, or the ones chosen
         pool += [q for q in map(_guide_question, answer_library.guide_questions(uid))
-                 if q["key"] not in seen_set and q["category"] in categories and (not guides or q["guide"] in guides)]
+                 if q["key"] not in seen_set and q["category"] in categories and (not guides or q["guide"] in guides)
+                 and answer_library.asks(q["question"])]  # older uploads kept some scenarios without their question
     pool = [q for q in pool if q["category"] != "Technical" or q["topic"] in topics]
     # restructuring and LevFin questions only for someone recruiting for them
     pool = [q for q in pool if specialty(q) in ("", *wanted)]
