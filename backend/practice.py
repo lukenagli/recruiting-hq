@@ -37,6 +37,31 @@ CATEGORIES = {  # what the user picks -> question types in the bank
 }
 TOPICS = ["Accounting", "Enterprise & Equity Value", "Valuation", "DCF", "Merger Math", "Diluted Share Count", "LBO", "Other"]
 STAGES = ["Coffee Chat", "Round 1", "Round 2", "Superday"]
+# Restructuring is a category of its own: RX interviews ask about distress, capital structures and recoveries, and no
+# other group's interview does. These questions are left out unless the student is recruiting for restructuring.
+# A question counts by what it asks (an RX group's "tell me about yourself" is an ordinary question), and the common
+# "why would a company with positive EBITDA go bankrupt?" is asked everywhere, so it stays.
+RX_QUESTION = re.compile(
+    r"restructur|chapter 1[15]\b|in-court|out-of-court|\brecover(y|ies)\b|fulcrum|debtor.in.possession|\bDIP\b|"
+    r"financing in bankruptcy|distress|equitiz|reinstat|debt wall|\b[12]L\b|plan of reorg|cram ?down|exchange offer|"
+    r"liability management|\bcreditors?\b", re.I)
+# (secured and unsecured debt, liens and covenants come up in Leveraged Finance and capital structure questions too, so
+# on their own they don't make a question restructuring)
+RX_GROUP = re.compile(r"^\s*(rx|restructuring)\b", re.I)
+RX_INTEREST = re.compile(r"\brx\b|restructur", re.I)
+
+
+def is_rx(q: dict) -> bool:
+    """A restructuring question: about distress or recoveries, or a non-behavioral one asked in an RX interview."""
+    return bool(RX_QUESTION.search(q.get("question") or "")) or (
+        bool(RX_GROUP.match(q.get("group") or "")) and q.get("category") != "Behavioral")
+
+
+def recruiting_rx(uid: int, conn) -> bool:
+    """True when restructuring is one of the student's target groups, in their profile or at any of their banks."""
+    groups = user_profile.get(uid).get("target_groups") or ""
+    prefs = " ".join(r[0] or "" for r in conn.execute("SELECT prefs FROM my_banks WHERE user_id = ?", (uid,)))
+    return bool(RX_INTEREST.search(f"{groups} {prefs}"))
 STAGE_DIFFICULTY = {"Coffee Chat": {"easy"}, "Round 1": {"easy", "medium"}, "Round 2": {"medium", "hard"}, "Superday": {"medium", "hard"}}
 SCORE = {"correct": 1.0, "partial": 0.5, "incorrect": 0.0}
 SOURCE_LABEL = {"live_1y": "Asked this year", "live_2y": "Asked this year (2Ys)", "master": "Asked in prior years",
@@ -180,6 +205,7 @@ def next_question(uid: int, categories: list[str], topics: list[str], stage: str
     seen_set = set(seen)
     with connect(read_only=True) as conn:
         strengths = _strengths(conn, uid)
+        wants_rx = recruiting_rx(uid, conn)
         where, params = [], []
         types = [t for c in categories for t in CATEGORIES[c]]
         where.append(f"qtype IN ({','.join('?' * len(types))})")
@@ -201,6 +227,8 @@ def next_question(uid: int, categories: list[str], topics: list[str], stage: str
         pool += [q for q in map(_guide_question, answer_library.guide_questions(uid))
                  if q["key"] not in seen_set and q["category"] in categories]
     pool = [q for q in pool if q["category"] != "Technical" or q["topic"] in topics]
+    if not wants_rx:  # restructuring questions only for someone recruiting for it
+        pool = [q for q in pool if not is_rx(q)]
     pool = _fresh(uid, pool)
 
     def allowed(topic: str) -> set[str]:
