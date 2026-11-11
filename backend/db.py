@@ -359,6 +359,91 @@ def connect(read_only: bool = False) -> sqlite3.Connection:
     return conn
 
 
+# The Finance Club calendar as of Meeting #10 (Nov 10, 2026). Applied once: from Nov 10 on it replaces what the
+# calendar had (the February BOOYa acceptance deadline, from the student's notes, is kept).
+CALENDAR_VERSION = "meeting-10"
+CALENDAR_FROM = "2026-11-10"
+CALENDAR_ITEMS = [
+    {
+        "date": "2026-11-10",
+        "title": "Club Meeting #10: Behavioral prep, Mock Madness and BOOYA",
+        "source": "Finance Club Meeting #10"
+    },
+    {
+        "date": "2026-11-10",
+        "end": "2026-11-23",
+        "title": "Invite-only dinners",
+        "detail": "Evercore Nov 10, Goldman Sachs Nov 16, Citi Nov 17, Bank of America Nov 19, Barclays Nov 23",
+        "source": "Finance Club Meeting #10"
+    },
+    {
+        "date": "2026-11-12",
+        "title": "Club Meeting: Behavioral session",
+        "source": "Finance Club Meeting #10"
+    },
+    {
+        "date": "2026-11-13",
+        "end": "2026-11-15",
+        "title": "Mock Madness",
+        "detail": "Three back-to-back mock interviews with 2Ys (blue, yellow and green sessions); not evaluative",
+        "source": "Finance Club Meeting #10"
+    },
+    {
+        "date": "2026-11-17",
+        "title": "Club Meeting #11",
+        "source": "Finance Club Meeting #10"
+    },
+    {
+        "date": "2026-11-18",
+        "title": "BOOYA sign-ups close",
+        "source": "Finance Club Meeting #10"
+    },
+    {
+        "date": "2026-11-22",
+        "end": "2026-11-28",
+        "title": "Thanksgiving break",
+        "source": "Finance Club Meeting #10"
+    },
+    {
+        "date": "2026-11-29",
+        "title": "Club Meeting: Technical Session #11",
+        "source": "Finance Club Meeting #10"
+    },
+    {
+        "date": "2026-11-30",
+        "end": "2026-12-08",
+        "title": "Super Week",
+        "detail": "First rounds Nov 30 to Dec 2 (MTS Dec 7), superdays Dec 2 to 4 (Barclays Dec 7)",
+        "source": "Finance Club Meeting #10"
+    },
+    {
+        "date": "2026-12-09",
+        "title": "BOOYA decisions released",
+        "source": "Finance Club Meeting #10"
+    },
+    {
+        "date": "2026-12-23",
+        "title": "Winter break begins",
+        "source": "Finance Club Meeting #10"
+    }
+]
+
+
+def _calendar_update(conn) -> None:
+    if not conn.execute("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'app_settings'").fetchone():
+        return
+    done = conn.execute("SELECT value FROM app_settings WHERE key = 'calendar_version'").fetchone()
+    if done and done[0] == CALENDAR_VERSION:
+        return
+    conn.execute("DELETE FROM calendar_items WHERE date >= ? AND source != 'My notes'", (CALENDAR_FROM,))
+    conn.execute("DELETE FROM calendar_items WHERE title IN ('Super Week', 'BOOYa ranking deadline', 'Interview invites expected (mid-November)')")
+    for item in CALENDAR_ITEMS:
+        conn.execute("INSERT INTO calendar_items (date, end, title, detail, source) VALUES (?, ?, ?, ?, ?)",
+                     (item["date"], item.get("end", ""), item["title"], item.get("detail", ""), item.get("source", "")))
+    conn.execute("INSERT INTO app_settings (key, value) VALUES ('calendar_version', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+                 (CALENDAR_VERSION,))
+
+
 def owner_id() -> int | None:
     """The site owner: the first account that signed up (it became the first admin). Only the owner runs on the
     course AI key; anyone else, admins included, uses their own key."""
@@ -418,10 +503,7 @@ def init_db() -> None:
                 for item in json.loads(config.RECRUITING_CALENDAR.read_text(encoding="utf-8")):
                     conn.execute("INSERT INTO calendar_items (date, end, title, detail, source) VALUES (?, ?, ?, ?, ?)",
                                  (item["date"], item.get("end", ""), item["title"], item.get("detail", ""), item.get("source", "")))
-            # Super Week is Dec 1 to 9, ending on BOOYa ranking day (the latest Finance Club deck; the first copy said Nov 30 to Dec 8)
-            conn.execute("UPDATE calendar_items SET date = '2026-12-01', end = '2026-12-09', "
-                         "detail = 'Superday interviews in early December, ending on BOOYa ranking day (Dec 9)' "
-                         "WHERE title = 'Super Week' AND date = '2026-11-30'")
+            _calendar_update(conn)
             # A scheduled thank-you the reader saw before Nov 6, 2026 says so plainly (it was a bare note)
             for row in conn.execute("SELECT id, send_line FROM thank_you_drafts WHERE send_line LIKE 'Scheduled from Outlook on %' "
                                     "AND body LIKE '%(seen by the reader; the email stays in Outlook)'").fetchall():

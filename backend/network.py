@@ -91,20 +91,25 @@ def _application(data: dict, bank: str) -> dict:
 
 # How far along a bank is, laid out like the Finance Club's season (kickoff deck): chats with 2Ys and
 # alumni in September, chats with bankers in your group in October, closed-list dinners in mid to late November,
-# then Super Week (first rounds and superdays within days of each other, Dec 1 to 9). Each step's share of the bar
+# then Super Week (first rounds and superdays within days of each other, Nov 30 to Dec 8). Each step's share of the bar
 # is its share of the season's days, so the short interview steps at the end take little room, and a line marks
 # today. Each step fills by what has happened at that bank, not by how many contacts: one dinner invite (a low-touch
 # bank) fills the steps before it, as the bank has decided you're through them.
 SEASON = [
     ("yale", "Yale network", "2026-09-01", "2026-09-30"),
-    ("group", "Group-specific chats", "2026-10-01", "2026-11-12"),
-    ("dinner", "Dinner", "2026-11-13", "2026-11-30"),
-    ("interviews", "Interviews", "2026-12-01", "2026-12-04"),
-    ("superday", "Superday", "2026-12-05", "2026-12-09"),
+    ("group", "Group-specific chats", "2026-10-01", "2026-11-09"),
+    ("dinner", "Dinner", "2026-11-10", "2026-11-29"),
+    ("interviews", "Interviews", "2026-11-30", "2026-12-02"),
+    ("superday", "Superday", "2026-12-03", "2026-12-08"),
 ]
-# The invite-only dinners on the Finance Club's calendar (Meeting #9 deck, Nov 3): before an invite is logged, the bank's
-# Dinner step shows the date so it's clear the dinner is still ahead.
-CLUB_DINNERS = {"Goldman Sachs": "2026-11-16", "Citi": "2026-11-17", "Barclays": "2026-11-18", "Bank of America": "2026-11-19"}
+# The bank dates on the Finance Club's calendar (Meeting #10 deck, Nov 10): before an invite or interview is logged, a
+# bank's Dinner, Interviews and Superday steps show the club's date with a "?", so it's clear what's still ahead.
+CLUB_DINNERS = {"Evercore": "2026-11-10", "Goldman Sachs": "2026-11-16", "Citi": "2026-11-17", "Bank of America": "2026-11-19",
+                "Barclays": "2026-11-23"}
+CLUB_FIRST_ROUNDS = {"Morgan Stanley": "2026-11-30", "Goldman Sachs": "2026-12-01", "J.P. Morgan": "2026-12-01", "PJT": "2026-12-01",
+                     "Citi": "2026-12-02", "MTS": "2026-12-07"}
+CLUB_SUPERDAYS = {"Guggenheim": "2026-11-12", "PJT": "2026-12-02", "RBC": "2026-12-03", "Bank of America": "2026-12-03",
+                  "Barclays": "2026-12-07"}
 MANUAL_STAGE = {"yale": 0, "bank": 1, "dinner": 2, "superday": 4, "offer": 4}  # a stage the student set by hand
 SCREEN = re.compile(r"hire ?vue|online (?:test|assessment)|assessment|screener|pymetrics|codility|video interview", re.I)
 FINAL = re.compile(r"superday|super day|final round", re.I)
@@ -135,6 +140,12 @@ def _day(iso: str) -> str:
     except ValueError:
         return ""
     return f"{d:%b} {d.day}"
+
+
+def _club(dates: dict[str, str], bank: str, today: str) -> str:
+    """The club calendar's date for this bank, still ahead, as "Dec 2?" (not logged yet)."""
+    day = dates.get(bank, "")
+    return f"{_day(day)}?" if day and day >= today else ""
 
 
 def _invite_label(title: str) -> str:
@@ -190,9 +201,9 @@ def _progress(data: dict, bank: str, app: dict) -> dict:
         f"{yale_n} chat{'s' if yale_n != 1 else ''}" if yale_n else "",
         (f"{group_n} in your group" if targets and group_n else f"{len(bankers)} banker{'s' if len(bankers) != 1 else ''}") if bankers or early else "",
         (_day(dinners[-1]["date"]) or "Invited") if dinners else
-        (f"{_day(CLUB_DINNERS[bank])}?" if bank in CLUB_DINNERS and CLUB_DINNERS[bank] >= today else ""),  # the club's date
-        _day(rounds[0]["date"]) if rounds else "",
-        _day(finals[0]["date"]) if finals else "",
+        _club(CLUB_DINNERS, bank, today),
+        _day(rounds[0]["date"]) if rounds else _club(CLUB_FIRST_ROUNDS, bank, today),
+        _day(finals[0]["date"]) if finals else _club(CLUB_SUPERDAYS, bank, today),
     ]
     total = sum((date.fromisoformat(e) - date.fromisoformat(s)).days + 1 for _, _, s, e in SEASON)
     steps = []
