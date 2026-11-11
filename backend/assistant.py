@@ -128,12 +128,6 @@ refused something, say what and why.
 """
 
 
-def _in_preview(uid: int) -> bool:
-    from . import accounts  # the switch for changes being tried out on preview accounts first
-
-    return accounts.in_preview_uid(uid)
-
-
 @dataclass
 class Deps:
     user_id: int
@@ -207,10 +201,6 @@ def tool(fn):
         try:
             return fn(ctx, *args, **kwargs)
         except sqlite3.IntegrityError as exc:
-            from . import accounts
-
-            if not accounts.in_preview_uid(ctx.deps.user_id):  # preview only until the project is graded
-                raise
             plain = {k: ([x.model_dump() if hasattr(x, "model_dump") else x for x in v] if isinstance(v, list) else
                          v.model_dump() if hasattr(v, "model_dump") else v) for k, v in kwargs.items()}  # kept as JSON in the run log
             return _refuse(ctx, fn.__name__, plain, f"That would duplicate something already in the tracker ({exc}). Look it up and "
@@ -509,12 +499,12 @@ def save_entry(
     conn = _write(ctx)
     try:
         with conn:
-            if entry_id is None and kind == "coffee_chat" and (status or "done") == "done" and not date and _in_preview(uid):
+            if entry_id is None and kind == "coffee_chat" and (status or "done") == "done" and not date:
                 return _refuse(ctx, "save_entry", args, "A coffee chat that happened needs the day it happened. Take it from the calendar or the emails arranging it; if "
                                   "only a thank-you shows it, it was the day the thank-you says (the day it was written, or the day before for "
                                   "\"yesterday\"). If nothing says when, don't mark it done: ask me which day it was.")
-            if entry_id is None and kind == "coffee_chat" and date and people and _in_preview(uid):
-                # Preview: one chat with a person is often seen twice (the calendar invite and a thank-you a day later):
+            if entry_id is None and kind == "coffee_chat" and date and people:
+                # One chat with a person is often seen twice (the calendar invite and a thank-you a day later):
                 # a chat with them a few days either side is that chat, so it is updated, not logged again.
                 names = [nz.clean(p).lower() for p in people if nz.clean(p)]
                 twin = conn.execute(
@@ -548,25 +538,24 @@ def save_entry(
                     return _refuse(ctx, "save_entry", args, f"No entry with id {entry_id}. Use lookup to find the right one.")
                 if row["bank"] != bank:
                     return _refuse(ctx, "save_entry", args, f"Entry {entry_id} belongs to {row['bank']}, not {bank}.")
-                # Preview: a chat that was cancelled or is being rescheduled didn't happen at its old time (an invite left
+                # A chat that was cancelled or is being rescheduled didn't happen at its old time (an invite left
                 # on the calendar says nothing), so it only becomes done with the new date it happened on.
-                if (status == "done" and (kind or row["kind"]) == "coffee_chat" and not date and not row["date"] and _in_preview(uid)):
+                if (status == "done" and (kind or row["kind"]) == "coffee_chat" and not date and not row["date"]):
                     return _refuse(ctx, "save_entry", args, "A coffee chat that happened needs the day it happened. Take it from the calendar or the emails arranging it; if "
                                   "only a thank-you shows it, it was the day the thank-you says (the day it was written, or the day before for "
                                   "\"yesterday\"). If nothing says when, don't mark it done: ask me which day it was.")
                 called_off = CALLED_OFF.search(row["date_note"] or "") and not (date_note and not CALLED_OFF.search(date_note))
-                if (status == "done" and row["status"] != "done" and called_off and date in ("", row["date"])
-                        and _in_preview(uid)):
+                if status == "done" and row["status"] != "done" and called_off and date in ("", row["date"]):
                     return _refuse(ctx, "save_entry", args,
                                    f"{row['title']} was called off at that time ({row['date_note']}). It can only be marked done with "
                                    "the new date it happened on, and a date note saying when.")
-                # Preview: a cancelled chat the student has closed out stays closed (re-reading the cancellation email must
+                # A cancelled chat the student has closed out stays closed (re-reading the cancellation email must
                 # not reopen it as a to-do); only a new date brings it back.
                 if (status in ("todo", "upcoming") and row["status"] == "done" and CALLED_OFF.search(row["title"] or "")
-                        and date in ("", row["date"]) and _in_preview(uid)):
+                        and date in ("", row["date"])):
                     return _refuse(ctx, "save_entry", args, f"{row['title']} is already closed out as cancelled; leave it as it is.")
-                if kind == "coffee_chat" and row["kind"] != "coffee_chat" and people and _in_preview(uid):
-                    # Preview: turning a request into the chat it led to keeps the person (a request to Michael never
+                if kind == "coffee_chat" and row["kind"] != "coffee_chat" and people:
+                    # Turning a request into the chat it led to keeps the person (a request to Michael never
                     # becomes a chat with Parth).
                     on_it = {r[0] for r in conn.execute(
                         "SELECT p.name FROM interaction_people ip JOIN people p ON p.id = ip.person_id WHERE ip.interaction_id = ?", (entry_id,))}
@@ -589,10 +578,10 @@ def save_entry(
                 if not person:
                     continue
                 pid = _person_id(conn, uid, person, bank)
-                elsewhere = None if pid is not None or not _in_preview(uid) else conn.execute(
+                elsewhere = None if pid is not None else conn.execute(
                     "SELECT bank FROM people WHERE user_id = ? AND name = ? COLLATE NOCASE AND bank != ?", (uid, person, bank)).fetchone()
                 if elsewhere:
-                    # Preview: someone named in a bank's update who is already at another bank (a 2Y who gave advice) is
+                    # Someone named in a bank's update who is already at another bank (a 2Y who gave advice) is
                     # not copied to this bank. save_person adds them here on purpose if they really are at both.
                     did += (f". {person} is in the tracker at {elsewhere['bank']}, so they weren't added at {bank}: mention "
                             f"them in the summary, or use save_person if they are at {bank} too")
@@ -701,10 +690,6 @@ def merge_people(ctx: RunContext[Deps], bank: str, keep_id: int, duplicate_id: i
     """
     args = dict(bank=bank, keep_id=keep_id, duplicate_id=duplicate_id, name=name)
     uid, bank = ctx.deps.user_id, nz.bank(bank)
-    from . import accounts  # the switch for changes being tried out on the admin's account first
-
-    if not accounts.in_preview_uid(uid):
-        return _refuse(ctx, "merge_people", args, "Merging people is not available yet.")
     if keep_id == duplicate_id:
         return _refuse(ctx, "merge_people", args, "keep_id and duplicate_id are the same person.")
     conn = _write(ctx)
@@ -758,10 +743,6 @@ def record_thank_you(ctx: RunContext[Deps], bank: str, entry_id: int, people: li
     """
     args = dict(bank=bank, entry_id=entry_id, people=people, date=date, scheduled=scheduled)
     uid, bank = ctx.deps.user_id, nz.bank(bank)
-    from . import accounts
-
-    if not accounts.in_preview_uid(uid):
-        return _refuse(ctx, "record_thank_you", args, "Not available yet.")
     if _bad_date(date) or not date:
         return _refuse(ctx, "record_thank_you", args, "date must be a real date as YYYY-MM-DD.")
     conn = _write(ctx)
@@ -822,8 +803,6 @@ def remove_entry(ctx: RunContext[Deps], entry_id: int, reason: str) -> dict:
     """
     args = dict(entry_id=entry_id, reason=reason)
     uid = ctx.deps.user_id
-    if not _in_preview(uid):
-        return _refuse(ctx, "remove_entry", args, "Entries can't be deleted; mark the entry instead.")
     from .tracker_edits import delete_entry
 
     conn = _write(ctx)
@@ -927,12 +906,11 @@ def save_application(
                 conn.execute("UPDATE my_banks SET status = 'offer' WHERE user_id = ? AND bank = ?", (uid, bank))
     finally:
         conn.close()
-    from . import accounts
 
-    # preview: say whether it was marked out or as an offer, so a reply can't claim one that wasn't made
+    # say whether it was marked out or as an offer, so a reply can't claim one that wasn't made
     marked = " and marked it out of process" if out_of_process else " and marked it as an offer" if offer else ""
     return _done(ctx, "save_application", args,
-                 {"ok": True, "did": f"Updated the {bank} application{marked if accounts.in_preview_uid(uid) else ''}"})
+                 {"ok": True, "did": f"Updated the {bank} application{marked}"})
 
 
 @tool
@@ -944,12 +922,9 @@ def remove_bank(ctx: RunContext[Deps], bank: str) -> dict:
     Args:
         bank: The bank to remove, exactly as the tracker names it.
     """
-    from . import accounts
 
     args = {"bank": bank}
     uid, bank = ctx.deps.user_id, " ".join(bank.split())
-    if not accounts.in_preview_uid(uid):
-        return _refuse(ctx, "remove_bank", args, "Removing a bank isn't available on this account.")
     conn = _write(ctx)
     try:
         with conn:
@@ -976,12 +951,9 @@ def merge_banks(ctx: RunContext[Deps], duplicate: str, into: str) -> dict:
         duplicate: The extra name, exactly as the tracker has it.
         into: The bank to keep, exactly as the tracker has it.
     """
-    from . import accounts
 
     args = {"duplicate": duplicate, "into": into}
     uid, dup, keep = ctx.deps.user_id, " ".join(duplicate.split()), " ".join(into.split())
-    if not accounts.in_preview_uid(uid):
-        return _refuse(ctx, "merge_banks", args, "Merging banks isn't available on this account.")
     if dup == keep:
         return _refuse(ctx, "merge_banks", args, "Those are the same bank.")
     conn = _write(ctx)

@@ -27,7 +27,7 @@ app = FastAPI(title="Recruiting HQ")
 
 @app.on_event("startup")
 async def start_filing_worker():
-    """Preview: the reader's filing runs in the background here (filing_queue), so a student needn't wait for it."""
+    """The reader's filing runs in the background here (filing_queue), so a student needn't wait for it."""
     import asyncio
 
     app.state.filing_worker = asyncio.create_task(filing_queue.worker())
@@ -63,11 +63,11 @@ def session(request: Request):
     return {"user": user, "context": schools.for_user(user["id"]), "needs_setup": not prof["onboarded_at"] or _setup_again(user, prof)}
 
 
-READER_STEP_ADDED = "2026-11-05"  # setup's Outlook step (preview) dates from here
+READER_STEP_ADDED = "2026-11-05"  # setup's Outlook step dates from here
 
 
 def _setup_again(user: dict, prof: dict) -> bool:
-    """Preview: someone who finished setup before it had the Outlook step, and hasn't connected the reader, goes through
+    """Someone who finished setup before it had the Outlook step, and hasn't connected the reader, goes through
     setup once more (their key, resume and banks are kept, so those steps are already filled in). Finishing it again
     stamps a new date, so it isn't shown twice."""
     if prof["onboarded_at"][:10] >= READER_STEP_ADDED:
@@ -293,24 +293,21 @@ def practice_progress(user: dict = Depends(current_user)):
 
 @app.get("/api/deals")
 def my_deals(user: dict = Depends(current_user)):
-    if accounts.in_preview(user):
-        capiq.ensure()  # each deal's Capital IQ link
+    capiq.ensure()  # each deal's Capital IQ link
     out = deals.all_deals(user["id"])
-    if accounts.in_preview(user):  # preview: each deal's reading list, and where each gathered document came from
-        reading, urls = deal_sources.reading(user["id"]), deal_sources.source_urls(user["id"])
-        for d in out["deals"]:
-            d["reading"] = reading.get(d["id"], [])
-            for doc in d["documents"]:
-                found = urls.get(doc["id"], {})
-                doc["source_url"], doc["source_page"] = found.get("url", ""), found.get("page", "")
+    # each deal's reading list, and where each gathered document came from
+    reading, urls = deal_sources.reading(user["id"]), deal_sources.source_urls(user["id"])
+    for d in out["deals"]:
+        d["reading"] = reading.get(d["id"], [])
+        for doc in d["documents"]:
+            found = urls.get(doc["id"], {})
+            doc["source_url"], doc["source_page"] = found.get("url", ""), found.get("page", "")
     return out
 
 
 @app.post("/api/deals/{deal_id}/gather")
 async def gather_deal_documents(deal_id: int, user: dict = Depends(current_user)):
-    """Preview: download the deal's filings from SEC EDGAR and the companies' own sites."""
-    if not accounts.in_preview(user):
-        raise HTTPException(status_code=404, detail="Not found")
+    """Download the deal's filings from SEC EDGAR and the companies' own sites."""
     return await deal_sources.gather(user["id"], ai_for(user), deal_id)
 
 
@@ -322,43 +319,28 @@ async def deal_documents_to_pdf(deal_id: int, user: dict = Depends(current_user)
 
 @app.post("/api/deals/{deal_id}/reading")
 async def find_deal_reading(deal_id: int, user: dict = Depends(current_user)):
-    """Preview: analysis pieces about the deal, each with a different angle."""
-    if not accounts.in_preview(user):
-        raise HTTPException(status_code=404, detail="Not found")
+    """Analysis pieces about the deal, each with a different angle."""
     return await deal_sources.find_reading(user["id"], ai_for(user), deal_id)
 
 
 @app.delete("/api/deals/reading/{item_id}")
 def remove_deal_reading(item_id: int, user: dict = Depends(current_user)):
-    if not accounts.in_preview(user):
-        raise HTTPException(status_code=404, detail="Not found")
     return deal_sources.remove_reading(user["id"], item_id)
 
 
-# Preview routes 404 for everyone else.
-def preview_user(user: dict = Depends(current_user)) -> dict:
-    if not accounts.in_preview(user):
-        raise HTTPException(status_code=404, detail="Not found")
-    return user
-
-
-def reader_user(user: dict = Depends(preview_user)) -> dict:
+def reader_user(user: dict = Depends(current_user)) -> dict:
     """Whose tracker the reader fills: the signed-in account's, or, while its owner runs a test scan, the test tracker's."""
     return test_scan.target(user)
 
 
 @app.get("/api/deals/recommended")
 def recommended_deals(bank: str = "", user: dict = Depends(current_user)):
-    """Preview: the last deals recommended for the student (or for one bank), by the Finance Club's criteria."""
-    if not accounts.in_preview(user):
-        raise HTTPException(status_code=404, detail="Not found")
+    """The last deals recommended for the student (or for one bank), by the Finance Club's criteria."""
     return deal_recs.saved(user["id"], bank)
 
 
 @app.post("/api/deals/recommended")
 async def find_recommended_deals(bank: str = "", user: dict = Depends(current_user)):
-    if not accounts.in_preview(user):
-        raise HTTPException(status_code=404, detail="Not found")
     return await deal_recs.recommend(user["id"], ai_for(user), bank)
 
 
@@ -374,8 +356,8 @@ def capiq_result(got: deal_recs.CapIQDeal, user: dict = Depends(current_user)):
 
 
 @app.get("/api/deals/{deal_id}/announced")
-def deal_announced(deal_id: int, user: dict = Depends(preview_user)):
-    """Preview: the announcement date found in the deal's timeline, to prefill the share price lookup."""
+def deal_announced(deal_id: int, user: dict = Depends(current_user)):
+    """The announcement date found in the deal's timeline, to prefill the share price lookup."""
     found = market.announced_on(deal_id, user["id"])
     return {"announced": found.isoformat() if found else ""}
 
@@ -385,8 +367,8 @@ class MarketRequest(BaseModel):
 
 
 @app.post("/api/deals/{deal_id}/market")
-def deal_market(deal_id: int, req: MarketRequest, user: dict = Depends(preview_user)):
-    """Preview: both companies' share price reaction, from Yahoo Finance (no AI)."""
+def deal_market(deal_id: int, req: MarketRequest, user: dict = Depends(current_user)):
+    """Both companies' share price reaction, from Yahoo Finance (no AI)."""
     return market.fill(user["id"], deal_id, req.announced)
 
 
@@ -395,18 +377,18 @@ class CapIQLink(BaseModel):
 
 
 @app.post("/api/deals/{deal_id}/capiq-link")
-def set_capiq_link(deal_id: int, req: CapIQLink, user: dict = Depends(preview_user)):
-    """Preview: the deal's Capital IQ transaction page, which the reader reads from the student's Chrome."""
+def set_capiq_link(deal_id: int, req: CapIQLink, user: dict = Depends(current_user)):
+    """The deal's Capital IQ transaction page, which the reader reads from the student's Chrome."""
     return capiq.set_link(user["id"], deal_id, req.url)
 
 
 @app.post("/api/deals/{deal_id}/capiq-want")
-def want_capiq(deal_id: int, user: dict = Depends(preview_user)):
+def want_capiq(deal_id: int, user: dict = Depends(current_user)):
     return capiq.want(user["id"], deal_id)
 
 
 @app.get("/api/capiq/jobs")
-def capiq_jobs(user: dict = Depends(preview_user)):
+def capiq_jobs(user: dict = Depends(current_user)):
     """For the reader: the deals whose Capital IQ pages to fetch."""
     return capiq.jobs(user["id"])
 
@@ -423,7 +405,7 @@ class CapIQPages(BaseModel):
 
 
 @app.post("/api/capiq/pages")
-def capiq_pages(req: CapIQPages, user: dict = Depends(preview_user)):
+def capiq_pages(req: CapIQPages, user: dict = Depends(current_user)):
     """For the reader: the Capital IQ pages fetched so far for one deal. Answers with the next pages to fetch, or, once it
     has them all, saves each as a PDF and reads them into the pitch."""
     if len(req.pages) > 12 or sum(len(p.html) for p in req.pages) > 15_000_000 or \
@@ -477,12 +459,10 @@ def remove_ai_key(user: dict = Depends(current_user)):
 @app.post("/api/deals/{deal_id}/documents")
 async def upload_deal_document(deal_id: int, file: UploadFile, kind: str = Form("Other"), user: dict = Depends(current_user)):
     data = await file.read()
-    if kind == deal_docs.CAPIQ_KIND and not accounts.in_preview(user):
-        kind = "Other"
     out = deal_docs.upload(user["id"], deal_id, file.filename or "document.pdf", data, kind)
     if not out["ok"]:
         raise HTTPException(status_code=400, detail=out["reason"])
-    if kind == deal_docs.CAPIQ_KIND:  # preview: a CapIQ page the student saved as a PDF, linked to the deal's CapIQ page
+    if kind == deal_docs.CAPIQ_KIND:  # a CapIQ page the student saved as a PDF, linked to the deal's CapIQ page
         capiq.attach_upload(user["id"], deal_id, out["id"])
     return out
 
@@ -643,7 +623,7 @@ def ai_for(user: dict) -> llm.Chosen:
         raise HTTPException(status_code=428, detail=str(err))
     # The daily allowance only guards the course key (the owner). Someone on their own key uses
     # what they need, billed to them.
-    if chosen.provider == "course" or not accounts.in_preview_uid(user["id"]):
+    if chosen.provider == "course":
         budget.check(user["id"])
     return chosen
 
@@ -656,8 +636,8 @@ class ChatNotes(BaseModel):
 
 
 @app.post("/api/chat-notes/polish")
-async def polish_chat_notes(req: ChatNotes, user: dict = Depends(preview_user)):
-    """Preview: dictated coffee chat notes, tidied into short bullets under a few headings (nothing added)."""
+async def polish_chat_notes(req: ChatNotes, user: dict = Depends(current_user)):
+    """Dictated coffee chat notes, tidied into short bullets under a few headings (nothing added)."""
     chosen = ai_for(user)
     try:
         return {"notes": await chat_notes.polish(user["id"], chosen, req.notes, req.name[:120], req.bank[:80], req.group[:80], req.title[:80])}
@@ -698,7 +678,7 @@ async def assistant_file(file: UploadFile, message: str = Form(""), history: str
     chosen = ai_for(user)
     name = (file.filename or "file").strip()
     try:
-        text, binary = attachments.read(name, await file.read(), outlook=accounts.in_preview(user))
+        text, binary = attachments.read(name, await file.read(), outlook=True)
     except attachments.AttachmentError as err:
         raise HTTPException(status_code=400, detail=str(err))
     try:
@@ -713,9 +693,7 @@ async def assistant_file(file: UploadFile, message: str = Form(""), history: str
 
 @app.post("/api/catch-up")
 async def catch_up_bank(req: catch_up.BankCatchUp, user: dict = Depends(current_user)):
-    """Preview: one bank of a student's past recruiting, from the catch-up form, filed by the assistant."""
-    if not accounts.in_preview(user):
-        raise HTTPException(status_code=404, detail="Not found")
+    """One bank of a student's past recruiting, from the catch-up form, filed by the assistant."""
     if not any(p.name.strip() for p in req.people) and not (req.emails + req.notes + req.sheet_rows).strip() and not req.applied:
         return {"reply": "Nothing to file for this bank.", "steps": [], "usage": None, "run_id": None, "changed": False}
     chosen = ai_for(user)
@@ -725,9 +703,7 @@ async def catch_up_bank(req: catch_up.BankCatchUp, user: dict = Depends(current_
 
 @app.post("/api/catch-up/sheet")
 async def catch_up_sheet(file: UploadFile, user: dict = Depends(current_user)):
-    """Preview: a student's own networking spreadsheet, split into one block of rows per bank (nothing is saved yet)."""
-    if not accounts.in_preview(user):
-        raise HTTPException(status_code=404, detail="Not found")
+    """A student's own networking spreadsheet, split into one block of rows per bank (nothing is saved yet)."""
     try:
         return catch_up.split_sheet(file.filename or "sheet", await file.read())
     except catch_up.SheetError as err:
@@ -742,14 +718,14 @@ class TrackerEdits(BaseModel):
 
 
 @app.post("/api/tracker/edits")
-def edit_tracker(req: TrackerEdits, user: dict = Depends(preview_user)):
-    """Preview: direct corrections to the student's own tracker, without the AI (undone like an assistant run)."""
+def edit_tracker(req: TrackerEdits, user: dict = Depends(current_user)):
+    """Direct corrections to the student's own tracker, without the AI (undone like an assistant run)."""
     return tracker_edits.apply(user["id"], req.ops, req.note)
 
 
 @app.post("/api/todos/{entry_id}/done")
-def todo_done(entry_id: int, user: dict = Depends(preview_user)):
-    """Preview: tick a to-do off on the home page (no AI needed)."""
+def todo_done(entry_id: int, user: dict = Depends(current_user)):
+    """Tick a to-do off on the home page (no AI needed)."""
     with connect() as conn:
         n = conn.execute("UPDATE interactions SET status = 'done' WHERE id = ? AND user_id = ? AND status = 'todo'",
                          (entry_id, user["id"])).rowcount
@@ -761,7 +737,7 @@ class RereadRequest(BaseModel):
 
 
 @app.post("/api/sync/reread")
-def sync_reread(req: RereadRequest, user: dict = Depends(preview_user)):
+def sync_reread(req: RereadRequest, user: dict = Depends(current_user)):
     if not re.fullmatch(r"20\d\d-\d\d-\d\d", req.since):
         raise HTTPException(status_code=400, detail="since must be YYYY-MM-DD")
     return {"folders": sync.reread_from(user["id"], req.since)}
@@ -780,7 +756,7 @@ def sync_folders_record(req: FolderRecord, user: dict = Depends(reader_user)):
 
 
 @app.get("/api/sync/folders")
-def sync_folders(user: dict = Depends(preview_user)):
+def sync_folders(user: dict = Depends(current_user)):
     """Each Outlook folder: read in full, screened or skipped on the next refresh, and why."""
     return {"folders": [f for f in sync.folder_plan(user["id"]) if not f.get("mailbox")]}
 
@@ -809,7 +785,7 @@ class FolderMode(BaseModel):
 
 
 @app.post("/api/sync/folders/mode")
-def sync_folder_mode(req: FolderMode, user: dict = Depends(preview_user)):
+def sync_folder_mode(req: FolderMode, user: dict = Depends(current_user)):
     try:
         return sync.set_folder_mode(user["id"], req.folder, req.mode)
     except ValueError as err:
@@ -822,7 +798,7 @@ class FolderReread(BaseModel):
 
 
 @app.post("/api/sync/folders/reread")
-def sync_folder_reread(req: FolderReread, user: dict = Depends(preview_user)):
+def sync_folder_reread(req: FolderReread, user: dict = Depends(current_user)):
     if not re.fullmatch(r"20\d\d-\d\d-\d\d", req.since):
         raise HTTPException(status_code=400, detail="since must be YYYY-MM-DD")
     try:
@@ -840,12 +816,12 @@ def sync_state(user: dict = Depends(reader_user)):
             "outlook_only": True, "start_from": sync.first_start(user["id"]), "combine": True,
             "calendar_from": sync.calendar_from(user["id"]), "test_scan": bool(user.get("test_of")), "queue": True,
             "filing_busy": filing_queue.status(user["id"])["busy"],
-            # Preview: before a first scan the student says which folders hold recruiting email (folder_setup)
+            # before a first scan the student says which folders hold recruiting email (folder_setup)
             "folders_confirmed": folder_setup.confirmed(user["id"]), "folders_known": len([f for f in sync.folder_plan(user["id"]) if not f.get("mailbox")])}
 
 
 @app.get("/api/reader/questions")
-def reader_questions(user: dict = Depends(preview_user)):
+def reader_questions(user: dict = Depends(current_user)):
     """What the reader couldn't file without you (which bank a chat was with, say)."""
     return sync.questions(user["id"])
 
@@ -855,7 +831,7 @@ class QuestionAnswer(BaseModel):
 
 
 @app.post("/api/reader/questions/{qid}/answer")
-async def reader_question_answer(qid: int, req: QuestionAnswer, user: dict = Depends(preview_user)):
+async def reader_question_answer(qid: int, req: QuestionAnswer, user: dict = Depends(current_user)):
     """The student answers one of the reader's questions right on the home page: the assistant files it (as if they'd
     typed it in the update box) and the question is closed."""
     q = next((q for q in sync.questions(user["id"]) if q["id"] == qid), None)
@@ -868,24 +844,24 @@ async def reader_question_answer(qid: int, req: QuestionAnswer, user: dict = Dep
 
 
 @app.post("/api/reader/questions/{qid}/done")
-def reader_question_done(qid: int, user: dict = Depends(preview_user)):
+def reader_question_done(qid: int, user: dict = Depends(current_user)):
     return sync.question_done(user["id"], qid)
 
 
 @app.post("/api/sync/key")
-def sync_key(user: dict = Depends(preview_user)):
+def sync_key(user: dict = Depends(current_user)):
     """A sign-in key for the reader extension, shown once; making a new one turns the old one off."""
     return {"key": sync.new_key(user)}
 
 
 @app.post("/api/sync/key/revoke")
-def sync_key_revoke(user: dict = Depends(preview_user)):
+def sync_key_revoke(user: dict = Depends(current_user)):
     sync.revoke(user["id"])
     return {"ok": True}
 
 
 @app.post("/api/sync/config")
-def sync_config(config: sync.ReaderConfig, user: dict = Depends(preview_user)):
+def sync_config(config: sync.ReaderConfig, user: dict = Depends(current_user)):
     """What the reader reads (Slack channels, WhatsApp groups), kept in the account rather than in the extension's code."""
     return sync.set_config(user["id"], config)
 
@@ -895,7 +871,7 @@ class ThankYouEmails(BaseModel):
 
 
 @app.post("/api/sync/thank-yous")
-def sync_thank_yous(req: ThankYouEmails, user: dict = Depends(preview_user)):
+def sync_thank_yous(req: ThankYouEmails, user: dict = Depends(current_user)):
     """For the reader's one-time catch-up: thank-you emails the student already sent, each filed on its person (no AI)."""
     if len(req.emails) > 40 or sum(len(e.text) for e in req.emails) > 4_000_000:
         raise HTTPException(status_code=400, detail="Send at most 40 emails at a time.")
@@ -967,13 +943,13 @@ def sync_filing(user: dict = Depends(reader_user)):
 
 
 @app.get("/api/reader/review")
-def reader_review(user: dict = Depends(preview_user)):
+def reader_review(user: dict = Depends(current_user)):
     """After your first scan: what it found, bank by bank, to look over once."""
     return scan_cleanup.review(user["id"])
 
 
 @app.post("/api/reader/review/done")
-def reader_review_done(user: dict = Depends(preview_user)):
+def reader_review_done(user: dict = Depends(current_user)):
     return scan_cleanup.review_done(user["id"])
 
 
@@ -1037,9 +1013,7 @@ class RecordRequest(BaseModel):
 
 @app.post("/api/thank-you/record")
 def record_thank_you(req: RecordRequest, user: dict = Depends(current_user)):
-    """Preview: keep a thank-you the student sent outside the app, so it shows on the contact."""
-    if not accounts.in_preview(user):
-        raise HTTPException(status_code=404, detail="Not found")
+    """Keep a thank-you the student sent outside the app, so it shows on the contact."""
     return thank_you.record_sent(user["id"], req.interaction_id, req.person_id, req.body)
 
 
@@ -1090,7 +1064,7 @@ def list_cover_letters(user: dict = Depends(current_user)):
 @app.get("/api/cover-letters/{bank}")
 def get_cover_letter(bank: str, user: dict = Depends(current_user)):
     out = cover_letters.get(user["id"], bank)
-    if out["exists"] and accounts.in_preview(user):  # preview: say when it can't be kept on one page
+    if out["exists"]:  # say when it can't be kept on one page
         out["warnings"] = out["warnings"] + cover_letters.page_warning(user["id"], bank)
     return out
 
@@ -1116,9 +1090,7 @@ class SubmittedRequest(BaseModel):
 
 @app.post("/api/cover-letters/{bank}/submitted")
 def cover_letter_submitted(bank: str, req: SubmittedRequest, user: dict = Depends(current_user)):
-    """Preview: mark a letter as sent, so drafts for the same group start from it."""
-    if not accounts.in_preview(user):
-        raise HTTPException(status_code=404, detail="Not found")
+    """Mark a letter as sent, so drafts for the same group start from it."""
     return cover_letters.mark_submitted(user["id"], bank, req.submitted)
 
 
@@ -1269,12 +1241,7 @@ async def model_check(user: dict = Depends(admin_user)):
 def admin_overview(user: dict = Depends(admin_user)):
     return {"users": shared.users(), "bank_defaults": shared.bank_defaults(), "club_chats": shared.club_chats(),
             "chat_directory": shared.chat_directory(), "slack_team": shared.slack_team(), "feed": shared.feed(limit=80),
-            "early_access": sorted(accounts.early_access()),
             "groups": schools.options(), "domains": banks_info.DOMAINS}
-
-
-class EarlyAccess(BaseModel):
-    emails: list[str]
 
 
 @app.get("/api/admin/test-scan")
@@ -1328,12 +1295,6 @@ def filing_messages(n: int = 3, user: dict = Depends(admin_user)):
 def test_scan_compare(user: dict = Depends(admin_user)):
     """What the test scan found against your own tracker: who and what it missed, and what it added."""
     return test_scan.compare(user)
-
-
-@app.post("/api/admin/early-access")
-def set_early_access(req: EarlyAccess, user: dict = Depends(admin_user)):
-    """Who sees the preview besides the admin (friends trying it before it ships to everyone)."""
-    return accounts.set_early_access(req.emails)
 
 
 class AdminRights(BaseModel):

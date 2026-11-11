@@ -89,21 +89,7 @@ def _application(data: dict, bank: str) -> dict:
     }
 
 
-# How MBA banking recruiting runs at Yale SOM: an unofficial round with Yale alumni and 2Ys, who decide
-# who to push; then the bank and group itself; then invite-only dinners; then Super Week; then offers.
-STAGES = [("yale", "Yale network"), ("bank", "Bank and group"), ("dinner", "Invite-only dinners"),
-          ("superday", "Superday"), ("offer", "Offer")]
-STAGE_KEYS = [k for k, _ in STAGES]
-
-
-def _stage(people: list[dict], app: dict) -> tuple[str, list[dict]]:
-    """The user's stage at a bank: whatever they have set, otherwise "yale" once they have any contact there."""
-    current = app["stage"] if app["stage"] in STAGE_KEYS else ("yale" if people else "")
-    reached = STAGE_KEYS.index(current) if current else -1
-    return current, [{"key": k, "label": label, "done": i <= reached} for i, (k, label) in enumerate(STAGES)]
-
-
-# Preview: how far along a bank is, laid out like the Finance Club's season (kickoff deck): chats with 2Ys and
+# How far along a bank is, laid out like the Finance Club's season (kickoff deck): chats with 2Ys and
 # alumni in September, chats with bankers in your group in October, closed-list dinners in mid to late November,
 # then Super Week (first rounds and superdays within days of each other, Dec 1 to 9). Each step's share of the bar
 # is its share of the season's days, so the short interview steps at the end take little room, and a line marks
@@ -241,10 +227,8 @@ def _bank_summary(data: dict, bank: str, today: str) -> dict:
     app = _application(data, bank)
     upcoming = [i for i in interactions if i["status"] == "upcoming" and i["date"] >= today]
     dated = [i["date"] for i in interactions if i["status"] == "done" and i["date"]]
-    current, stage = _stage(people, app)
     yale = [p for p in people if p["alum"] in ("yes", "student")]
     return {
-        "current_stage": current,
         "yale_contacts": len(yale),
         "yale_spoken": sum(p["status"] in ("spoke", "met") for p in yale),
         "bank": bank,
@@ -256,9 +240,8 @@ def _bank_summary(data: dict, bank: str, today: str) -> dict:
         "last_touch": max(dated) if dated else "",
         "next_up": {"title": upcoming[0]["title"], "date": upcoming[0]["date"]} if upcoming else None,
         "application": app,
-        "stage": stage,
         "questions_on_file": data["question_counts"].get(bank, 0),
-        **({"progress": _progress(data, bank, app)} if data.get("preview") else {}),
+        "progress": _progress(data, bank, app),
     }
 
 
@@ -272,12 +255,10 @@ def bank_list(uid: int) -> list[dict]:
     today = date.today().isoformat()
     with connect(read_only=True) as conn:
         data = _load(conn, uid)
-        data["preview"], data["school"] = _preview(uid), schools.for_user(uid)["short"]
+        data["school"] = schools.for_user(uid)["short"]
     rows = [_bank_summary(data, b, today) for b in _bank_names(data)]
-    furthest = lambda r: STAGE_KEYS.index(r["current_stage"]) if r["current_stage"] else -1
-    if data["preview"]:  # furthest along first, by what the bank has done back
-        furthest = lambda r: r["progress"]["score"]  # noqa: E731
-    return sorted(rows, key=lambda r: (r["application"]["status"] == "out", -furthest(r), -r["people"], r["bank"]))
+    # furthest along first, by what the bank has done back
+    return sorted(rows, key=lambda r: (r["application"]["status"] == "out", -r["progress"]["score"], -r["people"], r["bank"]))
 
 
 def _initials(name: str) -> str:
@@ -294,12 +275,6 @@ def _short(title: str) -> str:
     return _initials(title)
 
 
-def _preview(uid: int) -> bool:
-    from . import accounts  # changes being tried out on preview accounts first
-
-    return accounts.in_preview_uid(uid)
-
-
 def timeline(uid: int) -> dict:
     """Every bank as a row of touchpoints on one shared calendar: one-on-one chats (with bankers or with Yale 2Ys),
     events where the user met several people at once, interviews, next steps, and people reached out to but not met.
@@ -309,7 +284,6 @@ def timeline(uid: int) -> dict:
     with connect(read_only=True) as conn:
         data = _load(conn, uid)
     people = {p["id"]: p for p in data["people"]}
-    preview = _preview(uid)
     data["school"] = schools.for_user(uid)["short"]
     yale = lambda p: p["alum"] == "student" or p["origin"] == "classmate"
     rows = []
@@ -363,7 +337,7 @@ def timeline(uid: int) -> dict:
             "interviews": [{"title": m["title"], "date": m["date"], "status": m["status"]} for m in marks if m["kind"] == "interview"],
             "invites": [m["title"] for m in marks if m.get("invite_only")],
             "chat_dates": sorted(m["date"] for m in marks if m["kind"] == "chat" and m["status"] == "done" and m["date"]),
-            **({"progress": _progress(data, bank, app)} if preview else {}),
+            "progress": _progress(data, bank, app),
         })
     rows.sort(key=lambda r: (r["out"], not r["marks"], -int((r["next"] or {}).get("date", "0000-00-00").replace("-", "") or 0) * 0, r["last"] == "", ""))
     rows.sort(key=lambda r: (r["out"], not r["marks"], -(int(r["last"].replace("-", "")) if r["last"] else 0)))
@@ -466,7 +440,7 @@ def home(uid: int) -> dict:
             ({"id": i["id"], "bank": i["bank"], "title": i["title"], "date": i["date"] or ""} for i in data["interactions"] if i["status"] == "todo"),
             key=lambda t: t["date"] or "9999"),
         "deadlines": sorted(deadlines, key=lambda d: d["date"]),
-        "thanks_due": _thanks_due(uid, data, names),  # preview home
+        "thanks_due": _thanks_due(uid, data, names),
         "totals": {
             "banks": len(_bank_names(data)),
             "people": len(data["people"]),

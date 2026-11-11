@@ -80,10 +80,8 @@ def _op(conn, uid: int, op: dict) -> str:
     if kind in ("update_entry", "update_person"):
         fields, table = (ENTRY_FIELDS, "interactions") if kind == "update_entry" else (PERSON_FIELDS, "people")
         row = _entry(conn, uid, int(op["id"])) if kind == "update_entry" else _person(conn, uid, int(op["id"]))
-        from . import accounts  # the preview switch
-
-        notes_clean = _keep_lines if accounts.in_preview_uid(uid) else nz.clean_text  # preview: bullet indents kept
-        changes = {k: (notes_clean(v) if k in ("summary", "notes") else nz.clean(v)) for k, v in op.get("fields", {}).items()}
+        # notes keep their lines and bullet indents
+        changes = {k: (_keep_lines(v) if k in ("summary", "notes") else nz.clean(v)) for k, v in op.get("fields", {}).items()}
         bad = set(changes) - fields
         if bad:
             raise EditError(f"Can't change {sorted(bad)} on {table}.")
@@ -181,11 +179,7 @@ def add_chat(conn, uid: int, op: dict) -> str:
     except ValueError:
         raise EditError("A coffee chat needs the date you spoke (YYYY-MM-DD).") from None
     alum = {"yes": "yes", "no": "no"}.get(nz.clean(op.get("alum")).lower(), "")
-    group, notes = nz.clean(op.get("group")), nz.clean(op.get("notes"))
-    from . import accounts  # the preview switch
-
-    if accounts.in_preview_uid(uid):  # preview: bullets and headings keep their lines and indents
-        notes = _keep_lines(op.get("notes"))
+    group, notes = nz.clean(op.get("group")), _keep_lines(op.get("notes"))  # notes keep their bullets and indents
     title = nz.clean(op.get("title"))[:80]
     if title.lower().startswith("2y"):
         title = "2Y"  # a second-year student, as the tracker writes it

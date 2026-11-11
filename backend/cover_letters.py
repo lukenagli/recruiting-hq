@@ -21,7 +21,7 @@ from pydantic_ai.usage import UsageLimits
 
 from . import banks as bank_info
 from . import profile as profiles
-from . import accounts, letter_layout, schools, shared, templates
+from . import letter_layout, schools, shared, templates
 from .db import connect, init_db
 from .llm import Chosen, usage_dict
 
@@ -36,11 +36,7 @@ OTHER_BANK_ALIASES = {
     "Greenhill": ["Greenhill"], "Piper Sandler": ["Piper Sandler"],
 }
 
-WRITE = """\
-You write investment banking internship cover letters for students, following the shape of the student's \
-own template exactly, built from what the student actually learned in their own conversations.
-"""
-# Preview: every letter is the student's own letter (or one they already submitted for the same group), changed as
+# Every letter is the student's own letter (or one they already submitted for the same group), changed as
 # little as possible. Cover letters are a box to check: their own tone, wording and flow, the right names, and the
 # group folded into their sentences the way second-years' sample letters do, never details from the conversations.
 TAILOR = """\
@@ -93,49 +89,10 @@ about the bank beyond general qualities like its culture or the breadth of its p
 - Use a [[NEED: ...]] marker only for something the letter truly cannot do without (for example the group, when none is given).
 """
 
-INSTRUCTIONS = """
-Paragraph 1, introduction: start "My name is <name>, and I am <school line> writing to express my interest in \
-the <role>" (the role is given below) and name the group, bank and office when given. Then say why this \
-bank, drawn from the student's conversations: name the people they have spoken with (only names from the lists \
-provided, spelled exactly as given, bankers first, at most five) and the specific things those conversations \
-showed them about the bank and what it values. Use the talking points and process facts too.
-Paragraphs 2 and 3, body: the student's most relevant experience, with specific achievements taken only from \
-their resume and notes, connected to what this bank and group care about (from the conversations).
-
-Tailoring: if the bank runs a generalist program, tailor the letter to the generalist program (building an \
-investment banking skill set across a variety of industries) rather than to one group. Otherwise tailor it to \
-the group the student is recruiting for: why that group, and why their experience fits it.
-Paragraph 4, closing: in two or three sentences, thank the team members met so far, state excitement about \
-beginning an investment banking career at this bank, and say they look forward to discussing their candidacy.
-
-Use exactly the number of paragraphs given under "Shape" below. With four: (1) introduction, the people \
-spoken with and why this bank, (2) the student's main role and its relevant work, (3) other relevant work and \
-earlier experience, ending with how it prepares them for the role, (4) the short closing. With another number, \
-mirror the template's paragraph-by-paragraph structure.
-
-Rules:
-- Never make anything up. Every fact, number, name, takeaway, course and club must come from the material given.
-- When a strong letter needs something the material does not have (for example a takeaway from a conversation \
-with no notes, why this group, a deal or a detail about the bank), do not fill it in. Write a short marker in \
-double square brackets saying what is needed, e.g. [[NEED: one thing you took away from talking with Jordan Lee]]. \
-Use as many markers as there are real gaps, and no other brackets.
-- Mention no bank other than the one applied to, and no people from other banks. Do not describe the people \
-you name (their background, past employers, why they chose their group): say what they showed you about this bank.
-- Leave out recruiting logistics (screeners, how many chats, deadlines, who runs recruiting). A cover letter \
-is about why this bank and why the student fits.
-- Investment banking is the goal. Never suggest it is a step toward private equity, business school or anything else.
-- Follow any rules in the student's own notes (for example words or punctuation to avoid).
-- Plain text paragraphs only: no greeting, no sign-off, no headings.
-- Stay within the word range given under "Shape", so the letter fits on one page.
-"""
-WRITE_RULE = "- If an example letter is given, match its voice and level of detail, but write fresh text for this bank.\n"
-
-
 class Letter(BaseModel):
     paragraphs: list[str] = Field(description="The letter's body paragraphs in order, exactly as many as the Shape asks for.")
 
 
-agent = Agent(output_type=Letter, instructions=WRITE + INSTRUCTIONS + WRITE_RULE, name="cover_letter_writer")
 tailor_agent = Agent(output_type=Letter, instructions=TAILOR, name="cover_letter_writer")
 
 
@@ -221,58 +178,33 @@ def _context(conn, uid: int, bank: str) -> dict:
             "school": schools.for_user(uid, conn)}
 
 
-def _prompt(ctx: dict, prof: dict, bank: str, tailor: bool = False, ref: dict | None = None) -> str:
-    def lines(people):
-        return "\n".join(f"- {p['name']} ({', '.join(x for x in (p['title'], p['grp']) if x) or 'role not recorded'}): "
-                         f"{p['said'] or 'no notes recorded'}" for people_ in [people] for p in people_) or "- (none)"
+def _prompt(ctx: dict, prof: dict, bank: str, ref: dict | None = None) -> str:
     sc = ctx["school"]
     is_student = lambda p: p["title"] in ("2Y", "Student", "student") or p.get("alum") == "student"
     bankers = [p for p in ctx["spoken"] if not is_student(p)]
     students = [p for p in ctx["spoken"] if is_student(p)]
-    spoken = f"Bankers:\n{lines(bankers)}\n{sc['peers']} going to this bank (name them only if there are few bankers):\n{lines(students)}"
-    n, lo, hi = shape(_starting(prof, ref))
-    if tailor:  # names and roles only: what was said in the chats stays out of the letter
-        names = lambda ps: "\n".join(f"- {p['name']} ({', '.join(x for x in (p['title'], p['grp']) if x) or 'role not recorded'})" for p in ps) or "- (none)"  # noqa: E731
-        return "\n\n".join([
-            f"Student writing the letter (\"My name is\" uses exactly this name): {ctx['name']}",
-            f"School line: {prof['school_line'] or schools.default_school_line(sc) or '[[NEED: your school and year]]'}",
-            f"Shape: exactly {n} paragraphs, as in the starting letter.",
-            f"Applying to: Investment Banking {sc['role']} role at {bank}" + (f", {ctx['office']} office" if ctx["office"] else ""),
-            ("Program: generalist, so name no group." if ctx["generalist"] else
-             f"Group placement: the {ctx['group'] or '[[NEED: group]]'} group."),
-            f"People the student has spoken with at {bank} (the only names you may use):\nBankers:\n{names(bankers)}\n"
-            f"{sc['peers']} going to this bank (name them after the bankers, only if there are few bankers):\n{names(students)}",
-            *([] if ctx["generalist"] else [
-                f"The student's notes (their target groups and why, what to highlight):\n{profiles.background(prof) or '(none)'}",
-                f"Resume (facts the bridging sentences may use):\n{prof['resume_text'] or '(not provided)'}"]),
-            f"Rules from the student's own notes:\n{prof['email_rules'] or '(none)'}",
-            (f"Starting letter: the one the student submitted to {ref['bank']} for the same "
-             f"{'generalist program' if ctx['generalist'] else ctx['group'] + ' role'}. Its group wording is already right: change "
-             f"only what belongs to {ref['bank']} (its name, the people it names: {', '.join(ref['people']) or 'none'}, its office "
-             f"and anything else specific to it) and keep every other word.\n{_starting(prof, ref)}" if ref else
-             f"Starting letter: the student's own letter (written for another bank or role), to tailor:\n{prof['example_letter']}"),
-        ])
-    parts = [
+    n, _lo, _hi = shape(_starting(prof, ref))
+    # names and roles only: what was said in the chats stays out of the letter
+    names = lambda ps: "\n".join(f"- {p['name']} ({', '.join(x for x in (p['title'], p['grp']) if x) or 'role not recorded'})" for p in ps) or "- (none)"  # noqa: E731
+    return "\n\n".join([
         f"Student writing the letter (\"My name is\" uses exactly this name): {ctx['name']}",
         f"School line: {prof['school_line'] or schools.default_school_line(sc) or '[[NEED: your school and year]]'}",
-        f"Shape: exactly {n} paragraphs, {lo} to {hi} words in total.",
-        f"Applying to: Investment Banking {sc['role']} role at {bank}"
-        + (f", {ctx['office']} office" if ctx["office"] else ""),
-        ("Program: generalist. Tailor the letter to the generalist program; do not name a group in the opening sentence."
-         if ctx["generalist"] else
-         f"Program: group-specific or not known. Tailor the letter to the {ctx['group'] or '[[NEED: group]]'} group and name it in the opening sentence."),
-        f"People the student has spoken with at {bank} (the only names you may use):\n{spoken}",
-        "What the student has learned about the bank (topic: fact):\n" + ("\n".join(f"- {f}" for f in ctx["facts"]) or "- (nothing recorded)"),
-        f"About the student (target groups, why, what to highlight, projects, rules):\n{profiles.background(prof) or '(none)'}",
-        f"Resume:\n{prof['resume_text'] or '(not provided)'}",
-    ]
-    if prof["example_letter"] and tailor:
-        parts.append("The student's own letter, to tailor (it may have been written for another bank: replace its "
-                     f"bank-specific parts and keep the rest):\n{prof['example_letter']}")
-    elif prof["example_letter"]:
-        parts.append("The student's template, for structure, voice and level of detail (it may have been written for another "
-                     f"bank, so do not copy bank-specific content):\n{prof['example_letter']}")
-    return "\n\n".join(parts)
+        f"Shape: exactly {n} paragraphs, as in the starting letter.",
+        f"Applying to: Investment Banking {sc['role']} role at {bank}" + (f", {ctx['office']} office" if ctx["office"] else ""),
+        ("Program: generalist, so name no group." if ctx["generalist"] else
+         f"Group placement: the {ctx['group'] or '[[NEED: group]]'} group."),
+        f"People the student has spoken with at {bank} (the only names you may use):\nBankers:\n{names(bankers)}\n"
+        f"{sc['peers']} going to this bank (name them after the bankers, only if there are few bankers):\n{names(students)}",
+        *([] if ctx["generalist"] else [
+            f"The student's notes (their target groups and why, what to highlight):\n{profiles.background(prof) or '(none)'}",
+            f"Resume (facts the bridging sentences may use):\n{prof['resume_text'] or '(not provided)'}"]),
+        f"Rules from the student's own notes:\n{prof['email_rules'] or '(none)'}",
+        (f"Starting letter: the one the student submitted to {ref['bank']} for the same "
+         f"{'generalist program' if ctx['generalist'] else ctx['group'] + ' role'}. Its group wording is already right: change "
+         f"only what belongs to {ref['bank']} (its name, the people it names: {', '.join(ref['people']) or 'none'}, its office "
+         f"and anything else specific to it) and keep every other word.\n{_starting(prof, ref)}" if ref else
+         f"Starting letter: the student's own letter (written for another bank or role), to tailor:\n{prof['example_letter']}"),
+    ])
 
 
 # Preview: details from the chats or about how recruiting works, which the 2Y sample letters never include.
@@ -311,29 +243,28 @@ def _starting(prof: dict, ref: dict | None) -> str:
     return "\n\n".join(ref["paragraphs"]) if ref else prof["example_letter"]
 
 
-def problems(paragraphs: list[str], bank: str, ctx: dict, template: str = "", tailor: bool = False) -> list[str]:
+def problems(paragraphs: list[str], bank: str, ctx: dict, template: str = "") -> list[str]:
     text = "\n".join(paragraphs)
     found = []
     # the writer's own name, exactly: a contact who shares a first name has been swapped in before
     said = re.match(r"\s*My name is ([^,]+),", paragraphs[0]) if paragraphs else None
     if ctx["name"] and paragraphs and (ctx["name"] not in paragraphs[0] or (said and said[1].strip() != ctx["name"])):
         found.append(f"the opening must say \"My name is {ctx['name']}\": that is the student writing the letter, not anyone they met")
-    if tailor:
-        found += [f"it mentions \"{m}\": keep the opening to general reasons for the firm, as the sample letters do"
-                  for m in dict.fromkeys(m.group(0) for m in TOO_SPECIFIC.finditer(paragraphs[0] if paragraphs else ""))]
-        # every paragraph is the student's own: words change inside their sentences, sentences are never added or dropped
-        for k, (tailored, original) in enumerate(zip(paragraphs, _body(template)), start=1):
-            found += [f'paragraph {k} adds the sentence "{s}": drop it, and if the group needs a mention there, put a few words '
-                      "into one of the student's existing sentences instead" for s in _added(tailored, original)]
-            if len(_sentences(tailored)) < len(_sentences(original)):
-                found.append(f"paragraph {k} drops one of the student's sentences: keep every sentence, changing only the words that must")
-            if k > 1:  # experience and closing: a phrase aimed at the group replaces one, it isn't tacked on
-                found += [f'the sentence "{s}" is {grew} words longer than the student\'s: replace the words that point elsewhere '
-                          "instead of adding to them" for s, grew in _grown(tailored, original) if grew > 6]
-        group = ctx["group"].strip()
-        if group and not ctx["generalist"]:
-            found += [f'the sentence "{s}" names the {group} group more than once: name it once' for p in paragraphs
-                      for s in _sentences(p) if s.lower().count(group.lower()) > 1]
+    found += [f"it mentions \"{m}\": keep the opening to general reasons for the firm, as the sample letters do"
+              for m in dict.fromkeys(m.group(0) for m in TOO_SPECIFIC.finditer(paragraphs[0] if paragraphs else ""))]
+    # every paragraph is the student's own: words change inside their sentences, sentences are never added or dropped
+    for k, (tailored, original) in enumerate(zip(paragraphs, _body(template)), start=1):
+        found += [f'paragraph {k} adds the sentence "{s}": drop it, and if the group needs a mention there, put a few words '
+                  "into one of the student's existing sentences instead" for s in _added(tailored, original)]
+        if len(_sentences(tailored)) < len(_sentences(original)):
+            found.append(f"paragraph {k} drops one of the student's sentences: keep every sentence, changing only the words that must")
+        if k > 1:  # experience and closing: a phrase aimed at the group replaces one, it isn't tacked on
+            found += [f'the sentence "{s}" is {grew} words longer than the student\'s: replace the words that point elsewhere '
+                      "instead of adding to them" for s, grew in _grown(tailored, original) if grew > 6]
+    group = ctx["group"].strip()
+    if group and not ctx["generalist"]:
+        found += [f'the sentence "{s}" names the {group} group more than once: name it once' for p in paragraphs
+                  for s in _sentences(p) if s.lower().count(group.lower()) > 1]
     words = len(text.split())
     n, lo, hi = shape(template)
     lo, hi = lo - 30, hi + 20  # a little slack around the asked-for range before it counts as a problem
@@ -369,17 +300,14 @@ def problems(paragraphs: list[str], bank: str, ctx: dict, template: str = "", ta
 async def write(uid: int, chosen: Chosen, bank: str) -> dict:
     init_db()
     prof = profiles.get(uid)
-    tailor = accounts.in_preview_uid(uid)  # preview: the student's own letter, tailored
-    if tailor and not prof["example_letter"].strip():
+    if not prof["example_letter"].strip():
         return {"ok": False, "reason": "Upload a cover letter you wrote yourself first (top of this page). Each bank's letter is "
                                        "your letter, tailored to that bank."}
-    if not tailor and not prof["resume_text"].strip():
-        return {"ok": False, "reason": "Add your resume in Settings first, so the letter can use your real experience."}
     with connect(read_only=True) as conn:
         ctx = _context(conn, uid, bank)
-        ref = _reference(conn, uid, bank, ctx) if tailor else None  # preview: a letter already sent for this group
-    base = _prompt(ctx, prof, bank, tailor, ref)
-    writer = tailor_agent if tailor else agent
+        ref = _reference(conn, uid, bank, ctx)  # a letter already sent for this group, if any
+    base = _prompt(ctx, prof, bank, ref)
+    writer = tailor_agent
     started = datetime.now().isoformat(timespec="seconds")
     total = {"input_tokens": 0, "cached_input_tokens": 0, "output_tokens": 0, "requests": 0}
     prompt, issues, paragraphs = base, [], []
@@ -389,14 +317,14 @@ async def write(uid: int, chosen: Chosen, bank: str) -> dict:
         for k, v in usage_dict(result.usage).items():
             total[k] += v
         paragraphs = [" ".join(p.split()) for p in result.output.paragraphs if p.strip()]
-        issues = problems(paragraphs, bank, ctx, _starting(prof, ref), tailor)
-        if tailor:  # preview: it must fit on one page in the student's own template, margins barely touched
-            over = letter_layout.fit_one_page(_document(uid, bank, paragraphs))
-            if over:
-                lines = max(1, round(over + 0.49))
-                issues.append(f"it runs about {lines} line{'s' if lines > 1 else ''} past one page: cut about {lines * 14 + 5} "
-                              "words, from the opening first, then by tightening wording in the other paragraphs (keep every "
-                              "fact, name and sentence)")
+        issues = problems(paragraphs, bank, ctx, _starting(prof, ref))
+        # it must fit on one page in the student's own template, margins barely touched
+        over = letter_layout.fit_one_page(_document(uid, bank, paragraphs))
+        if over:
+            lines = max(1, round(over + 0.49))
+            issues.append(f"it runs about {lines} line{'s' if lines > 1 else ''} past one page: cut about {lines * 14 + 5} "
+                          "words, from the opening first, then by tightening wording in the other paragraphs (keep every "
+                          "fact, name and sentence)")
         if not issues:
             break
         prompt = f"{base}\n\nYour last draft broke these rules, fix them and return the whole letter again:\n- " + "\n- ".join(issues) \
@@ -411,7 +339,7 @@ async def write(uid: int, chosen: Chosen, bank: str) -> dict:
         issues.append(f"you have not logged anyone you spoke with at {bank}, so the letter names no one; the guidance says to list the people you have spoken to")
     if ref:
         issues.append(f"started from the letter you submitted to {ref['bank']}: check nothing specific to {ref['bank']} is left")
-    if not shared.bank_detail(bank, ctx["mine"], tailor)["recruiter_name"]:
+    if not shared.bank_detail(bank, ctx["mine"])["recruiter_name"]:
         issues.append("no recruiter name yet, so it is addressed to Hiring Manager; the guidance says to address it to the firm's recruiter")
     now = datetime.now().isoformat(timespec="seconds")
     with connect() as conn:
@@ -431,7 +359,7 @@ async def write(uid: int, chosen: Chosen, bank: str) -> dict:
 
 
 def _recipient(uid: int, bank: str, mine: dict) -> list[str]:
-    info = shared.bank_detail(bank, mine, accounts.in_preview_uid(uid))
+    info = shared.bank_detail(bank, mine)
     lines = [info["recruiter_name"] or "Hiring Manager"]
     if info["recruiter_title"]:
         lines.append(info["recruiter_title"])
@@ -447,7 +375,7 @@ def get(uid: int, bank: str) -> dict:
         mine = conn.execute("SELECT * FROM my_banks WHERE user_id = ? AND bank = ?", (uid, bank)).fetchone()
         user = conn.execute("SELECT name FROM users WHERE id = ?", (uid,)).fetchone()
     mine = dict(mine) if mine else {}
-    info = shared.bank_detail(bank, mine, accounts.in_preview_uid(uid))  # the student's own, else what the admin pushed
+    info = shared.bank_detail(bank, mine)  # the student's own, else what the admin pushed
     return {
         "bank": bank,
         "exists": row is not None,
@@ -473,7 +401,7 @@ def save_edits(uid: int, bank: str, paragraphs: list[str] | None, details: dict)
     with connect() as conn:
         conn.execute("INSERT OR IGNORE INTO my_banks (user_id, bank, applied, deadline, link, prefs, notes) VALUES (?, ?, '', '', '', '', '')", (uid, bank))
         mine = conn.execute("SELECT * FROM my_banks WHERE user_id = ? AND bank = ?", (uid, bank)).fetchone()
-        shown = shared.bank_detail(bank, dict(mine) if mine else {}, accounts.in_preview_uid(uid))
+        shown = shared.bank_detail(bank, dict(mine) if mine else {})
         for field in ("recruiter_name", "recruiter_title", "address", "office"):
             if field in details:
                 value = str(details[field]).strip()[:300]
@@ -516,7 +444,6 @@ def mark_submitted(uid: int, bank: str, submitted: bool) -> dict:
 def overview(uid: int) -> list[dict]:
     """Every bank the user is still in, with whether a letter exists yet."""
     init_db()
-    pushed = accounts.in_preview_uid(uid)
     with connect(read_only=True) as conn:
         banks = [r["bank"] for r in conn.execute(
             "SELECT bank FROM my_banks WHERE user_id = ? AND COALESCE(status, '') != 'out' ORDER BY bank", (uid,))]
@@ -527,12 +454,12 @@ def overview(uid: int) -> list[dict]:
              "warnings": len(json.loads(letters[b]["warnings"])) if b in letters else 0,
              "updated_at": letters[b]["updated_at"] if b in letters else "", "edited": bool(letters[b]["edited"]) if b in letters else False,
              "submitted": b in letters and _submitted(letters[b]["submitted_at"], "Yes" if b in applied else ""),
-             "recruiter": shared.bank_detail(b, {"recruiter_name": recruiters.get(b) or ""}, pushed)["recruiter_name"]} for b in banks]
+             "recruiter": shared.bank_detail(b, {"recruiter_name": recruiters.get(b) or ""})["recruiter_name"]} for b in banks]
 
 
-def _set_text(paragraph, text: str, keep_shapes: bool = False) -> None:
+def _set_text(paragraph, text: str, keep_shapes: bool = True) -> None:
     """Replace a paragraph's text, keeping the formatting of its first run; [[NEED: ...]] markers are highlighted.
-    keep_shapes (preview): a picture or text box anchored to the paragraph (the Yale template's contact footer sits
+    keep_shapes: a picture or text box anchored to the paragraph (the Yale template's contact footer sits
     in a text box on the signature line) is kept rather than removed with the text."""
     from copy import deepcopy
 
@@ -556,8 +483,7 @@ def _set_text(paragraph, text: str, keep_shapes: bool = False) -> None:
 def docx_bytes(uid: int, bank: str) -> bytes:
     """The letter as a Word file (preview: tightened to fit on one page)."""
     doc = _document(uid, bank)
-    if accounts.in_preview_uid(uid):
-        letter_layout.fit_one_page(doc)
+    letter_layout.fit_one_page(doc)
     out = io.BytesIO()
     doc.save(out)
     return out.getvalue()
@@ -588,7 +514,7 @@ def _document(uid: int, bank: str, paragraphs: list[str] | None = None):
     letter = get(uid, bank)
     if paragraphs is not None:
         letter["paragraphs"] = paragraphs
-    keep = accounts.in_preview_uid(uid)  # preview: keep the text boxes (the contact footer) the template anchors to lines
+    keep = True  # keep the text boxes (the contact footer) the template anchors to lines
     doc = docx.Document(io.BytesIO(templates.cover_template_bytes(uid)))
     spots = templates.layout(doc)
     if spots is None:  # an unusable upload slipped through: fall back to the Yale SOM template
@@ -646,7 +572,7 @@ def _document(uid: int, bank: str, paragraphs: list[str] | None = None):
 
     if spots["signature"] is not None and letter["signature"]:
         _set_text(paras[spots["signature"]], letter["signature"], keep)
-    if keep:  # preview: the Yale template's sample contact footer ("jane.student@yale.edu") becomes the student's own
+    if keep:  # the Yale template's sample contact footer ("jane.student@yale.edu") becomes the student's own
         from docx.oxml.ns import qn
 
         contact = profiles.get(uid)["contact_line"]

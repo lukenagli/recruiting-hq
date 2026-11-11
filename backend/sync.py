@@ -7,7 +7,8 @@ assistant it hands messages to: no email, chat or messaging tool exists in this 
 - Checkpoints: for each source and conversation the newest message already filed is remembered, so each sync
   only files what came after it. Messages from before this recruiting season are dropped.
 - Cost: nothing is sent to the model unless there is something new; busy group chats are first narrowed to
-  messages about banks and the process; syncing may use at most SYNC_BUDGET tokens a day.
+  messages about banks and the process. A refresh has no daily cap of its own (it is how the tracker fills
+  itself); a filing guard (budget.filing_stuck) stops a runaway loop.
 - The club chats (shared.club_chats) are read once for everyone: the admin's reader sends them, and what matters goes
   into the club feed every account sees. Other students' readers skip them.
 """
@@ -28,7 +29,6 @@ from .db import connect, init_db
 from .llm import Chosen, usage_dict
 
 SEASON_START = "2026-08-01"  # this recruiting season; anything older belongs to an earlier class
-SYNC_BUDGET = 200_000         # tokens a day for syncing, about half the daily allowance
 MAX_CHARS = 40_000            # per filing run
 MAX_ITEMS = 12                # emails or calendar events per filing run (each can mean a person and a chat to save)
 
@@ -219,8 +219,8 @@ def state(uid: int) -> dict:
     return {"checkpoints": out, "season_start": SEASON_START, "log": log, "has_key": has_key, "config": config,
             "outlook": {"watch": sorted(_watched_folders(uid)), "screen": _screen(uid),
                         "plan": {f["name"]: f["plan"] for f in folder_plan(uid)},
-                        # Preview: folders still catching up get the first scan's larger allowance until they have
-                        "behind": behind(uid) if accounts.in_preview_uid(uid) else []}}
+                        # folders still catching up get the first scan's larger allowance until they have
+                        "behind": behind(uid)}}
 
 
 def behind(uid: int) -> list[str]:
@@ -340,12 +340,11 @@ def folder_plan(uid: int, today: str = "") -> list[dict]:
     except re.error:
         named = None
     out = []
-    preview = accounts.in_preview_uid(uid)
     for r in rows:
         if r["last_seen"] < latest:  # no longer in the folder list (deleted or renamed)
             continue
         name = r["folder"]
-        if preview and ("@" in name or name == "Search Folders"):
+        if "@" in name or name == "Search Folders":
             # the mailbox itself (top of Outlook's list) and Outlook's saved searches: neither is a folder of its own mail
             out.append({"name": name, "plan": "skip", "reason": "not a folder of its own", "mode": r["mode"], "last_read": r["last_read"],
                         "mailbox": True})
@@ -501,13 +500,6 @@ def _key(item: Item) -> str:
     return item.key or hashlib.sha1(f"{item.at}|{item.author}|{item.text[:200]}".encode()).hexdigest()
 
 
-def _sync_used_today(uid: int) -> int:
-    with connect(read_only=True) as conn:
-        return conn.execute(
-            "SELECT COALESCE(SUM(input_tokens + output_tokens), 0) FROM agent_runs WHERE user_id = ? AND started_at >= ? "
-            "AND user_message LIKE 'New messages from %'", (uid, date.today().isoformat())).fetchone()[0]
-
-
 def _message(batch: Batch, items: list[Item], school: str, tags: list[str] | None = None, brief: str = "", uid: int = 0) -> str:
     """`tags`: each item's folder, for a run over several folders; `brief`: the tracker as it stands for what they mention."""
     where = {"outlook": "my Outlook email", "slack": "Slack", "whatsapp": "WhatsApp"}.get(batch.source, batch.source)
@@ -557,11 +549,10 @@ def _message(batch: Batch, items: list[Item], school: str, tags: list[str] | Non
                  "or outreach, followed up, sent new times, asked for feedback, sent materials, submitted an application or a "
                  "cover letter), find that to-do with lookup and mark the same entry done with save_entry (status done, date "
                  "the email's date, a one-line summary of what I sent); never leave it open and never log it again. ")
-        if uid and accounts.in_preview_uid(uid):
-            head += ("A step that was only waiting for something (watch for or expect an invite, a decision, a next round) has "
-                     "done its job once that thing arrives: log what arrived (the invitation as the event, the decision on "
-                     "the entry it decides) and remove the waiting step with remove_entry. Keep any date it carried that "
-                     "still matters (when interviews start) as a fact with save_fact, category Recruiting process. ")
+        head += ("A step that was only waiting for something (watch for or expect an invite, a decision, a next round) has "
+                 "done its job once that thing arrives: log what arrived (the invitation as the event, the decision on "
+                 "the entry it decides) and remove the waiting step with remove_entry. Keep any date it carried that "
+                 "still matters (when interviews start) as a fact with save_fact, category Recruiting process. ")
     if batch.source == "outlook" and batch.conversation == "Calendar":
         head += ("These are events on my Outlook calendar, new or changed since the last refresh. A coffee chat, call, interview "
                  "or dinner with a banker or a second-year is scheduled for the date, time and place shown (\"Luke Nagli / Sami "
@@ -732,16 +723,9 @@ async def ingest(user: dict, chosen: Chosen, batch: Batch) -> dict:
     else:
         relevant = [i for i in fresh if not (batch.group_chat or club) or RELEVANT.search(i.text) or (club and CLUB_WORDS.search(i.text))]
     filed, note = 0, ""
-    # The refresh's own daily cap keeps half the allowance for the rest of the site. Preview: a refresh is how the
-    # tracker fills itself, so it is held only by the whole daily allowance (ai_for checks that before each run).
-    capped = lambda: not accounts.in_preview_uid(uid) and _sync_used_today(uid) >= SYNC_BUDGET  # noqa: E731
     if relevant and club:
-        if capped():
-            return _log(uid, now, batch, len(batch.items), len(fresh), 0, "Daily sync allowance used; will continue tomorrow.")
         filed, note = await _club_feed(uid, chosen, batch, relevant)
     elif relevant:
-        if capped():
-            return _log(uid, now, batch, len(batch.items), len(fresh), 0, "Daily sync allowance used; will continue tomorrow.")
         sc = schools.for_user(uid)
         chunk, size = [], 0
         for i in relevant:  # one model run per ~40k characters or MAX_ITEMS messages
@@ -856,7 +840,7 @@ async def ingest_many(user: dict, chosen: Chosen, batches: list[Batch]) -> dict:
             with connect() as conn:
                 conn.executemany("INSERT OR IGNORE INTO sync_seen (user_id, print, at) VALUES (?, ?, ?)",
                                  [(uid, p, now) for _, _, prints in run for p in prints])
-    if runs and accounts.in_preview_uid(uid):  # banks whose overview grew get it rewritten short
+    if runs:  # banks whose overview grew get it rewritten short
         try:
             await fact_tidy.tidy_some(uid, chosen)
         except Exception:  # noqa: BLE001 - filing already happened

@@ -25,19 +25,13 @@ def used_today(user_id: int, filing: bool | None = None) -> int:
     return row[0]
 
 
-def _preview(user_id: int) -> bool:
-    from . import accounts
-
-    return accounts.in_preview_uid(user_id)
-
-
 def allowance(user_id: int) -> int:
     return config.DAILY_TOKEN_BUDGET
 
 
 def used_for_allowance(user_id: int) -> int:
-    """What counts against the daily allowance: for preview accounts, everything but the reader's filing."""
-    return used_today(user_id, filing=False) if _preview(user_id) else used_today(user_id)
+    """What counts against the daily allowance: everything but the reader's filing."""
+    return used_today(user_id, filing=False)
 
 
 def check(user_id: int) -> None:

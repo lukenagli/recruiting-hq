@@ -190,10 +190,6 @@ def bank_for_email(address: str) -> str:
     return ""
 
 
-# What accounts outside the preview (the graded version, the demo) get until the project is graded: the first list.
-GRADED_ADDRESSES = {b: ADDRESSES[b] for b in ("Bank of America", "Barclays", "Centerview", "Citi", "Evercore", "Goldman Sachs",
-                                              "Guggenheim", "Houlihan Lokey", "J.P. Morgan", "Lazard", "Morgan Stanley", "RBC")}
-GRADED_LETTER_NAMES = {"Guggenheim": "Guggenheim Securities, LLC"}
 
 
 def domain(bank: str) -> str:
