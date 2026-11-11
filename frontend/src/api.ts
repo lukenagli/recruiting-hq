@@ -299,6 +299,7 @@ export type PracticeArea = {
   score: number | null
   correct: number
   level: string
+  note?: string // how each difficulty went, and what hasn't been tested yet
   by_difficulty: Record<string, number>
   last: string
 }

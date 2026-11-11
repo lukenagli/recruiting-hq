@@ -1634,3 +1634,6 @@ details.card.fold > .card, details.card.fold section.card { box-shadow: none; bo
 .dd-heading { display: block; font-size: 11px; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; color: var(--muted); padding: 10px 8px 2px; border-top: 1px solid var(--line); margin-top: 6px; }
 .dd-note { font-size: 13px; color: var(--muted); padding: 6px 8px; margin: 0; max-width: 260px; }
 @media (max-width: 640px) { .af-row { grid-template-columns: 1fr; gap: 4px; } .af-parts { grid-template-columns: 1fr; } .af-parts.n2 { grid-template-columns: 1fr 1fr; } }
+
+.area-note { display: block; font-size: 12px; color: var(--muted); margin-top: 2px; }
+.area-foot span { min-width: 0; }

@@ -552,21 +552,50 @@ def history(uid: int, limit: int = 500) -> list[dict]:
                WHERE user_id = ? ORDER BY at DESC, id DESC LIMIT ?""", (uid, limit))]
 
 
+# How much a right answer says about an area: an easy question proves less than a hard one.
+DIFFICULTY_WEIGHT = {"easy": 0.4, "medium": 0.7, "hard": 1.0}
+
+
+def _rating(recent: list[dict]) -> dict:
+    """An area's rating from its recent checked answers, counting how hard they were: "Strong" only once hard
+    questions are being answered right (fifteen easy ones in a row haven't tested the hard ones yet). The score is
+    difficulty-weighted: each answer counts its score times its difficulty's weight, out of a hard question's."""
+    if not recent:
+        return {"level": "Not started", "score": None, "note": ""}
+    weight = lambda r: DIFFICULTY_WEIGHT.get(r["difficulty"], 0.7)  # noqa: E731
+    score = round(sum(r["score"] * weight(r) for r in recent) / len(recent), 2)
+    at = {d: [r["score"] for r in recent if r["difficulty"] == d] for d in DIFFICULTY_WEIGHT}
+    right = {d: sum(s >= 0.99 for s in v) for d, v in at.items()}
+    acc = sum(r["score"] for r in recent) / len(recent)
+    tested = [d for d in DIFFICULTY_WEIGHT if at[d]]
+    parts = [f"{d} {right[d]}/{len(at[d])}" for d in tested]
+    top = max(LEVELS.index(d) for d in tested)
+    untested = [d for d in LEVELS[top + 1:] if not at[d]]  # only the harder levels matter
+    note = ", ".join(parts) + (f" · not yet tested on {' or '.join(untested)}" if untested and len(recent) >= 3 else "")
+    if len(recent) < 3:
+        level = "Too early to tell"
+    elif acc < 0.5:
+        level = "Needs work"
+    elif right["hard"] >= 2 and sum(at["hard"]) / len(at["hard"]) >= 0.66:  # two of three hard ones, or better
+        level = "Strong"
+    else:
+        level = "Getting there"
+    return {"level": level, "score": score, "note": note}
+
+
 def progress(uid: int) -> dict:
     init_db()
     with connect(read_only=True) as conn:
         rows = [dict(r) for r in conn.execute(
             "SELECT category, topic, difficulty, score, at FROM prep_attempts WHERE user_id = ? ORDER BY at", (uid,))]
-        strengths = _strengths(conn, uid)
     areas = []
     for t in TOPICS:
         mine = [r for r in rows if r["category"] == "Technical" and r["topic"] == t]
         graded = [r for r in mine if r["score"] is not None]
-        s = strengths.get(t)
-        level = ("Not started" if not graded else "Too early to tell" if len(graded) < 3 else
-                 "Strong" if s[0] >= 0.8 else "Getting there" if s[0] >= 0.5 else "Needs work")
-        areas.append({"topic": t, "attempts": len(mine), "graded": len(graded), "score": round(s[0], 2) if s else None,
-                      "correct": sum(r["score"] == 1 for r in graded), "level": level,
+        recent = graded[-12:]  # recent form, as the adaptive level uses
+        rating = _rating(recent)
+        areas.append({"topic": t, "attempts": len(mine), "graded": len(graded), "score": rating["score"],
+                      "correct": sum(r["score"] == 1 for r in graded), "level": rating["level"], "note": rating["note"],
                       "by_difficulty": {d: sum(r["difficulty"] == d for r in mine) for d in ("easy", "medium", "hard")},
                       "last": mine[-1]["at"][:10] if mine else ""})
     others = {c: sum(r["category"] == c for r in rows) for c in CATEGORIES if c != "Technical"}

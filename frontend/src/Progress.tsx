@@ -49,14 +49,15 @@ export default function Progress({ onPractice }: { onPractice: (topic: string) =
                 <strong>{a.topic}</strong>
                 <span className="area-level">{a.level}</span>
               </div>
-              <div className="area-bar" title={a.score === null ? 'No graded answers yet' : `${pct}% on your recent answers`}>
+              <div className="area-bar" title={a.score === null ? 'No checked answers yet' : `${pct}% of full marks, counting how hard each recent question was`}>
                 <i style={{ width: `${pct}%` }} />
               </div>
               <div className="area-foot">
                 <span>
                   {a.attempts === 0
                     ? 'Not practiced yet'
-                    : `${a.correct} of ${a.graded} correct${a.score !== null ? ` · ${pct}%` : ''}${a.last ? ` · last ${fmtDate(a.last)}` : ''}`}
+                    : `${a.correct} of ${a.graded} correct${a.last ? ` · last ${fmtDate(a.last)}` : ''}`}
+                  {a.note && <small className="area-note">{a.note}</small>}
                 </span>
                 <button className="link" onClick={() => onPractice(a.topic)}>
                   Practice
@@ -67,7 +68,8 @@ export default function Progress({ onPractice }: { onPractice: (topic: string) =
         })}
       </div>
       <p className="fine">
-        The score uses your 12 most recent graded answers in each area, so it moves as you improve. To leave an answer out of these numbers,
+        Each area uses your 12 most recent checked answers and counts how hard they were: an easy question proves less than a hard one,
+        so an area shows as Strong only once you're getting its hard questions right. To leave an answer out of these numbers,
         remove it under <a href="#/settings">Settings → Practice history</a>.
       </p>
     </section>
