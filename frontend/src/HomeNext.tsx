@@ -644,7 +644,7 @@ export default function HomeNext({ name }: { name: string }) {
         <FirstScanReview onChanged={() => { api.reload(); banks.reload() }} bankNames={(banks.data ?? []).map((b) => b.bank)} />
         <ReaderQuestions onChanged={() => { api.reload(); banks.reload() }} />
         {ai.data && !ai.data.ready && (
-          <a className="notice key-callout" href="#/settings">
+          <a className="notice key-callout" href="#/settings/ai">
             <strong>One thing first:</strong> paste your Yale class (Portkey) key in Settings to turn on the assistant.
           </a>
         )}

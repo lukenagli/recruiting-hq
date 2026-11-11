@@ -60,7 +60,7 @@ export default function Start() {
           n={1}
           done={!!s?.done.banks}
           title="Know the job, and pick your groups"
-          action={<a className="primary" href="#/settings">Pick your banks and groups</a>}
+          action={<a className="primary" href="#/settings/about">Pick your banks and groups</a>}
         >
           <p>
             Bankers advise companies on buying and selling businesses (M&amp;A) and on raising money. As a {school.role} you spend about ten

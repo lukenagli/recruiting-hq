@@ -133,7 +133,7 @@ export function ThanksCatchUp({ onDone }: { onDone?: () => void }) {
         that person's page, so you can see exactly what you wrote. It only reads, and it uses no AI.
       </p>
       {checked && !installed ? (
-        <p className="fine">This uses the Recruiting HQ Reader. <a href="#/settings">Set it up in Settings</a> first, then come back here.</p>
+        <p className="fine">This uses the Recruiting HQ Reader. <a href="#/settings/outlook">Set it up in Settings</a> first, then come back here.</p>
       ) : busy && started ? (
         <div className="refresh-warning working">
           <p>
@@ -264,7 +264,7 @@ export default function Refresh({ onDone }: { onDone?: () => void }) {
     return (
       <div className="refresh">
         {welcomed ? (
-          <a className="btn" href="#/settings">Set up the reader to refresh from your email</a>
+          <a className="btn" href="#/settings/outlook">Set up the reader to refresh from your email</a>
         ) : (
           <div className="refresh-warning reader-welcome">
             <p>
@@ -272,7 +272,7 @@ export default function Refresh({ onDone }: { onDone?: () => void }) {
               press Refresh, it reads what's new in your Outlook email and calendar, and files your chats, invites,
               thank-yous and next steps here. It only reads; it never sends anything. Setting it up takes about five minutes.
             </p>
-            <a className="btn primary" href="#/settings">Set it up</a>
+            <a className="btn primary" href="#/settings/outlook">Set it up</a>
             <button className="ghost" onClick={notNow}>Not now</button>
           </div>
         )}
@@ -284,7 +284,7 @@ export default function Refresh({ onDone }: { onDone?: () => void }) {
         {canConnect(status!.version) ? (
           <ConnectButton onDone={() => onDone?.()} label="Connect the reader to your account" />
         ) : (
-          <a className="btn" href="#/settings">Finish setting up the reader (paste your key)</a>
+          <a className="btn" href="#/settings/outlook">Finish setting up the reader (paste your key)</a>
         )}
       </div>
     )
@@ -375,7 +375,7 @@ export default function Refresh({ onDone }: { onDone?: () => void }) {
         <p className="muted refresh-folders">
           Last refresh looked through {readNames.length} folder{readNames.length > 1 ? 's' : ''} ({list(readNames)})
           {skippedNames.length > 0 && <> and skipped {skippedNames.length} where no recruiting email has turned up ({list(skippedNames)})</>}.{' '}
-          <a href="#/settings?folders">See or change which folders it reads</a>
+          <a href="#/settings/outlook">See or change which folders it reads</a>
         </p>
       )}
       {!busy && !confirming && unread.length > 0 && (

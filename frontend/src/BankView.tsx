@@ -328,6 +328,20 @@ const OVERVIEW_FIELDS: [string, string, boolean][] = [
   ['Recruiting process', 'Recruiting process', true],
 ]
 
+/** A saved fact as short bullets: one per sentence or semicolon clause, and "Stages: a > b > c" as a list of steps. */
+function factBullets(fact: string): { text: string; steps?: string[] }[] {
+  return fact
+    .split(/(?<=[a-z0-9)%]{2}\.)\s+(?=[A-Z0-9])|;\s+/)
+    .map((s) => s.trim())
+    .filter(Boolean)
+    .map((s) => {
+      const steps = s.split(/\s+>\s+/)
+      if (steps.length < 3) return { text: s[0].toUpperCase() + s.slice(1) }
+      const head = steps[0].match(/^([^:]{1,30}):\s*(.+)$/)
+      return head ? { text: head[1], steps: [head[2], ...steps.slice(1)] } : { text: 'In order', steps }
+    })
+}
+
 /** "You: 5 coffee chats, 2 events, 1 interview" from the entries that have happened. */
 function yourChats(entries: { kind: string; status: string }[]): string {
   const done = entries.filter((e) => e.status === 'done')
@@ -395,11 +409,20 @@ export default function BankView({ bank, initial = '' }: { bank: string; initial
                 <span className="muted">Not known yet</span>
                 )
               ) : (
-                items.map((f) => (
-                  <span key={f.id} title={f.source ? `From ${f.source}` : undefined}>
-                    {f.fact}
-                  </span>
-                ))
+                <ul className="ov-bullets">
+                  {items.flatMap((f) =>
+                    factBullets(f.fact).map((b, i) => (
+                      <li key={`${f.id}-${i}`} title={f.source ? `From ${f.source}` : undefined}>
+                        {b.text}
+                        {b.steps && (
+                          <ol className="ov-steps">
+                            {b.steps.map((s, j) => <li key={j}>{s}</li>)}
+                          </ol>
+                        )}
+                      </li>
+                    )),
+                  )}
+                </ul>
               )}
             </div>
           )

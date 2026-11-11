@@ -378,7 +378,7 @@ html.modal-open, html.modal-open body { overflow: hidden; }
 .profile-editor { max-width: 720px; margin-top: 16px; }
 
 /* Bank overview */
-.overview { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 10px; }
+.overview { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 10px; align-items: start; }
 .ov-item { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; display: flex; flex-direction: column; gap: 4px; font-size: 14px; }
 .ov-item small { font-size: 11.5px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); font-weight: 600; }
 .ov-item.unknown { background: rgba(255, 255, 255, 0.82); border-style: dashed; border-color: #b9c3d8; }
@@ -1644,3 +1644,24 @@ details.card.fold > .card, details.card.fold section.card { box-shadow: none; bo
 .pq-earlier-q { margin: 2px 0 4px; font-weight: 600; }
 .pq-earlier-a { margin: 2px 0; font-size: 14px; color: var(--muted); white-space: pre-wrap; }
 .pq-part { margin-top: 4px; }
+
+/* Settings: a list of sections, each opened on its own page */
+.settings-list { padding: 0; overflow: hidden; }
+.settings-row { display: flex; align-items: center; gap: 12px; padding: 14px 18px; color: inherit; text-decoration: none; border-top: 1px solid var(--line); }
+.settings-row:first-child { border-top: 0; }
+.settings-row:hover { background: var(--gray-soft); }
+.settings-row > span { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.settings-row strong { font-size: 16px; }
+.settings-row small { color: var(--muted); font-size: 13px; }
+.settings-row em { font-style: normal; font-size: 13px; font-weight: 600; white-space: nowrap; }
+.settings-row em.on { color: var(--green); }
+.settings-row em.off { color: #8a5a00; }
+.settings-row i { font-style: normal; font-size: 22px; color: var(--muted); line-height: 1; }
+.settings-back { display: inline-block; margin-bottom: 6px; font-weight: 600; text-decoration: none; }
+.settings-page .reader-card > h2, .settings-page .about-you > h3, .settings-page .study-guides > h3, .settings-page .history > h3, .settings-page .card > h2:first-child { display: none; }
+
+/* Bank overview boxes: each fact a bullet, a process's stages as numbered steps */
+.ov-bullets { margin: 2px 0 0; padding-left: 18px; display: flex; flex-direction: column; gap: 5px; line-height: 1.4; }
+.ov-bullets > li::marker { color: var(--muted); }
+.ov-steps { margin: 3px 0 0; padding-left: 20px; display: flex; flex-direction: column; gap: 2px; }
+.ov-steps li::marker { color: var(--muted); font-size: 12px; }

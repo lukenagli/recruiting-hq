@@ -136,7 +136,7 @@ export default function App() {
   if (section === 'map') page = <MapView />
   if (section === 'deals') page = <Deals />
   if (section === 'tour') page = <Tour />
-  if (section === 'settings') page = <Settings user={user} onSignOut={signOut} />
+  if (section === 'settings') page = <Settings user={user} onSignOut={signOut} section={arg ?? ''} />
   if (section === 'start') page = <Start />
   if (section === 'catch-up') page = <CatchUp />
   if (section === 'letters') page = <Letters bank={arg ?? ''} />

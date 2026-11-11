@@ -14,14 +14,34 @@ const PROVIDERS = [
   { id: 'openai', label: 'OpenAI', where: 'https://platform.openai.com/api-keys', hint: 'Starts with sk-' },
 ]
 
-export default function Settings({ user, onSignOut }: { user: User; onSignOut: () => void }) {
+type SyncState = { has_key: boolean }
+
+/** The sections of Settings, each opened on its own page (#/settings/<id>). */
+const SECTIONS = [
+  { id: 'outlook', title: 'Outlook reader', note: 'Keeps your tracker up to date from your email and calendar.' },
+  { id: 'ai', title: 'AI', note: 'The key that powers the assistant, practice feedback and writing.' },
+  { id: 'about', title: 'About you', note: 'Your resume, the banks you are recruiting for and your groups.' },
+  { id: 'templates', title: 'Writing templates', note: 'The cover letter and emails Recruiting HQ writes follow these exactly.' },
+  { id: 'guides', title: 'Study guides', note: 'The Breaking Into Wall Street guides your practice questions come from.' },
+  { id: 'history', title: 'Practice history', note: "Every question you've answered, and how you did." },
+] as const
+
+export default function Settings({ user, onSignOut, section = '' }: { user: User; onSignOut: () => void; section?: string }) {
   const { data, error, reload } = useApi<AiSettings>('/api/settings/ai')
   if (!data) return <Loading error={error} />
-  return <SimpleSettings user={user} onSignOut={onSignOut} ai={data} reloadAi={reload} />
+  const open = SECTIONS.find((s) => s.id === section)
+  if (open) return <SettingsPage title={open.title}><Section id={open.id} ai={data} reloadAi={reload} /></SettingsPage>
+  return <SettingsList user={user} onSignOut={onSignOut} ai={data} />
 }
 
-/** Settings as a few plain sections. What you need most is at the top; what you rarely change is folded away. */
-function SimpleSettings({ user, onSignOut, ai, reloadAi }: { user: User; onSignOut: () => void; ai: AiSettings; reloadAi: () => void }) {
+/** The list of sections, like a phone's Settings: tap one to open it. */
+function SettingsList({ user, onSignOut, ai }: { user: User; onSignOut: () => void; ai: AiSettings }) {
+  const sync = useApi<SyncState>('/api/sync/state')
+  const aiOn = !!ai.provider || ai.using_site_key
+  const status: Record<string, { on: boolean; text: string } | undefined> = {
+    ai: { on: aiOn, text: aiOn ? 'On' : 'Off' },
+    outlook: sync.data ? { on: sync.data.has_key, text: sync.data.has_key ? 'Connected' : 'Not connected' } : undefined,
+  }
   return (
     <div className="settings simple-settings">
       <h1>Settings</h1>
@@ -32,31 +52,39 @@ function SimpleSettings({ user, onSignOut, ai, reloadAi }: { user: User; onSignO
           <button className="link" onClick={onSignOut}>Sign out</button>
         </span>
       </p>
-
-      <ReaderSettings />
-
-      <AiCard ai={ai} reload={reloadAi} />
-
-      <AboutYou />
-
-      <details className="card fold">
-        <summary>
-          <strong>Your writing templates</strong>
-          <small>The cover letter and emails Recruiting HQ writes for you follow these exactly.</small>
-        </summary>
-        <TemplatesCard />
-      </details>
-
-      <details className="card fold">
-        <summary>
-          <strong>Study guides and practice history</strong>
-          <small>The guides your practice questions come from, and how you've done.</small>
-        </summary>
-        <StudyGuides />
-        <PracticeHistory />
-      </details>
+      <nav className="card settings-list">
+        {SECTIONS.map((s) => (
+          <a key={s.id} href={`#/settings/${s.id}`} className="settings-row">
+            <span>
+              <strong>{s.title}</strong>
+              <small>{s.note}</small>
+            </span>
+            {status[s.id] && <em className={status[s.id]!.on ? 'on' : 'off'}>{status[s.id]!.text}</em>}
+            <i aria-hidden>›</i>
+          </a>
+        ))}
+      </nav>
     </div>
   )
+}
+
+function SettingsPage({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <div className="settings simple-settings settings-page">
+      <a href="#/settings" className="settings-back">‹ Settings</a>
+      <h1>{title}</h1>
+      {children}
+    </div>
+  )
+}
+
+function Section({ id, ai, reloadAi }: { id: string; ai: AiSettings; reloadAi: () => void }) {
+  if (id === 'outlook') return <ReaderSettings />
+  if (id === 'ai') return <AiCard ai={ai} reload={reloadAi} />
+  if (id === 'about') return <AboutYou />
+  if (id === 'templates') return <TemplatesCard />
+  if (id === 'guides') return <StudyGuides />
+  return <PracticeHistory />
 }
 
 /** "Yale class key (Portkey)" reads as "Yale class key"; "Claude (Anthropic)" as "Claude key". */

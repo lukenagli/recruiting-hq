@@ -301,9 +301,9 @@ const STEPS: { kicker: string; title: string; text: ReactNode; demo: ReactNode }
 ]
 
 const START: [string, string, string][] = [
-  ['Add your AI key', 'Powers the assistant, grading and writing. Takes two minutes.', '#/settings'],
-  ['Upload your resume and pick your banks', 'Everything else is built from these.', '#/settings'],
-  ['Upload your study guides', 'Your own Breaking Into Wall Street PDFs, so practice can use their answers.', '#/settings'],
+  ['Add your AI key', 'Powers the assistant, grading and writing. Takes two minutes.', '#/settings/ai'],
+  ['Upload your resume and pick your banks', 'Everything else is built from these.', '#/settings/about'],
+  ['Upload your study guides', 'Your own Breaking Into Wall Street PDFs, so practice can use their answers.', '#/settings/guides'],
   ['Tell it about your first coffee chat', 'The "Anything happen?" box on your homepage.', '#/'],
 ]
 

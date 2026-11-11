@@ -240,7 +240,7 @@ export default function CatchUp() {
   }
 
   const noKey = ai.data && !ai.data.ready && (
-    <a className="notice key-callout" href="#/settings">
+    <a className="notice key-callout" href="#/settings/ai">
       <strong>Add your Yale class (Portkey) key in Settings first.</strong> The assistant does the filing, so it needs the key.
     </a>
   )

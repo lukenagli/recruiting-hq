@@ -86,7 +86,7 @@ export default function CapIQ({ deal, onChanged }: { deal: Deal; onChanged: () =
         </div>
       )}
       {!reader.installed && reader.checked && (
-        <p className="fine">This uses the Recruiting HQ Reader. <a href="#/settings">Set it up in Settings</a>.</p>
+        <p className="fine">This uses the Recruiting HQ Reader. <a href="#/settings/outlook">Set it up in Settings</a>.</p>
       )}
       <details className="capiq-manual" open={changed}>
         <summary>{deal.capiq_url ? 'Capital IQ page for this deal' : 'Picked the wrong deal, or none? Paste its Capital IQ link'}</summary>

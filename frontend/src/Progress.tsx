@@ -70,7 +70,7 @@ export default function Progress({ onPractice }: { onPractice: (topic: string) =
       <p className="fine">
         Each area uses your 12 most recent checked answers and counts how hard they were: an easy question proves less than a hard one,
         so an area shows as Strong only once you're getting its hard questions right. To leave an answer out of these numbers,
-        remove it under <a href="#/settings">Settings → Practice history</a>.
+        remove it under <a href="#/settings/history">Settings → Practice history</a>.
       </p>
     </section>
   )
