@@ -154,11 +154,6 @@ export default function App() {
         <a className="brand" href="#/">
           <BrandMark preview={!!user.preview} /> {user.preview ? <span>Recruiting <span className="brand-hq">HQ</span></span> : 'Recruiting HQ'}
         </a>
-        {user.preview && (
-          <span className="preview-badge" title="Your account sees changes being tried out before they go to everyone">
-            Preview
-          </span>
-        )}
         <nav>
           {user.is_admin && (
             <a href="#/admin" className={section === 'admin' ? 'active' : ''}>

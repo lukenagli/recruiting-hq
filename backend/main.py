@@ -70,8 +70,8 @@ def _setup_again(user: dict, prof: dict) -> bool:
     """Preview: someone who finished setup before it had the Outlook step, and hasn't connected the reader, goes through
     setup once more (their key, resume and banks are kept, so those steps are already filled in). Finishing it again
     stamps a new date, so it isn't shown twice."""
-    if prof["onboarded_at"][:10] >= READER_STEP_ADDED or not accounts.in_preview(user):
-        return False
+    if prof["onboarded_at"][:10] >= READER_STEP_ADDED or user["email"].lower() == config.DEMO_EMAIL:
+        return False  # the demo shows a finished tracker
     return not sync.state(user["id"])["has_key"]
 
 

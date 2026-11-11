@@ -64,10 +64,9 @@ def public(user) -> dict:
 
 
 def in_preview(user) -> bool:
-    """Changes still being tried out are on for the site's admin and the people the admin gave early access."""
-    from .test_scan import is_test  # an admin's test tracker gets what a new preview student would
-
-    return bool(user["is_admin"]) or user["email"].lower() in early_access() or is_test(user["email"])
+    """Everyone has had the current version since the project was graded (Nov 11, 2026). Kept while the old
+    branches are taken out."""
+    return True
 
 
 def early_access() -> set[str]:
