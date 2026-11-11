@@ -133,6 +133,8 @@ CREATE TABLE IF NOT EXISTS guide_questions (
 );
 CREATE INDEX IF NOT EXISTS idx_guide_q_user ON guide_questions (user_id, source);
 """
+# A follow-up builds on the question before it: practice asks it only right after that one (same chain, next step).
+GUIDE_COLUMNS = {"chain": "INTEGER DEFAULT 0", "step": "INTEGER DEFAULT 0"}  # step 0: loaded before chains existed
 MAX_GUIDE_PAGES = 800
 QUESTION_START = re.compile(r"(?:^|\n)\s*(\d{1,3})\.\s+(?=[A-Z“\"(])")
 ASKING = re.compile(r"^(walk|how|what|why|when|where|which|who|would|could|should|can|do|does|is|are|if|explain|tell|"
@@ -141,6 +143,17 @@ IMPERATIVE = re.compile(r"^(walk|explain|tell|describe|pitch|give|let'?s|say|sup
 # A sentence that actually asks for something: a question, or an instruction ("Walk me through...", "Calculate...").
 ASKS = re.compile(r"\?|\b(walk (me|us) through|explain|calculate|compute|describe|tell me|show me|what (is|are|would|will|happens)|"
                   r"how (do|does|would|will|much|many)|which|estimate|value the|find the)\b", re.I)
+
+
+# Wording that only makes sense after the question before it.
+FOLLOW_UP = re.compile(
+    r"\b(these|those|the same|that|this) (figures|numbers|results|deal|company|companies|scenario|transaction|"
+    r"change|changes|answer|calculation|example|situation|case|step|steps)\b|\binstead\s*\?\s*$|\babove\b|previous (question|example|answer)|"
+    r"^(and |also |now,? |next,? )|^(how|what) (does|do|would|will) (this|that|these|it) |^what if\b|^how (does|would) (that|this) change", re.I)
+
+
+def follows_previous(question: str) -> bool:
+    return bool(FOLLOW_UP.search(question or ""))
 
 
 def asks(question: str) -> bool:
@@ -157,6 +170,10 @@ def ensure_guides() -> None:
     ensure()
     with connect() as conn:
         conn.executescript(GUIDE_SCHEMA)
+        have = {r[1] for r in conn.execute("PRAGMA table_info(guide_questions)")}
+        for col, kind in GUIDE_COLUMNS.items():
+            if col not in have:
+                conn.execute(f"ALTER TABLE guide_questions ADD COLUMN {col} {kind}")
 
 
 def extract_questions(pages: list[str]) -> list[dict]:
@@ -235,14 +252,23 @@ async def add_guide(uid: int, filename: str, data: bytes, name: str = "", chosen
     passages = chunk_pages(pages)
     load(uid, name, passages)
     questions = await guide_clarify.clarify(chosen, extract_questions(pages))
-    for q in questions:  # the category follows the finished wording
-        q["category"] = "Behavioral" if BEHAVIORAL.search(q["question"]) else "Technical"
+    chain, step = 0, 0
+    for i, q in enumerate(questions):
+        q["category"] = "Behavioral" if BEHAVIORAL.search(q["question"]) else "Technical"  # from the finished wording
+        same_section = i > 0 and questions[i - 1].get("context") == q.get("context")
+        # the AI's call when it ran (it reads the section), else the wording
+        follows = q["follows"] if "follows" in q else follows_previous(q["question"])
+        if same_section and follows:
+            step += 1  # a follow-up: asked right after the one before it
+        else:
+            chain, step = chain + 1, 1
+        q["chain"], q["step"] = chain, step
     ensure_guides()
     with connect() as conn:
         conn.execute("DELETE FROM guide_questions WHERE user_id = ? AND source = ?", (uid, name))
         conn.executemany(
-            "INSERT INTO guide_questions (user_id, source, location, category, question, answer) VALUES (?, ?, ?, ?, ?, ?)",
-            [(uid, name, q["location"], q["category"], q["question"], q["answer"]) for q in questions])
+            "INSERT INTO guide_questions (user_id, source, location, category, question, answer, chain, step) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            [(uid, name, q["location"], q["category"], q["question"], q["answer"], q["chain"], q["step"]) for q in questions])
     return {"ok": True, "source": name, "passages": len(passages), "questions": len(questions)}
 
 
@@ -305,3 +331,15 @@ def guide_questions(uid: int) -> list[dict]:
     ensure_guides()
     with connect(read_only=True) as conn:
         return [dict(r) for r in conn.execute("SELECT * FROM guide_questions WHERE user_id = ?", (uid,))]
+
+
+def next_in_chain(uid: int, qid: int) -> dict | None:
+    """The follow-up that comes right after this guide question, if it has one."""
+    ensure_guides()
+    with connect(read_only=True) as conn:
+        row = conn.execute("SELECT source, chain, step FROM guide_questions WHERE id = ? AND user_id = ?", (qid, uid)).fetchone()
+        if not row or not row["step"]:
+            return None
+        nxt = conn.execute("SELECT * FROM guide_questions WHERE user_id = ? AND source = ? AND chain = ? AND step = ?",
+                           (uid, row["source"], row["chain"], row["step"] + 1)).fetchone()
+    return dict(nxt) if nxt else None

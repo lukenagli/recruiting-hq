@@ -160,7 +160,26 @@ def _guide_question(row: dict) -> dict:
             "topic": topic_of(row["question"]) if technical else "", "difficulty": difficulty_of(row["question"]) if technical else "",
             "question": row["question"], "bank": "", "round": "", "group": "", "who": "",
             "source": f"{row['source']}, {row['location']} (your copy)", "notes": row["answer"], "guide": row["source"],
-            "location": row["location"]}
+            "location": row["location"], "step": row.get("step") or 0}
+
+
+def next_part(uid: int, key: str) -> dict | None:
+    """The follow-up to a guide question just answered (the next step of its chain), or None."""
+    if not key.startswith("gq:"):
+        return None
+    row = answer_library.next_in_chain(uid, int(key[3:]))
+    if not row:
+        return None
+    q = _guide_question(row)
+    q["has_next"] = answer_library.next_in_chain(uid, row["id"]) is not None
+    return q
+
+
+def with_next(uid: int, q: dict | None) -> dict | None:
+    """A question, saying whether a follow-up comes after it (the Next part button)."""
+    if q and q.get("kind") == "guide":
+        q["has_next"] = next_part(uid, q["key"]) is not None
+    return q
 
 
 def rebuild(key: str, uid: int | None = None) -> tuple[dict, pb.Problem | None] | None:
@@ -277,7 +296,9 @@ def next_question(uid: int, categories: list[str], topics: list[str], stage: str
     if guides is not None:  # the student's own guides: all of them, or the ones chosen
         pool += [q for q in map(_guide_question, answer_library.guide_questions(uid))
                  if q["key"] not in seen_set and q["category"] in categories and (not guides or q["guide"] in guides)
-                 and answer_library.asks(q["question"])]  # older uploads kept some scenarios without their question
+                 and answer_library.asks(q["question"])  # older uploads kept some scenarios without their question
+                 # a follow-up is only asked right after the question it builds on (see next_part), never on its own
+                 and not (q["step"] > 1 or (q["step"] == 0 and answer_library.follows_previous(q["question"])))]
     pool = [q for q in pool if q["category"] != "Technical" or q["topic"] in topics]
     # restructuring and LevFin questions only for someone recruiting for them
     pool = [q for q in pool if specialty(q) in ("", *wanted)]

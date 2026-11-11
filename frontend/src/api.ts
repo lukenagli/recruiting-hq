@@ -272,6 +272,8 @@ export async function del<T>(path: string): Promise<T> {
 export type Verdict = 'correct' | 'partial' | 'incorrect'
 export type PracticeQuestion = {
   key: string
+  has_next?: boolean // a guide question with a follow-up asked right after it
+  step?: number // its place in that chain (1 = the first question)
   kind: 'bank' | 'template'
   category: string
   topic: string

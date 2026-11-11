@@ -219,6 +219,7 @@ class PracticeRequest(BaseModel):
     seen: list[str] = []
     like: str = ""  # key of a question to find a similar one to
     guides: list[str] | None = []  # uploaded guides to include: [] all of them (the default), None none
+    after: str = ""  # a guide question just answered: return its follow-up (the next part of the same question)
 
 
 class AnswerRequest(BaseModel):
@@ -237,12 +238,14 @@ def practice_options(user: dict = Depends(current_user)):
 
 @app.post("/api/practice/next")
 def practice_next(req: PracticeRequest, user: dict = Depends(current_user)):
+    if req.after:  # the next part of a question with follow-ups
+        return {"question": practice.next_part(user["id"], req.after)}
     built = practice.rebuild(req.like, user["id"]) if req.like else None
     like = built[0] if built else None
     q = practice.next_question(user["id"], req.categories, req.topics, req.stage, req.difficulty, req.bank, req.seen[-300:], like,
                                guides=req.guides,
                                club=schools.for_user(user["id"])["club"])
-    return {"question": q}
+    return {"question": practice.with_next(user["id"], q)}
 
 
 @app.post("/api/practice/answer")

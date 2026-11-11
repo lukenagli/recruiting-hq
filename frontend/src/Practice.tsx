@@ -282,6 +282,7 @@ export default function Practice({ options, start }: { options: PrepOptions; sta
   const [tally, setTally] = useState({ done: 0, correct: 0 })
   const [voice, setVoice] = useState(false) // a spoken mock interview instead of typed practice
   const [parts, setParts] = useState<Record<string, string>>({}) // the labeled answer boxes (statements, EV, MOM)
+  const [earlier, setEarlier] = useState<{ q: PracticeQuestion; answer: string; graded: Graded }[]>([]) // earlier parts of a question
   const [typeItOut, setTypeItOut] = useState(false) // the student would rather write the whole answer
   const bullets = useBullets(answer, setAnswer) // "- " makes a bullet, Tab and Shift+Tab indent
   const library = useApi<{ source: string; private: boolean; questions: number }[]>('/api/practice/library')
@@ -305,14 +306,18 @@ export default function Practice({ options, start }: { options: PrepOptions; sta
     }
   }
 
-  async function next(like = '') {
+  /** The next question; with `after`, the next part of the question just answered (its follow-up). */
+  async function next(like = '', after = '') {
     setBusy('next')
     setError('')
     try {
-      const r = await post<{ question: PracticeQuestion | null }>('/api/practice/next', { ...setup, seen, like })
+      const r = await post<{ question: PracticeQuestion | null }>('/api/practice/next', { ...setup, seen, like, after })
       if (!r.question) {
-        setError('No questions match these choices. Try another bank, stage or difficulty.')
+        setError(after ? 'That was the last part of this question.' : 'No questions match these choices. Try another bank, stage or difficulty.')
       } else {
+        // the earlier parts stay on screen while their follow-ups are asked; a new question starts clean
+        if (after && q && graded) setEarlier((e) => [...e, { q, answer, graded }])
+        else setEarlier([])
         setQ(r.question)
         setSeen((s) => [...s, r.question!.key])
         dictation.stop()
@@ -400,6 +405,17 @@ export default function Practice({ options, start }: { options: PrepOptions; sta
               </span>
             )}
           </div>
+          {earlier.map((e, i) => (
+            <div key={e.q.key} className="pq-earlier">
+              <small>Part {i + 1}</small>
+              <p className="pq-earlier-q">{e.q.question}</p>
+              {e.answer.trim() && <p className="pq-earlier-a"><strong>You said:</strong> {e.answer}</p>}
+              {(e.graded.answer || e.graded.explanation) && (
+                <p className="pq-earlier-a"><strong>Answer:</strong> {e.graded.answer || e.graded.explanation}</p>
+              )}
+            </div>
+          ))}
+          {earlier.length > 0 && <small className="pq-part">Part {earlier.length + 1}</small>}
           <p className="pq-question">{q.question}</p>
           {taxNote(q) && <p className="pq-note">{taxNote(q)}</p>}
 
@@ -493,11 +509,17 @@ export default function Practice({ options, start }: { options: PrepOptions; sta
                 ))}
               </div>
               <div className="pq-actions">
-                <button className="primary" disabled={busy !== ''} onClick={() => next(q.key)}>
-                  Try a similar problem
-                </button>
+                {q.has_next ? (
+                  <button className="primary" disabled={busy !== ''} onClick={() => next('', q.key)}>
+                    {busy === 'next' ? 'One moment…' : 'Next part of this question'}
+                  </button>
+                ) : (
+                  <button className="primary" disabled={busy !== ''} onClick={() => next(q.key)}>
+                    Try a similar problem
+                  </button>
+                )}
                 <button className="ghost" disabled={busy !== ''} onClick={() => next()}>
-                  Next question
+                  {q.has_next ? 'Skip to a new question' : 'Next question'}
                 </button>
                 {voiceSupported() && (
                   <button className="ghost" disabled={busy !== ''} onClick={() => { setQ(null); setVoice(true) }}>

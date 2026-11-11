@@ -26,8 +26,8 @@ For each numbered item:
 and assumptions; add only the instruction the section implies, as a short final sentence ("Walk me through the \
 changes on the three financial statements." or "How do Equity Value and Enterprise Value change?"). If the item \
 already says what to answer, return it unchanged.
-- If the item builds on the one before it ("How does this change if...", "Now assume..."), start it with that \
-earlier item's setup (its facts and numbers, briefly) so it can be answered without seeing it.
+- If the item builds on the one before it ("How do these figures change if...", "Now assume..."), set \
+follows_previous to true and leave its wording as it is: it will be asked right after that item, with it on screen.
 - If the item is not a question to practice (a step in how to answer, a formula, a rule, a heading), return an \
 empty string for it.
 - Never add facts, numbers or assumptions that aren't in the item or the section intro.
@@ -38,6 +38,7 @@ empty string for it.
 class Item(BaseModel):
     n: int
     question: str = Field(description="The self-contained question, or an empty string if the item isn't a question.")
+    follows_previous: bool = Field(default=False, description="True if it builds on the item before it.")
 
 
 class Clarified(BaseModel):
@@ -49,14 +50,14 @@ LIMITS = UsageLimits(request_limit=2, total_tokens_limit=40_000)
 BATCH = 25
 
 
-async def _one(chosen: Chosen, context: str, batch: list[dict]) -> dict[int, str]:
+async def _one(chosen: Chosen, context: str, batch: list[dict]) -> dict[int, tuple[str, bool]]:
     listed = "\n".join(f"{i}. {q['question']}" for i, q in enumerate(batch, 1))
     prompt = f"Section intro from the guide:\n{context.strip() or '(none)'}\n\nItems:\n{listed}"
     try:
         result = await agent.run(prompt, model=chosen.model, model_settings=chosen.settings, usage_limits=LIMITS)
     except Exception:  # noqa: BLE001 - keep the questions as extracted
         return {}
-    return {it.n: " ".join(it.question.split()) for it in result.output.items if 1 <= it.n <= len(batch)}
+    return {it.n: (" ".join(it.question.split()), it.follows_previous) for it in result.output.items if 1 <= it.n <= len(batch)}
 
 
 async def clarify(chosen: Chosen | None, questions: list[dict]) -> list[dict]:
@@ -74,7 +75,7 @@ async def clarify(chosen: Chosen | None, questions: list[dict]) -> list[dict]:
             out = await _one(chosen, ctx, batch)
         for i, q in enumerate(batch, 1):
             if i in out:
-                q["question"] = out[i]  # "" marks an item that isn't a question
+                q["question"], q["follows"] = out[i]  # "" marks an item that isn't a question
 
     await asyncio.gather(*(run(ctx, b) for ctx, b in jobs))
     return [q for q in questions if q["question"]]
