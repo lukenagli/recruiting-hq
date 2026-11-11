@@ -168,7 +168,12 @@ def extract_questions(pages: list[str]) -> list[dict]:
     page_at = lambda pos: max((n for s, n in starts if s <= pos), default=1)
     marks = list(QUESTION_START.finditer(text))
     out = []
+    context, last = "", 0
     for i, m in enumerate(marks):
+        number = int(m.group(1))
+        if i == 0 or number <= last:  # a new numbered list: its section intro says what to do with its questions
+            context = " ".join(text[max(0, m.start() - 1700):m.start()].split())[-1400:]
+        last = number
         block = text[m.end():marks[i + 1].start() if i + 1 < len(marks) else len(text)]
         block = re.sub(r"[ \t]+", " ", block).strip()
         q_end = block.find("?")
@@ -194,13 +199,15 @@ def extract_questions(pages: list[str]) -> list[dict]:
         if not asks(question):
             continue
         out.append({"question": question, "answer": answer[:3500], "location": f"p. {page_at(m.start())}",
-                    "category": "Behavioral" if BEHAVIORAL.search(question) else "Technical"})
+                    "category": "Behavioral" if BEHAVIORAL.search(question) else "Technical", "context": context})
     return out
 
 
-def add_guide(uid: int, filename: str, data: bytes, name: str = "") -> dict:
+async def add_guide(uid: int, filename: str, data: bytes, name: str = "", chosen=None) -> dict:
     """Load one of the user's own guides: private passages plus its numbered questions. `name` labels it (for the
-    per-guide upload boxes); otherwise the file name is used."""
+    per-guide upload boxes); otherwise the file name is used. With an AI model (`chosen`), each question is made to
+    say what to answer, from its section's intro (guide_clarify)."""
+    from . import guide_clarify
     import io
 
     name = (name.strip() or filename.rsplit(".", 1)[0].strip())[:100] or "My guide"
@@ -227,7 +234,9 @@ def add_guide(uid: int, filename: str, data: bytes, name: str = "") -> dict:
         return {"ok": False, "reason": "Couldn't find text in that file (it may be scanned images)."}
     passages = chunk_pages(pages)
     load(uid, name, passages)
-    questions = extract_questions(pages)
+    questions = await guide_clarify.clarify(chosen, extract_questions(pages))
+    for q in questions:  # the category follows the finished wording
+        q["category"] = "Behavioral" if BEHAVIORAL.search(q["question"]) else "Technical"
     ensure_guides()
     with connect() as conn:
         conn.execute("DELETE FROM guide_questions WHERE user_id = ? AND source = ?", (uid, name))

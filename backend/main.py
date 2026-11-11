@@ -1221,7 +1221,11 @@ async def upload_guide(file: UploadFile, name: str = Form(""), user: dict = Depe
     data = await file.read()
     if len(data) > 40_000_000:
         raise HTTPException(status_code=400, detail="That file is over 40 MB.")
-    out = reference.add_guide(user["id"], file.filename or "My guide.pdf", data, name)
+    try:  # with the student's AI, each question is made to say what to answer (without it, they're kept as found)
+        chosen = ai_for(user)
+    except HTTPException:
+        chosen = None
+    out = await reference.add_guide(user["id"], file.filename or "My guide.pdf", data, name, chosen)
     if not out["ok"]:
         raise HTTPException(status_code=400, detail=out["reason"])
     return {**out, "library": reference.library(user["id"])}
