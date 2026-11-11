@@ -1613,3 +1613,24 @@ details.card.fold > .card, details.card.fold section.card { box-shadow: none; bo
 .vi-status.vi-listening { color: #e8467c; font-weight: 600; }
 .vi-results ol { padding-left: 20px; display: grid; gap: 14px; }
 .vi-results li p { margin: 4px 0; }
+
+/* Interview Prep: labeled answer boxes (three statements, EV and EqV, MOM and IRR), the tax note, the source picker */
+.pq-note { margin: -4px 0 10px; font-size: 13px; color: var(--muted); font-style: italic; }
+.af { display: grid; gap: 10px; margin-bottom: 10px; }
+.af-row { display: grid; grid-template-columns: 150px 1fr; gap: 12px; align-items: start; }
+.af-returns .af-row, .af-value .af-row { grid-template-columns: 1fr; }
+.af-row-label { font-size: 14px; font-weight: 700; padding-top: 7px; }
+.af-parts { display: grid; gap: 8px; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.af-parts.n1 { grid-template-columns: 1fr; }
+.af-parts.n2 { grid-template-columns: repeat(2, minmax(0, 220px)); }
+.af-field { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.af-field small { font-size: 11px; font-weight: 700; letter-spacing: 0.03em; color: var(--muted); }
+.af-input { display: flex; align-items: center; border: 1.5px solid var(--line); border-radius: 9px; background: var(--card, #fff); }
+.af-input:focus-within { border-color: var(--blue); }
+.af-input i { font-style: normal; color: var(--muted); padding: 0 0 0 9px; }
+.af-input i:last-child { padding: 0 9px 0 0; }
+.af-input input { flex: 1; min-width: 0; border: 0; outline: none; background: transparent; font: inherit; font-size: 15px; padding: 7px 9px; color: inherit; }
+.pq-typeout { font-size: 13px; margin: 2px 0 6px; }
+.dd-heading { display: block; font-size: 11px; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; color: var(--muted); padding: 10px 8px 2px; border-top: 1px solid var(--line); margin-top: 6px; }
+.dd-note { font-size: 13px; color: var(--muted); padding: 6px 8px; margin: 0; max-width: 260px; }
+@media (max-width: 640px) { .af-row { grid-template-columns: 1fr; gap: 4px; } .af-parts { grid-template-columns: 1fr; } .af-parts.n2 { grid-template-columns: 1fr 1fr; } }

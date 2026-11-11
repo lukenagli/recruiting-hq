@@ -1,8 +1,10 @@
 import { useEffect, useRef, useState } from 'react'
 import { post } from './api'
 import type { Graded, PracticeQuestion, PrepOptions, Verdict } from './api'
+import AnswerForm, { anyFilled, compose, formFor, taxNote } from './AnswerForm'
+import { useBullets } from './bullets'
 import { useDictation } from './dictation'
-import { useSchool } from './ui'
+import { useApi, useSchool } from './ui'
 import VoiceInterview, { voiceSupported } from './VoiceInterview'
 
 export const TOPICS = ['Accounting', 'Enterprise & Equity Value', 'Valuation', 'DCF', 'Merger Math', 'Diluted Share Count', 'LBO', 'Other']
@@ -16,8 +18,9 @@ const DIFFICULTIES = [
 ]
 const VERDICT_LABEL: Record<Verdict, string> = { correct: 'Correct', partial: 'Partly right', incorrect: 'Not quite' }
 
-export type Setup = { categories: string[]; topics: string[]; stage: string; difficulty: string; bank: string }
-export const DEFAULT_SETUP: Setup = { categories: ['Technical'], topics: [], stage: '', difficulty: 'adaptive', bank: 'Any' }
+// guides: practice from the student's own uploaded guides instead of a bank ([] = all of them; null = a bank)
+export type Setup = { categories: string[]; topics: string[]; stage: string; difficulty: string; bank: string; guides: string[] | null }
+export const DEFAULT_SETUP: Setup = { categories: ['Technical'], topics: [], stage: '', difficulty: 'adaptive', bank: 'Any', guides: null }
 const STORE = 'rhq-practice-setup'
 
 function loadSetup(): Setup {
@@ -58,7 +61,7 @@ function Check({ on, onChange, children, indent }: { on: boolean; onChange: (v: 
   )
 }
 
-function SetupBar({ setup, setSetup, banks }: { setup: Setup; setSetup: (s: Setup) => void; banks: string[] }) {
+function SetupBar({ setup, setSetup, banks, guides }: { setup: Setup; setSetup: (s: Setup) => void; banks: string[]; guides: string[] }) {
   const toggle = (list: string[], item: string, on: boolean) => (on ? [...new Set([...list, item])] : list.filter((x) => x !== item))
   const technical = setup.categories.includes('Technical')
   const allTopics = setup.topics.length === 0
@@ -122,19 +125,60 @@ function SetupBar({ setup, setSetup, banks }: { setup: Setup; setSetup: (s: Setu
         </label>
       )}
 
-      {banks.length > 0 && (
-      <label className="dd">
-        <span className="dd-label">Bank</span>
-        <select value={setup.bank} onChange={(e) => setSetup({ ...setup, bank: e.target.value })}>
-          <option value="Any">Any bank</option>
-          {banks.map((b) => (
-            <option key={b} value={b}>{b}</option>
-          ))}
-        </select>
-      </label>
+      {(banks.length > 0 || guides.length > 0) && (
+        <Dropdown label="Questions from" summary={sourceSummary(setup)}>
+          {guides.length > 0 ? (
+            <>
+              <Check on={setup.guides !== null} onChange={(v) => setSetup({ ...setup, guides: v ? [] : null })}>
+                Breaking Into Wall Street guides
+              </Check>
+              {setup.guides !== null && (
+                <>
+                  <Check indent on={setup.guides.length === 0} onChange={(v) => v && setSetup({ ...setup, guides: [] })}>
+                    All guides
+                  </Check>
+                  {guides.map((g) => (
+                    <Check
+                      key={g}
+                      indent
+                      on={setup.guides!.length > 0 && setup.guides!.includes(g)}
+                      onChange={(v) => {
+                        const cur = setup.guides!.length ? setup.guides! : []
+                        const next = v ? [...new Set([...cur, g])] : cur.filter((x) => x !== g)
+                        setSetup({ ...setup, guides: next.length === guides.length ? [] : next })
+                      }}
+                    >
+                      {g}
+                    </Check>
+                  ))}
+                </>
+              )}
+            </>
+          ) : (
+            <p className="dd-note">Upload your Breaking Into Wall Street guides in Settings to practice from them.</p>
+          )}
+          {banks.length > 0 && (
+            <>
+              <span className="dd-heading">Banks</span>
+              <Check on={setup.guides === null && setup.bank === 'Any'} onChange={() => setSetup({ ...setup, bank: 'Any', guides: null })}>
+                Any bank
+              </Check>
+              {banks.map((b) => (
+                <Check key={b} on={setup.guides === null && setup.bank === b} onChange={() => setSetup({ ...setup, bank: b, guides: null })}>
+                  {b}
+                </Check>
+              ))}
+            </>
+          )}
+        </Dropdown>
       )}
     </div>
   )
+}
+
+function sourceSummary(s: Setup) {
+  if (s.guides !== null) return s.guides.length === 0 ? 'All my guides' : s.guides.length === 1 ? s.guides[0] : `${s.guides.length} guides`
+  return s.bank === 'Any' ? 'Any bank' : s.bank
 }
 
 function Meta({ q }: { q: PracticeQuestion }) {
@@ -227,6 +271,13 @@ export default function Practice({ options, start }: { options: PrepOptions; sta
   const [seen, setSeen] = useState<string[]>([])
   const [tally, setTally] = useState({ done: 0, correct: 0 })
   const [voice, setVoice] = useState(false) // a spoken mock interview instead of typed practice
+  const [parts, setParts] = useState<Record<string, string>>({}) // the labeled answer boxes (statements, EV, MOM)
+  const [typeItOut, setTypeItOut] = useState(false) // the student would rather write the whole answer
+  const bullets = useBullets(answer, setAnswer) // "- " makes a bullet, Tab and Shift+Tab indent
+  const library = useApi<{ source: string; private: boolean; questions: number }[]>('/api/practice/library')
+  const myGuides = (library.data ?? []).filter((g) => g.private && g.questions > 0).map((g) => g.source)
+  const form = q && !typeItOut ? formFor(q) : null
+  const written = form ? compose(form, parts, answer) : answer
   // dictating an answer: each finished phrase is added to the box
   const dictation = useDictation((phrase) => setAnswer((a) => `${a}${a && !/\s$/.test(a) ? ' ' : ''}${phrase}`))
 
@@ -256,6 +307,8 @@ export default function Practice({ options, start }: { options: PrepOptions; sta
         setSeen((s) => [...s, r.question!.key])
         dictation.stop()
         setAnswer('')
+        setParts({})
+        setTypeItOut(false)
         setGraded(null)
       }
     } catch (e) {
@@ -281,6 +334,14 @@ export default function Practice({ options, start }: { options: PrepOptions; sta
     }
   }
 
+  /** Check the answer: the labeled boxes and the free text, put together. */
+  function finish() {
+    const text = written
+    setAnswer(text) // "Your answer" shows what was checked
+    setParts({})
+    return submit(text)
+  }
+
   async function mark(verdict: Verdict) {
     if (!graded) return
     await post(`/api/practice/attempts/${graded.attempt_id}/mark`, { verdict })
@@ -295,7 +356,7 @@ export default function Practice({ options, start }: { options: PrepOptions; sta
 
   return (
     <section className="practice">
-      <SetupBar setup={setup} setSetup={setSetup} banks={banks} />
+      <SetupBar setup={setup} setSetup={setSetup} banks={banks} guides={myGuides} />
 
       {voice && <VoiceInterview setup={setup} onExit={() => setVoice(false)} />}
 
@@ -330,23 +391,35 @@ export default function Practice({ options, start }: { options: PrepOptions; sta
             )}
           </div>
           <p className="pq-question">{q.question}</p>
+          {taxNote(q) && <p className="pq-note">{taxNote(q)}</p>}
 
           {!graded ? (
             <>
+              {form && <AnswerForm form={form} parts={parts} setParts={setParts} onSubmit={() => written.trim() && finish()} />}
               <textarea
                 className="pq-answer"
+                ref={bullets.ref}
                 value={answer}
-                onChange={(e) => setAnswer(e.target.value)}
-                placeholder={dictation.listening ? 'Listening… say your answer' : q.category === 'Technical' ? 'Type or dictate your answer the way you would say it, including the numbers…' : 'Type or dictate what you would say…'}
-                rows={5}
+                onChange={bullets.onChange}
+                placeholder={dictation.listening ? 'Listening… say your answer' : form ? 'Anything else (optional): your reasoning or the steps…' : q.category === 'Technical' ? 'Type or dictate your answer the way you would say it, including the numbers…' : 'Type or dictate what you would say…'}
+                rows={form ? 2 : 5}
                 onKeyDown={(e) => {
-                  if (e.key === 'Enter' && (e.metaKey || e.ctrlKey) && answer.trim()) submit(answer)
+                  if (e.key === 'Enter' && (e.metaKey || e.ctrlKey) && written.trim()) {
+                    e.preventDefault()
+                    return finish()
+                  }
+                  bullets.onKeyDown(e)
                 }}
               />
+              {form && (
+                <button type="button" className="link muted pq-typeout" onClick={() => { setAnswer(compose(form, parts, answer)); setTypeItOut(true) }}>
+                  Write it all out instead
+                </button>
+              )}
               {dictation.interim && <p className="pq-interim muted">{dictation.interim}</p>}
               {dictation.error && <p className="notice error">{dictation.error}</p>}
               <div className="pq-actions">
-                <button className="primary" disabled={!answer.trim() || busy !== ''} onClick={() => submit(answer)}>
+                <button className="primary" disabled={!(answer.trim() || anyFilled(parts)) || busy !== ''} onClick={finish}>
                   {busy === 'grade' ? 'Checking…' : 'Check my answer'}
                 </button>
                 {dictation.supported && (

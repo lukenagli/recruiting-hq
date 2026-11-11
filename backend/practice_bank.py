@@ -111,6 +111,62 @@ def buy_ppe_debt(r: random.Random) -> Problem:
     )
 
 
+def _chg(x: float) -> str:
+    """ "up $5M" or "down $8M"."""
+    return f"up {_m(x)}" if x >= 0 else f"down {_m(-x)}"
+
+
+def _hard_tax(r: random.Random) -> int:
+    """Hard problems use a less round tax rate, so the math takes a little more work (still by hand)."""
+    return r.choice([30, 40])
+
+
+def ppe_year_one(r: random.Random) -> Problem:
+    tax = _hard_tax(r)
+    p = r.choice([100, 200, 300, 500])
+    years = r.choice([5, 10])
+    rate = r.choice([5, 10])
+    dep, interest = p / years, p * rate / 100
+    pre = dep + interest
+    ni = pre * (1 - tax / 100)
+    cfo = dep - ni
+    return Problem(
+        f"At the start of the year a company buys {_m(p)} of PP&E with new debt at {rate}% interest. The PP&E is depreciated "
+        f"straight-line over {years} years. Walk me through the three statements at the end of year one (tax rate {tax}%).",
+        f"Net income down {_m(ni)}; CFO {_chg(cfo)}, CFI down {_m(p)}, CFF up {_m(p)}, cash {_chg(cfo)}; "
+        f"assets up {_m(p - ni)}, liabilities up {_m(p)}, equity down {_m(ni)}.",
+        f"Income statement: depreciation {_m(dep)} and interest {_m(interest)} lower pre-tax income {_m(pre)}; taxes fall "
+        f"{_m(pre * tax / 100)}, so net income falls {_m(ni)}.\n"
+        f"Cash flow statement: CFO = net income down {_m(ni)} plus the {_m(dep)} depreciation added back = {_chg(cfo)}. "
+        f"CFI: capex of {_m(p)}. CFF: {_m(p)} of debt raised. Cash {_chg(cfo)}.\n"
+        f"Balance sheet: assets up {_m(p - ni)} (cash {_chg(cfo)}, PP&E up {_m(p - dep)} after a year of depreciation); "
+        f"liabilities up {_m(p)} (the debt); shareholders' equity down {_m(ni)} (retained earnings). Balanced.",
+        [ni, cfo, p - ni],
+    )
+
+
+def asset_sale_gain(r: random.Random) -> Problem:
+    tax = _hard_tax(r)
+    book = r.choice([40, 60, 80, 100])
+    gain = r.choice([10, 20, 40, 50])
+    price = book + gain
+    ni = gain * (1 - tax / 100)
+    cfo = -gain * tax / 100
+    return Problem(
+        f"A company sells PP&E with a book value of {_m(book)} for {_m(price)} in cash. Walk me through the three statements "
+        f"(tax rate {tax}%).",
+        f"Net income up {_m(ni)}; CFO down {_m(-cfo)}, CFI up {_m(price)}, cash up {_m(price + cfo)}; assets up {_m(ni)}, "
+        f"equity up {_m(ni)}.",
+        f"Income statement: a {_m(gain)} gain on sale raises pre-tax income {_m(gain)}; taxes rise {_m(gain * tax / 100)}, so "
+        f"net income rises {_m(ni)}.\n"
+        f"Cash flow statement: CFO starts with net income up {_m(ni)} and subtracts the {_m(gain)} non-cash gain, so it is "
+        f"down {_m(-cfo)} (the tax paid). CFI: the {_m(price)} of sale proceeds. CFF: nothing. Cash up {_m(price + cfo)}.\n"
+        f"Balance sheet: assets up {_m(ni)} (cash up {_m(price + cfo)}, PP&E down {_m(book)}); liabilities unchanged; "
+        f"shareholders' equity up {_m(ni)} (retained earnings). Balanced.",
+        [ni, price + cfo],
+    )
+
+
 # ---------------- Enterprise and equity value ----------------
 
 def ev_bridge(r: random.Random) -> Problem:
@@ -433,6 +489,8 @@ TEMPLATES = [
     Template("inventory_writedown", "Accounting", "medium", inventory_writedown),
     Template("debt_interest", "Accounting", "medium", debt_interest),
     Template("sbc", "Accounting", "hard", sbc),
+    Template("ppe_year_one", "Accounting", "hard", ppe_year_one),
+    Template("asset_sale_gain", "Accounting", "hard", asset_sale_gain),
     Template("ev_bridge", "Enterprise & Equity Value", "easy", ev_bridge),
     Template("ev_change", "Enterprise & Equity Value", "medium", ev_change),
     Template("ev_or_equity_multiple", "Valuation", "easy", ev_or_equity_multiple),

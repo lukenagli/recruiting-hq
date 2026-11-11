@@ -196,6 +196,33 @@ def _strengths(conn, uid: int) -> dict[str, tuple[float, int]]:
     return {t: (sum(s) / len(s), len(s)) for t, s in out.items()}
 
 
+LEVELS = ["easy", "medium", "hard"]
+
+
+def _levels(conn, uid: int) -> dict[str, str]:
+    """The level each technical area should be asked at, learned from every attempt this account has made (so a new
+    session carries on where the last left off), area by area (acing accounting doesn't make the first LBO question
+    hard). A new area starts easy. A right answer at or above the current level moves it up one; two misses in a row
+    at or below it move it down one; a partly right answer leaves it where it is."""
+    level: dict[str, int] = {}
+    misses: dict[str, int] = {}
+    for r in conn.execute("""SELECT topic, difficulty, score FROM prep_attempts WHERE user_id = ? AND category = 'Technical'
+                             AND score IS NOT NULL AND topic != '' ORDER BY at""", (uid,)):
+        t, cur = r["topic"], level.get(r["topic"], 0)
+        asked = LEVELS.index(r["difficulty"]) if r["difficulty"] in LEVELS else cur
+        if r["score"] >= 0.99:
+            misses[t] = 0
+            if asked >= cur:
+                cur = min(2, cur + 1)
+        elif r["score"] <= 0.01:
+            if asked <= cur:
+                misses[t] = misses.get(t, 0) + 1
+                if misses[t] >= 2:
+                    cur, misses[t] = max(0, cur - 1), 0
+        level[t] = cur
+    return {t: LEVELS[n] for t, n in level.items()}
+
+
 def _level(strength: tuple[float, int] | None) -> str:
     if not strength or strength[1] < 2:
         return "easy"
@@ -215,8 +242,9 @@ def _fresh(uid: int, pool: list[dict]) -> list[dict]:
 
 
 def next_question(uid: int, categories: list[str], topics: list[str], stage: str, difficulty: str, bank: str,
-                  seen: list[str], like: dict | None = None, club: bool = True) -> dict | None:
-    """One question matching the filters, not already in `seen`. Without `club`, the school question bank is left out."""
+                  seen: list[str], like: dict | None = None, club: bool = True, guides: list[str] | None = None) -> dict | None:
+    """One question matching the filters, not already in `seen`. Without `club`, the school question bank is left out.
+    `guides`: questions only from the student's own uploaded guides (an empty list: all of them), instead of a bank."""
     init_db()
     rng = random.Random()
     categories = [c for c in categories if c in CATEGORIES] or list(CATEGORIES)
@@ -224,6 +252,7 @@ def next_question(uid: int, categories: list[str], topics: list[str], stage: str
     seen_set = set(seen)
     with connect(read_only=True) as conn:
         strengths = _strengths(conn, uid)
+        levels = _levels(conn, uid)  # adaptive: the level each technical area has reached
         wanted = recruiting(uid, conn)  # restructuring or LevFin, if the student is recruiting for them
         where, params = [], []
         types = [t for c in categories for t in CATEGORIES[c]]
@@ -235,10 +264,14 @@ def next_question(uid: int, categories: list[str], topics: list[str], stage: str
         if stage in STAGES:
             where.append("round = ?")
             params.append(stage)
-        rows = conn.execute(f"SELECT * FROM questions WHERE {' AND '.join(where)}", params).fetchall() if club else []
+        use_bank = club and guides is None
+        rows = conn.execute(f"SELECT * FROM questions WHERE {' AND '.join(where)}", params).fetchall() if use_bank else []
 
     pool = [q for q in map(_bank_question, rows) if q["key"] not in seen_set and len(q["question"]) > 12]
-    if not (bank and bank != "Any"):  # the common questions are not tied to a bank
+    if guides is not None:  # only the chosen guides of the student's own
+        pool = [q for q in map(_guide_question, answer_library.guide_questions(uid))
+                if q["key"] not in seen_set and q["category"] in categories and (not guides or q["guide"] in guides)]
+    elif not (bank and bank != "Any"):  # the common questions are not tied to a bank
         pool += [q for q in map(_core_question, range(len(pb.CORE))) if q["key"] not in seen_set and q["category"] in categories]
         if "Technical" in categories:
             pool += [q for q in map(_tech_question, range(len(core_technicals.QUESTIONS))) if q["key"] not in seen_set]
@@ -251,10 +284,12 @@ def next_question(uid: int, categories: list[str], topics: list[str], stage: str
     pool = _fresh(uid, pool)
 
     def allowed(topic: str) -> set[str]:
+        if guides is not None:  # a guide's questions aren't graded by level: all of them
+            return set(LEVELS)
         if stage in STAGE_DIFFICULTY:
             return STAGE_DIFFICULTY[stage]
         if difficulty == "adaptive":
-            return {_level(strengths.get(topic))}
+            return {levels.get(topic, "easy")}
         return {difficulty} if difficulty in ("easy", "medium", "hard") else {"easy", "medium", "hard"}
 
     if like:  # "try a similar problem": same category and topic
@@ -267,7 +302,7 @@ def next_question(uid: int, categories: list[str], topics: list[str], stage: str
         if q["category"] == "Technical" and q["difficulty"] not in allowed(q["topic"]):
             continue
         by_cat.setdefault(q["category"], []).append(q)
-    templates_ok = "Technical" in categories
+    templates_ok = "Technical" in categories and guides is None  # number problems aren't from a guide
     choices = [c for c in categories if by_cat.get(c) or (c == "Technical" and templates_ok)]
     if not choices:
         return None
@@ -282,16 +317,20 @@ def next_question(uid: int, categories: list[str], topics: list[str], stage: str
         s = strengths.get(topic)
         return 1.6 if not s else 0.4 + (1 - s[0]) * 1.6
     bank_tech = by_cat.get("Technical", [])
-    area_pool = [t for t in topics if any(q["topic"] == t for q in bank_tech) or any(tp.topic == t for tp in pb.TEMPLATES)]
+    area_pool = [t for t in topics if any(q["topic"] == t for q in bank_tech) or (templates_ok and any(tp.topic == t for tp in pb.TEMPLATES))]
     if not area_pool:
         return None
     topic = rng.choices(area_pool, weights=[weight(t) for t in area_pool])[0]
-    tpls = [tp for tp in pb.TEMPLATES if tp.topic == topic and tp.difficulty in allowed(topic)]
+    tpls = [tp for tp in pb.TEMPLATES if tp.topic == topic and tp.difficulty in allowed(topic)] if templates_ok else []
     if like and like.get("kind") == "template":
         same = like["key"].split(":")[1]
         tpls = [pb.BY_NAME[same]]
     else:
-        tpls = tpls or [tp for tp in pb.TEMPLATES if tp.topic == topic]
+        if not tpls and templates_ok:  # nothing at this level in this area: the nearest level, the harder one first
+            want = max(LEVELS.index(d) for d in allowed(topic))
+            near = sorted({tp.difficulty for tp in pb.TEMPLATES if tp.topic == topic},
+                          key=lambda d: (abs(LEVELS.index(d) - want), -LEVELS.index(d)))
+            tpls = [tp for tp in pb.TEMPLATES if tp.topic == topic and near and tp.difficulty == near[0]]
     banked = [q for q in bank_tech if q["topic"] == topic]
     # Numbers practice from templates; real asked questions from the bank and guides. With a bank filter, or when the
     # user has their own guides, favour real questions.
@@ -331,9 +370,14 @@ GRADER = """\
 You are an investment banking interviewer helping an MBA student practice. Grade their answer to one \
 interview question and teach them.
 
-- verdict: "correct" if a banker would be satisfied, "partial" if the core idea is there but something \
-important is missing or wrong, "incorrect" otherwise. For behavioral, deal and market questions judge the \
-answer as an interviewer would (structure, specifics, how convincing) and use the same three levels.
+- verdict: "correct" if a banker would be satisfied with it as a spoken interview answer. Short is fine: an \
+answer that gets the key point right in the student's own words is correct, even without examples, extra \
+nuance or textbook phrasing ("accretive means EPS goes up, dilutive means it goes down" is correct). "partial" \
+only when a core part of the answer is missing or something in it is wrong (a statement left out of a three \
+statement walk-through, the right method with the wrong number). "incorrect" when the main point is wrong or \
+missing. Between correct and partial, choose correct and put the nuance in the feedback as a tip. For \
+behavioral, deal and market questions judge the answer as an interviewer would (structure, specifics, how \
+convincing) and use the same three levels.
 - feedback: 2 to 4 sentences, speaking to the student: what was right and exactly what was missing or wrong.
 - explanation: teach the answer. For technical questions give the full reasoning, step by step, with the \
 arithmetic shown. For behavioral or deal questions give a strong model answer structure and what \
@@ -349,6 +393,10 @@ when they answer the question, and name the source in brackets after the point i
 - Never invent facts about a specific bank, deal or person. If the question needs facts you do not have, say \
 what the student should look up.
 - A blank answer or "I don't know" is incorrect; still teach the answer.
+- Unless the question gives a tax rate, assume 25%.
+- The answer may come in labeled parts (Income statement; Cash flow: CFO, CFI, CFF; Balance sheet: Assets, \
+Liabilities, Shareholders' equity; or Enterprise value and Equity value). Grade the parts together, and treat a \
+part left blank as not answered.
 """
 
 

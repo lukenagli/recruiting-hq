@@ -218,6 +218,7 @@ class PracticeRequest(BaseModel):
     bank: str = "Any"
     seen: list[str] = []
     like: str = ""  # key of a question to find a similar one to
+    guides: list[str] | None = None  # questions only from these uploaded guides ([] = all of them) instead of a bank
 
 
 class AnswerRequest(BaseModel):
@@ -239,6 +240,7 @@ def practice_next(req: PracticeRequest, user: dict = Depends(current_user)):
     built = practice.rebuild(req.like, user["id"]) if req.like else None
     like = built[0] if built else None
     q = practice.next_question(user["id"], req.categories, req.topics, req.stage, req.difficulty, req.bank, req.seen[-300:], like,
+                               guides=req.guides,
                                club=schools.for_user(user["id"])["club"])
     return {"question": q}
 
