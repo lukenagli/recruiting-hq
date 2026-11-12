@@ -87,7 +87,7 @@ throughout the process.[ extra]
 Rules:
 - paragraph: exactly two sentences. The first starts exactly "I enjoyed hearing more about what led you to [Bank] and" \
 and is about their path to the bank or their group. After "and", write one simple "how ..." clause about one clear \
-point, for example "how working mostly with Consumer & Retail during your summer internship drew you to the group". \
+point, in the shape "how [one thing from their path] drew you to [their group]". \
 Don't tuck a clause between commas (", where ...," or ", which ...,") and don't say "led" again: the sentence \
 already has "what led you". The second starts with "I also" and covers a different topic, \
 in the way the student's own emails do.
