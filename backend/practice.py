@@ -21,7 +21,8 @@ from pydantic_ai import Agent, NativeOutput
 from pydantic_ai.usage import UsageLimits
 
 from . import deals as deal_book
-from . import core_technicals, levels, question_clean, stars
+from . import core_technicals, question_clean, stars
+from . import levels as rated_levels  # (next_question has its own `levels`: the adaptive level per area)
 from . import practice_bank as pb
 from . import reference as answer_library
 from . import profile as user_profile
@@ -129,7 +130,7 @@ def _bank_question(row, done: dict | None = None, rated: dict | None = None) -> 
                                               question_clean.splits() if done is None else done)
     out = {"skip": skip, **_bank_fields(row, cat, technical, asked, notes)}
     if technical:  # the club's scale (levels) when the question has been rated
-        out["difficulty"] = (levels.practice_levels() if rated is None else rated).get(out["key"]) or out["difficulty"]
+        out["difficulty"] = (rated_levels.practice_levels() if rated is None else rated).get(out["key"]) or out["difficulty"]
     return out
 
 
@@ -166,7 +167,7 @@ def _tech_question(i: int) -> dict:
 
 def _guide_question(row: dict, rated: dict | None = None) -> dict:
     technical = row["category"] == "Technical"
-    level = ((levels.practice_levels() if rated is None else rated).get(f"gq:{row['id']}") or difficulty_of(row["question"])) if technical else ""
+    level = ((rated_levels.practice_levels() if rated is None else rated).get(f"gq:{row['id']}") or difficulty_of(row["question"])) if technical else ""
     return {"key": f"gq:{row['id']}", "kind": "guide", "category": row["category"],
             "topic": topic_of(row["question"]) if technical else "", "difficulty": level,
             "question": row["question"], "bank": "", "round": "", "group": "", "who": "",
@@ -299,7 +300,7 @@ def next_question(uid: int, categories: list[str], topics: list[str], stage: str
         use_bank = club and bank != ""
         rows = conn.execute(f"SELECT * FROM questions WHERE {' AND '.join(where)}", params).fetchall() if use_bank else []
 
-    done, rated = question_clean.splits(), levels.practice_levels()
+    done, rated = question_clean.splits(), rated_levels.practice_levels()
     pool = [q for q in (_bank_question(r, done, rated) for r in rows) if q["key"] not in seen_set and not q["skip"] and len(q["question"]) > 12]
     # Superday prep: only the questions asked at Superdays, plus the hardest technicals from the student's guides
     superday = stage == "Superday"
