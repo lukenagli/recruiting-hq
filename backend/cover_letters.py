@@ -262,17 +262,19 @@ def _letters(conn, uid: int, bank: str, prof: dict) -> list[dict]:
 def _likeness(ctx: dict, bank: str, letter: dict) -> tuple[int, list[str]]:
     """How alike two applications are, for which letter to start from: the same group (its wording is already right),
     the same kind of program (generalist or one group), the same kind of bank (bulge bracket, boutique, middle market)."""
+    # the kind of program and the kind of bank shape a letter most (a bulge bracket's group-specific letter reads like
+    # another's); the same group on top of that means its group wording is already right
     other, score, why = letter["ctx"], 0, []
     if other:
         key, theirs = _group_key(ctx), _group_key(other)
-        if key and key == theirs:
-            score += 5
-            why.append("also the generalist program" if key == "generalist" else f"same group ({ctx['group']})")
-        elif ctx["generalist"] == other["generalist"]:
+        if ctx["generalist"] == other["generalist"]:
             score += 3
             why.append("also a generalist program" if ctx["generalist"] else "also a group-specific program")
+        if key and key == theirs and key != "generalist":
+            score += 2
+            why.append(f"same group ({ctx['group']})")
     if letter["bank"] and bank_info.kind(letter["bank"]) == bank_info.kind(bank):
-        score += 2
+        score += 3
         k = bank_info.kind(bank)
         why.append(f"also {'an' if k[0] in 'aeiou' else 'a'} {k}")
     return score, why
@@ -291,8 +293,9 @@ def _reference(conn, uid: int, bank: str, ctx: dict, prof: dict | None = None) -
     scored.sort(key=lambda s: (s[0], s[2]), reverse=True)  # most alike, then newest
     score, why, _, best = scored[0]
     others = [{"bank": s[3]["bank"], "paragraphs": s[3]["paragraphs"]} for s in scored[1:3] if s[0] > 0 and s[3]["bank"]]
+    same = bool(best["ctx"]) and bool(_group_key(ctx)) and _group_key(ctx) == _group_key(best["ctx"])
     return {"bank": best["bank"], "paragraphs": best["paragraphs"], "people": best["people"], "uploaded": best["uploaded"],
-            "same_group": score >= 5, "reasons": why, "others": others}
+            "same_group": same, "reasons": why, "others": others}
 
 
 def basis(uid: int, bank: str) -> dict | None:
