@@ -17,7 +17,7 @@ from starlette.background import BackgroundTask
 from . import banks as banks_info
 from . import tracker_edits
 from . import chat_notes, filing_queue, folder_setup, interviewer, scan_cleanup
-from . import accounts, assistant, attachments, auth, budget, capiq, catch_up, config, cover_letters, deal_docs, deal_recs, deal_sources, deals, importer, legal, llm, market, network, onboarding, practice, profile, question_clean, schools, reference, research, shared, stars, superday, sync, templates, test_scan, thank_backfill, thank_you, transfer, user_keys
+from . import accounts, assistant, attachments, auth, budget, capiq, catch_up, config, cover_letters, deal_docs, deal_recs, deal_sources, deals, importer, legal, llm, market, network, onboarding, levels, practice, profile, question_clean, schools, reference, research, shared, stars, superday, sync, templates, test_scan, thank_backfill, thank_you, transfer, user_keys
 from .auth import admin_user, current_user
 from .db import connect, init_db
 from .llm import get_model, usage_dict
@@ -33,6 +33,8 @@ async def start_filing_worker():
     app.state.filing_worker = asyncio.create_task(filing_queue.worker())
     # new school bank entries get the answer some students typed into them split out (question_clean)
     app.state.question_clean = asyncio.create_task(question_clean.on_start())
+    # technical questions not yet rated on the club's difficulty scale get rated (levels)
+    app.state.level_rating = asyncio.create_task(levels.on_start())
 app.add_middleware(
     CORSMiddleware,
     allow_origins=config.FRONTEND_ORIGINS,
@@ -1207,6 +1209,40 @@ def add_shared_questions(req: SharedQuestions, user: dict = Depends(admin_user))
     return importer.add_questions(req.source, [q.model_dump() for q in req.questions])
 
 
+class TechSessionQuestion(BaseModel):
+    question: str = Field(min_length=1, max_length=4000)
+    answer: str = Field("", max_length=8000)
+    level: int = Field(0, ge=0, le=4)
+    topic: str = ""
+    deck: str = ""
+
+
+class TechSessionQuestions(BaseModel):
+    questions: list[TechSessionQuestion] = Field(max_length=400)
+
+
+@app.post("/api/admin/question-bank/tech-sessions")
+def add_tech_session_questions(req: TechSessionQuestions, user: dict = Depends(admin_user)):
+    """The Finance Club Technicals Session decks' practice questions, with the deck's answers and the club's ratings."""
+    return importer.add_tech_sessions([q.model_dump() for q in req.questions])
+
+
+@app.post("/api/admin/levels/rate")
+async def rate_question_levels(user: dict = Depends(admin_user)):
+    """Rate every unrated technical question against the club's rated ones (runs on its own; check /api/admin/levels)."""
+    import asyncio
+
+    task = asyncio.create_task(levels.rate_pending(ai_for(user), user["id"]))
+    app.state.level_rating = task
+    return {"started": True, **levels.status(user["id"])}
+
+
+@app.get("/api/admin/levels")
+def question_levels_status(user: dict = Depends(admin_user)):
+    task = getattr(app.state, "level_rating", None)
+    return {"running": bool(task and not task.done()), **levels.status(user["id"])}
+
+
 class ReferenceUpload(BaseModel):
     source: str
     passages: list[dict]
@@ -1257,6 +1293,12 @@ async def upload_guide(file: UploadFile, name: str = Form(""), user: dict = Depe
     out = await reference.add_guide(user["id"], file.filename or "My guide.pdf", data, name, chosen)
     if not out["ok"]:
         raise HTTPException(status_code=400, detail=out["reason"])
+    if chosen is not None:  # the guide's technical questions get rated on the club's scale, on their own
+        import asyncio
+
+        app.state.guide_rating = asyncio.create_task(levels.rate_pending(chosen, None, [
+            (f"gq:{q['id']}", q["question"]) for q in reference.guide_questions(user["id"])
+            if q["category"] == "Technical" and f"gq:{q['id']}" not in levels.practice_levels()]))
     return {**out, "library": reference.library(user["id"])}
 
 

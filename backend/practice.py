@@ -21,7 +21,7 @@ from pydantic_ai import Agent, NativeOutput
 from pydantic_ai.usage import UsageLimits
 
 from . import deals as deal_book
-from . import core_technicals, question_clean, stars
+from . import core_technicals, levels, question_clean, stars
 from . import practice_bank as pb
 from . import reference as answer_library
 from . import profile as user_profile
@@ -84,7 +84,7 @@ def recruiting(uid: int, conn) -> set[str]:
 STAGE_DIFFICULTY = {"Coffee Chat": {"easy"}, "Round 1": {"easy", "medium"}, "Round 2": {"medium", "hard"}, "Superday": {"medium", "hard"}}
 SCORE = {"correct": 1.0, "partial": 0.5, "incorrect": 0.0}
 SOURCE_LABEL = {"live_1y": "Asked this year", "live_2y": "Asked this year (2Ys)", "master": "Asked in prior years",
-                "ib_2025": "Asked in 2025", "technical": "Technical question bank"}
+                "ib_2025": "Asked in 2025", "technical": "Technical question bank", "tech_session": "Finance Club technicals session"}
 
 # Order matters: the first match wins ("accretive/dilutive" is merger math, not share count).
 _TOPIC_RULES = [
@@ -121,13 +121,16 @@ def difficulty_of(question: str) -> str:
 
 # ---------------- Building questions ----------------
 
-def _bank_question(row, done: dict | None = None) -> dict:
+def _bank_question(row, done: dict | None = None, rated: dict | None = None) -> dict:
     """A school bank entry as a practice question; the answer some students typed into the question goes to the notes."""
     cat = next((c for c, types in CATEGORIES.items() if row["qtype"] in types), "Technical")
     technical = cat == "Technical"
     asked, notes, skip = question_clean.apply(row["id"], row["question"], row["answer_notes"] or "",
                                               question_clean.splits() if done is None else done)
-    return {"skip": skip, **_bank_fields(row, cat, technical, asked, notes)}
+    out = {"skip": skip, **_bank_fields(row, cat, technical, asked, notes)}
+    if technical:  # the club's scale (levels) when the question has been rated
+        out["difficulty"] = (levels.practice_levels() if rated is None else rated).get(out["key"]) or out["difficulty"]
+    return out
 
 
 def _bank_fields(row, cat: str, technical: bool, asked: str, notes: str) -> dict:
@@ -161,10 +164,11 @@ def _tech_question(i: int) -> dict:
             "bank": "", "round": "", "group": "", "who": "", "source": "Standard technical question", "notes": model}
 
 
-def _guide_question(row: dict) -> dict:
+def _guide_question(row: dict, rated: dict | None = None) -> dict:
     technical = row["category"] == "Technical"
+    level = ((levels.practice_levels() if rated is None else rated).get(f"gq:{row['id']}") or difficulty_of(row["question"])) if technical else ""
     return {"key": f"gq:{row['id']}", "kind": "guide", "category": row["category"],
-            "topic": topic_of(row["question"]) if technical else "", "difficulty": difficulty_of(row["question"]) if technical else "",
+            "topic": topic_of(row["question"]) if technical else "", "difficulty": level,
             "question": row["question"], "bank": "", "round": "", "group": "", "who": "",
             "source": f"{row['source']}, {row['location']} (your copy)", "notes": row["answer"], "guide": row["source"],
             "location": row["location"], "step": row.get("step") or 0}
@@ -295,8 +299,8 @@ def next_question(uid: int, categories: list[str], topics: list[str], stage: str
         use_bank = club and bank != ""
         rows = conn.execute(f"SELECT * FROM questions WHERE {' AND '.join(where)}", params).fetchall() if use_bank else []
 
-    done = question_clean.splits()
-    pool = [q for q in (_bank_question(r, done) for r in rows) if q["key"] not in seen_set and not q["skip"] and len(q["question"]) > 12]
+    done, rated = question_clean.splits(), levels.practice_levels()
+    pool = [q for q in (_bank_question(r, done, rated) for r in rows) if q["key"] not in seen_set and not q["skip"] and len(q["question"]) > 12]
     # Superday prep: only the questions asked at Superdays, plus the hardest technicals from the student's guides
     superday = stage == "Superday"
     if bank == "Any" and not superday:  # every bank: the standard questions too (they aren't tied to a bank)
@@ -304,7 +308,7 @@ def next_question(uid: int, categories: list[str], topics: list[str], stage: str
         if "Technical" in categories:
             pool += [q for q in map(_tech_question, range(len(core_technicals.QUESTIONS))) if q["key"] not in seen_set]
     if guides is not None:  # the student's own guides: all of them, or the ones chosen
-        pool += [q for q in map(_guide_question, answer_library.guide_questions(uid))
+        pool += [q for q in (_guide_question(r, rated) for r in answer_library.guide_questions(uid))
                  if q["key"] not in seen_set and q["category"] in categories and (not guides or q["guide"] in guides)
                  and answer_library.asks(q["question"])  # older uploads kept some scenarios without their question
                  # a follow-up is only asked right after the question it builds on (see next_part), never on its own

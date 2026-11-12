@@ -17,6 +17,7 @@ const SOURCE_LABEL: Record<string, string> = {
   master: 'Prior years',
   ib_2025: '2025 bank',
   technical: 'Technical bank',
+  tech_session: 'Finance Club technicals session',
 }
 
 function go(bank: string, round: string, who: string) {

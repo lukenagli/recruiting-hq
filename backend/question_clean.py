@@ -103,7 +103,7 @@ def pending(limit: int = 2000) -> list[dict]:
     ensure()
     with connect(read_only=True) as conn:
         rows = conn.execute("""SELECT q.id, q.question FROM questions q LEFT JOIN question_clean c ON c.question_id = q.id
-                               WHERE c.question_id IS NULL""").fetchall()
+                               WHERE c.question_id IS NULL AND q.source != 'tech_session'""").fetchall()  # the club's decks ask cleanly
     return [dict(r) for r in rows if SUSPECT.search(r["question"] or "")][:limit]
 
 
@@ -132,7 +132,8 @@ async def clean_pending(chosen: Chosen) -> int:
         nonlocal done
         async with sem:
             try:
-                done += await _batch(chosen, batch)
+                n = await _batch(chosen, batch)
+                done += n
             except Exception:  # noqa: BLE001 - one failed batch is tried again next time
                 log.exception("question cleaning batch failed")
 

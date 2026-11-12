@@ -184,6 +184,34 @@ def add_questions(label: str, questions: list[dict]) -> dict:
     return {"source": label, "rows_read": len(clean), "rows_new": new}
 
 
+def add_tech_sessions(questions: list[dict]) -> dict:
+    """The Finance Club Technicals Session decks' practice questions, each with the deck's answer and the level the
+    club rated it (1-4, 0 for a slide without a rating). Shared with everyone, like the rest of the club bank. A
+    question already in the bank (a student logged it from an interview) keeps its row and takes the club's rating."""
+    from . import levels
+
+    init_db()
+    clean = []
+    for q in questions:
+        text = nz.clean(q.get("question"))
+        if text:
+            clean.append({"source": "tech_session", "year": "", "qtype": "Technical", "bank": "Unknown", "office": "", "grp": "",
+                          "round": "Unknown", "interviewer": nz.optional(q.get("deck"))[:120], "topic": nz.optional(q.get("topic")),
+                          "question": text, "answer_notes": nz.optional(q.get("answer")), "_level": int(q.get("level") or 0)})
+    now = datetime.now().isoformat(timespec="seconds")
+    with connect() as conn:
+        new = _insert(conn, [{k: v for k, v in q.items() if k != "_level"} for q in clean], now)
+        conn.execute("INSERT INTO imports (source, file, file_mtime, rows_read, rows_new, ran_at) VALUES ('tech_session', ?, ?, ?, ?, ?)",
+                     ("Finance Club Technicals Sessions", now, len(clean), new, now))
+        ids = {}
+        for r in conn.execute("SELECT id, question, bank FROM questions"):
+            ids.setdefault((same_question(r["question"]), r["bank"]), r["id"])
+    rated = [(f"q:{ids[(same_question(q['question']), q['bank'])]}", q["_level"]) for q in clean
+             if q["_level"] and (same_question(q["question"]), q["bank"]) in ids]
+    levels.save(rated, "club")
+    return {"rows_read": len(clean), "rows_new": new, "rated_by_club": len(rated)}
+
+
 def _save_questions(conn, source: str, path: Path, questions: list[dict], now: str) -> dict:
     return _log(conn, source, path, len(questions), _insert(conn, questions, now), now)
 
