@@ -172,7 +172,10 @@ def _context(conn, uid: int, bank: str) -> dict:
     group = (mine.get("prefs") or "").split(">")[0].strip()
     program = " ".join(r["fact"] for r in conn.execute(
         "SELECT fact FROM bank_facts WHERE user_id = ? AND bank = ? AND category = 'Program'", (uid, bank))).lower()
-    generalist = "generalist" in program and not re.search(r"\b(cut|no longer|not a generalist|not generalist)\b", program)
+    # "the generalist pool was discontinued this year" means group-specific
+    generalist = "generalist" in program and not re.search(
+        r"\b(cut|no longer|not a generalist|not generalist|no generalist|discontinu\w*|eliminat\w*|scrapp\w*|ended|removed|replaced"
+        r"|got rid of)\b", program)
     return {"mine": mine, "people": people, "spoken": spoken, "facts": facts, "others": others,
             "name": user["name"] if user else "", "group": group, "office": mine.get("office") or "", "generalist": generalist,
             "school": schools.for_user(uid, conn)}
