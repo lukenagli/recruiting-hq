@@ -194,3 +194,15 @@ def bank_for_email(address: str) -> str:
 
 def domain(bank: str) -> str:
     return DOMAINS.get(bank, "")
+
+
+# What kind of bank it is, for matching cover letters: a letter to one bulge bracket reads like a letter to another.
+BULGE = {"Goldman Sachs", "Morgan Stanley", "J.P. Morgan", "Bank of America", "Citi", "Barclays", "Wells Fargo", "Deutsche Bank",
+         "UBS", "BNP Paribas", "HSBC"}
+BOUTIQUE = {"Evercore", "Lazard", "Centerview", "PJT", "PJT Partners", "Moelis", "Guggenheim", "PWP", "Perella Weinberg", "Rothschild",
+            "Greenhill", "Qatalyst", "Allen & Company", "LionTree", "Ducera", "Gordon Dyal & Co.", "Solomon Partners"}
+
+
+def kind(bank: str) -> str:
+    """"bulge bracket", "elite boutique" or "middle market" (every other bank: Jefferies, RBC, Harris Williams...)."""
+    return "bulge bracket" if bank in BULGE else "elite boutique" if bank in BOUTIQUE else "middle market"

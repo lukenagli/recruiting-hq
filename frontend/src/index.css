@@ -1705,3 +1705,11 @@ details.card.fold > .card, details.card.fold section.card { box-shadow: none; bo
 .sd-story h3::after { content: ''; flex: 1; height: 1px; background: #d3dae6; }
 .sd-story p { margin: 0 0 6px; line-height: 1.55; font-size: 15px; }
 .sd-story ul { margin: 0 0 6px; padding-left: 20px; line-height: 1.5; }
+
+/* Cover letters: your letters, and which one a draft starts from */
+.your-letters h2 { margin: 0 0 6px; font-size: 20px; }
+.your-letters p { margin: 0 0 10px; }
+.your-letter-chips { margin: 4px 0 10px; }
+.chip.static { cursor: default; }
+.letter-basis { margin: 8px 0 10px; font-size: 14px; color: var(--muted); }
+.letter-basis strong { color: var(--ink); }

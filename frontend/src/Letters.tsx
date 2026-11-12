@@ -4,8 +4,9 @@ import type { LetterSummary, SetupState } from './api'
 import CoverLetterEditor from './CoverLetterEditor'
 import { Loading, Logo, fmtDate, useApi } from './ui'
 
-/** Your own letter comes first: download the Yale SOM template, write one letter yourself, upload it. */
-function YourLetter({ state, onChange }: { state: SetupState; onChange: () => void }) {
+/** Your letters: the first one you wrote yourself, then every one you've submitted. Each new draft starts from the
+ *  one most like that application (same group or program, same kind of bank). Before the first: how to write it. */
+function YourLetter({ state, onChange, letters }: { state: SetupState; onChange: () => void; letters: LetterSummary[] }) {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const info = state.cover_template
@@ -24,17 +25,36 @@ function YourLetter({ state, onChange }: { state: SetupState; onChange: () => vo
     }
   }
 
-  if (info.has_template)
+  if (info.has_template) {
+    const submitted = letters.filter((l) => l.submitted).map((l) => l.bank)
+    const first = info.filename.replace(/\.docx$/i, '')
     return (
-      <p className="notice your-letter">
-        Tailoring from your letter <strong>{info.filename}</strong>.{' '}
-        <label className="link file-link">
-          <input type="file" accept=".docx" onChange={(e) => send(e.target.files?.[0])} disabled={busy} />
-          {busy ? 'Reading…' : 'Upload a different one'}
-        </label>
-        {error && <span className="error-text"> {error}</span>}
-      </p>
+      <section className="card your-letters">
+        <h2>Your letters</h2>
+        <p>
+          Each new draft starts from the letter of yours most like that application: the same group, or the same kind of program
+          (generalist or one group), at the same kind of bank (bulge bracket, boutique). Your other letters help with the wording. The
+          more letters you submit, the closer each new draft starts.
+        </p>
+        <div className="chips your-letter-chips">
+          <span className="chip static" title={info.filename}>Your first letter <em>{first}</em></span>
+          {submitted.map((b) => (
+            <a key={b} className="chip" href={`#/letters/${encodeURIComponent(b)}`}>{b} <em>submitted</em></a>
+          ))}
+        </div>
+        <p className="fine">
+          {submitted.length === 0
+            ? 'Mark a letter as submitted once you send it, and new drafts can start from it.'
+            : 'Mark each letter as submitted once you send it, and it joins the letters drafts start from.'}{' '}
+          <label className="link file-link">
+            <input type="file" accept=".docx" onChange={(e) => send(e.target.files?.[0])} disabled={busy} />
+            {busy ? 'Reading…' : 'Replace your first letter'}
+          </label>
+          {error && <span className="error-text"> {error}</span>}
+        </p>
+      </section>
     )
+  }
 
   return (
     <section className="card letter-start">
@@ -79,10 +99,10 @@ export default function Letters({ bank }: { bank: string }) {
     <div>
       <h1>Cover Letters</h1>
       <p className="lede">
-        One letter per bank, tailored from a letter you wrote yourself. Nothing is made up; gaps are highlighted for you to fill. Review
-        every one before you submit it.
+        One letter per bank, each tailored from your own letters: the one most like that bank. Nothing is made up; gaps are highlighted
+        for you to fill. Review every one before you submit it.
       </p>
-      <YourLetter state={setup.data} onChange={setup.reload} />
+      <YourLetter state={setup.data} onChange={setup.reload} letters={data} />
       {ready && (
         <>
           <div className="chips banks">

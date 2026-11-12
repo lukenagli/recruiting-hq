@@ -109,6 +109,14 @@ export default function CoverLetterEditor({ bank }: { bank: string }) {
         </button>
       </div>
 
+      {data.basis && (
+        <p className="letter-basis">
+          {data.exists ? 'A new draft starts' : 'Drafts start'} from your <strong>{data.basis.bank}</strong> letter
+          {data.basis.uploaded ? ' (your first one)' : ''}
+          {data.basis.reasons.length > 0 ? `: ${data.basis.reasons.join(', ')}` : ', your closest one'}.
+          {data.basis.others.length > 0 && <> Wording can also come from your {data.basis.others.join(' and ')} letter{data.basis.others.length > 1 ? 's' : ''}.</>}
+        </p>
+      )}
       <div className="letter-actions">
         <button className="primary" disabled={!!busy} onClick={write}>
           {busy === 'write' ? 'Writing… about 30 seconds' : data.exists ? 'Write a new draft' : 'Write a draft'}
@@ -121,7 +129,7 @@ export default function CoverLetterEditor({ bank }: { bank: string }) {
             <button
               className={`btn ${data.submitted ? 'on' : ''}`}
               disabled={!!busy}
-              title="Letters you submitted are where drafts for other banks in the same group start"
+              title="Letters you submitted are where drafts for similar banks start"
               onClick={() => run('submitted', () => post(`${path}/submitted`, { submitted: !data.submitted }))}
             >
               {data.submitted ? '✓ Submitted' : 'Mark as submitted'}

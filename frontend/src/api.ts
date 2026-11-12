@@ -251,6 +251,8 @@ export type CoverLetter = {
   recruiter_title: string
   address: string
   office: string
+  /** the letter of yours the next draft starts from, and why it's the closest */
+  basis?: { bank: string; uploaded: boolean; reasons: string[]; others: string[] } | null
 }
 
 export type LetterSummary = { bank: string; domain: string; exists: boolean; warnings: number; updated_at: string; edited: boolean; submitted?: boolean; recruiter: string }

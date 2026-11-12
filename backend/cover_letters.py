@@ -199,11 +199,19 @@ def _prompt(ctx: dict, prof: dict, bank: str, ref: dict | None = None) -> str:
             f"The student's notes (their target groups and why, what to highlight):\n{profiles.background(prof) or '(none)'}",
             f"Resume (facts the bridging sentences may use):\n{prof['resume_text'] or '(not provided)'}"]),
         f"Rules from the student's own notes:\n{prof['email_rules'] or '(none)'}",
-        (f"Starting letter: the one the student submitted to {ref['bank']} for the same "
+        (f"Starting letter: the one the student wrote for {ref['bank'] or 'another bank'} for the same "
          f"{'generalist program' if ctx['generalist'] else ctx['group'] + ' role'}. Its group wording is already right: change "
          f"only what belongs to {ref['bank']} (its name, the people it names: {', '.join(ref['people']) or 'none'}, its office "
-         f"and anything else specific to it) and keep every other word.\n{_starting(prof, ref)}" if ref else
+         f"and anything else specific to it) and keep every other word.\n{_starting(prof, ref)}" if ref and ref["same_group"] else
+         f"Starting letter: the student's letter to {ref['bank'] or 'another bank'}, their most similar one "
+         f"({', '.join(ref['reasons']) or 'their closest letter'}). Change what belongs to {ref['bank'] or 'that bank'} (its name, "
+         f"the people it names: {', '.join(ref['people']) or 'none'}, its office and anything else specific to it) and the "
+         f"group wording as described, and keep every other word.\n{_starting(prof, ref)}" if ref else
          f"Starting letter: the student's own letter (written for another bank or role), to tailor:\n{prof['example_letter']}"),
+        *(["The student's other letters, for their wording only: where a phrase in the starting letter has to change (how "
+           "they describe a group, or why a kind of firm), prefer how the student already said it in one of these. Never "
+           "take their bank names, people or offices.\n\n" + "\n\n".join(f"--- Letter to {o['bank']} ---\n" + "\n\n".join(o["paragraphs"])
+                                                                        for o in ref["others"])] if ref and ref["others"] else []),
     ])
 
 
@@ -219,23 +227,85 @@ def _group_key(ctx: dict) -> str:
     return re.sub(r"\b(group|team|ib|investment banking)\b|[^a-z]", "", ctx["group"].lower().replace("&", "and"))
 
 
-def _reference(conn, uid: int, bank: str, ctx: dict) -> dict | None:
-    """The newest letter the student submitted to another bank for the same group (or the generalist
-    program). Submitted means marked submitted on its page, or the application to that bank is marked as sent."""
-    key = _group_key(ctx)
-    if not key:
-        return None
+def _letter_bank(prof: dict, filename: str) -> str:
+    """The bank the student's uploaded letter was written for: named in its file name, else in its text."""
+    for text in (filename, prof["example_letter"]):
+        for bank, aliases in OTHER_BANK_ALIASES.items():
+            if any(re.search(rf"\b{re.escape(a)}\b", text or "") for a in aliases):
+                return bank
+    return ""
+
+
+def _letters(conn, uid: int, bank: str, prof: dict) -> list[dict]:
+    """Every letter of the student's a draft could start from, newest first: each one submitted to another bank, and
+    the letter they uploaded (their first one, written for some bank)."""
     rows = conn.execute(
         """SELECT c.bank, c.paragraphs FROM cover_letters c
            LEFT JOIN my_banks m ON m.user_id = c.user_id AND m.bank = c.bank
            WHERE c.user_id = ? AND c.bank != ?
              AND (COALESCE(c.submitted_at, '') NOT IN ('', 'no') OR (COALESCE(c.submitted_at, '') = '' AND m.applied = 'Yes'))
            ORDER BY COALESCE(NULLIF(c.submitted_at, ''), c.updated_at) DESC""", (uid, bank)).fetchall()
+    out = []
     for r in rows:
         other = _context(conn, uid, r["bank"])
-        if _group_key(other) == key:
-            return {"bank": r["bank"], "paragraphs": json.loads(r["paragraphs"]), "people": [p["name"] for p in other["spoken"]]}
-    return None
+        out.append({"bank": r["bank"], "paragraphs": json.loads(r["paragraphs"]), "people": [p["name"] for p in other["spoken"]],
+                    "ctx": other, "uploaded": False})
+    if prof["example_letter"].strip():
+        first = _letter_bank(prof, templates.cover_template_info(uid)["filename"])
+        if first != bank and first not in {o["bank"] for o in out}:
+            other = _context(conn, uid, first) if first else None
+            out.append({"bank": first, "paragraphs": [p.strip() for p in prof["example_letter"].split("\n\n") if p.strip()],
+                        "people": [p["name"] for p in other["spoken"]] if other else [], "ctx": other, "uploaded": True})
+    return out
+
+
+def _likeness(ctx: dict, bank: str, letter: dict) -> tuple[int, list[str]]:
+    """How alike two applications are, for which letter to start from: the same group (its wording is already right),
+    the same kind of program (generalist or one group), the same kind of bank (bulge bracket, boutique, middle market)."""
+    other, score, why = letter["ctx"], 0, []
+    if other:
+        key, theirs = _group_key(ctx), _group_key(other)
+        if key and key == theirs:
+            score += 5
+            why.append("also the generalist program" if key == "generalist" else f"same group ({ctx['group']})")
+        elif ctx["generalist"] == other["generalist"]:
+            score += 3
+            why.append("also a generalist program" if ctx["generalist"] else "also a group-specific program")
+    if letter["bank"] and bank_info.kind(letter["bank"]) == bank_info.kind(bank):
+        score += 2
+        k = bank_info.kind(bank)
+        why.append(f"also {'an' if k[0] in 'aeiou' else 'a'} {k}")
+    return score, why
+
+
+def _reference(conn, uid: int, bank: str, ctx: dict, prof: dict | None = None) -> dict | None:
+    """The letter a draft starts from: of every letter the student submitted (and the one they uploaded), the one for
+    the application most like this one, newest first among equals; with the next two most alike, whose wording the
+    writer may borrow when a phrase has to change. Submitted means marked submitted on its page, or the application
+    to that bank is marked as sent."""
+    prof = prof or profiles.get(uid)
+    letters = _letters(conn, uid, bank, prof)
+    if not letters:
+        return None
+    scored = [(*_likeness(ctx, bank, letter), -i, letter) for i, letter in enumerate(letters)]
+    scored.sort(key=lambda s: (s[0], s[2]), reverse=True)  # most alike, then newest
+    score, why, _, best = scored[0]
+    others = [{"bank": s[3]["bank"], "paragraphs": s[3]["paragraphs"]} for s in scored[1:3] if s[0] > 0 and s[3]["bank"]]
+    return {"bank": best["bank"], "paragraphs": best["paragraphs"], "people": best["people"], "uploaded": best["uploaded"],
+            "same_group": score >= 5, "reasons": why, "others": others}
+
+
+def basis(uid: int, bank: str) -> dict | None:
+    """What the next draft for this bank starts from, said plainly for the letter page."""
+    init_db()
+    prof = profiles.get(uid)
+    with connect(read_only=True) as conn:
+        ctx = _context(conn, uid, bank)
+        ref = _reference(conn, uid, bank, ctx, prof)
+    if not ref:
+        return None
+    return {"bank": ref["bank"] or "your first letter", "uploaded": ref["uploaded"], "reasons": ref["reasons"],
+            "others": [o["bank"] for o in ref["others"]]}
 
 
 def _starting(prof: dict, ref: dict | None) -> str:
@@ -305,7 +375,7 @@ async def write(uid: int, chosen: Chosen, bank: str) -> dict:
                                        "your letter, tailored to that bank."}
     with connect(read_only=True) as conn:
         ctx = _context(conn, uid, bank)
-        ref = _reference(conn, uid, bank, ctx)  # a letter already sent for this group, if any
+        ref = _reference(conn, uid, bank, ctx, prof)  # the student's letter most like this application
     base = _prompt(ctx, prof, bank, ref)
     writer = tailor_agent
     started = datetime.now().isoformat(timespec="seconds")
@@ -337,8 +407,8 @@ async def write(uid: int, chosen: Chosen, bank: str) -> dict:
         issues.append(f"needs your input: {need.strip()}")
     if not ctx["spoken"]:
         issues.append(f"you have not logged anyone you spoke with at {bank}, so the letter names no one; the guidance says to list the people you have spoken to")
-    if ref:
-        issues.append(f"started from the letter you submitted to {ref['bank']}: check nothing specific to {ref['bank']} is left")
+    if ref and ref["bank"]:
+        issues.append(f"started from your {ref['bank']} letter: check nothing specific to {ref['bank']} is left")
     if not shared.bank_detail(bank, ctx["mine"])["recruiter_name"]:
         issues.append("no recruiter name yet, so it is addressed to Hiring Manager; the guidance says to address it to the firm's recruiter")
     now = datetime.now().isoformat(timespec="seconds")
@@ -392,6 +462,7 @@ def get(uid: int, bank: str) -> dict:
         "recruiter_title": info["recruiter_title"],
         "address": info["address"],
         "office": mine.get("office", ""),
+        "basis": basis(uid, bank),
     }
 
 
