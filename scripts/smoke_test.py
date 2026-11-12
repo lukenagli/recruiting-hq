@@ -96,6 +96,13 @@ def main() -> int:
         for bank in banks:
             for path in (f"/api/banks/{bank}", f"/api/cover-letters/{bank}", f"/api/cover-letters/{bank}/docx"):
                 check(who, token, path)
+        # Interview Prep's next question (no AI): every round, and every difficulty
+        for stage, level in (("", "adaptive"), ("", "hard"), ("Coffee Chat", "easy"), ("Superday", "adaptive")):
+            opened += 1
+            r = client.post("/api/practice/next", headers={"Authorization": f"Bearer {token}"},
+                            json={"categories": ["Technical", "Behavioral"], "stage": stage, "difficulty": level, "bank": "Any", "guides": []})
+            if r.status_code != 200:
+                problems.append(f"{who} POST /api/practice/next ({stage or 'any round'}, {level}): {r.status_code} {r.text[:200]}")
     # Signed out: the data routes refuse, the public ones answer.
     for path in ("/api/home", "/api/banks", "/api/profile"):
         r = client.get(path)
