@@ -216,9 +216,11 @@ function FollowUp({ attemptId }: { attemptId: number }) {
   const [text, setText] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
+  const dictation = useDictation((phrase) => setText((v) => `${v}${v && !/\s$/.test(v) ? ' ' : ''}${phrase}`))
 
   async function ask(e: React.FormEvent) {
     e.preventDefault()
+    dictation.stop()
     const question = text.trim()
     if (!question) return
     setBusy(true)
@@ -255,13 +257,20 @@ function FollowUp({ attemptId }: { attemptId: number }) {
       ))}
       {busy && <p className="muted fu-thinking">Thinking…</p>}
       {error && <p className="notice error">{error}</p>}
+      {dictation.error && <p className="notice error">{dictation.error}</p>}
       <form className="fu-form" onSubmit={ask}>
         <input
           value={text}
           onChange={(e) => setText(e.target.value)}
-          placeholder={turns.length ? 'Ask another follow-up…' : 'e.g. Why do we subtract cash? What if the options were out of the money?'}
+          placeholder={dictation.listening ? 'Listening… ask your question' : turns.length ? 'Ask another follow-up…' : 'e.g. Why do we subtract cash? What if the options were out of the money?'}
           disabled={busy}
         />
+        {dictation.supported && (
+          <button type="button" className={`ghost fu-mic ${dictation.listening ? 'listening' : ''}`} disabled={busy} onClick={dictation.toggle}
+            aria-label={dictation.listening ? 'Stop dictating' : 'Dictate your question'} title={dictation.listening ? 'Stop dictating' : 'Dictate'}>
+            <svg viewBox="0 0 24 24" aria-hidden><path d="M12 3a3 3 0 0 0-3 3v5a3 3 0 0 0 6 0V6a3 3 0 0 0-3-3Z" /><path d="M5 11a7 7 0 0 0 14 0M12 18v3" /></svg>
+          </button>
+        )}
         <button className="primary" disabled={busy || !text.trim()}>
           Ask
         </button>

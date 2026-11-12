@@ -8,6 +8,7 @@ Safety choices:
 - A LinkedIn link is kept only if it is a linkedin.com/in/ profile address. Sources must be http(s) links.
 - Each lookup is capped (model requests, searches, tokens) and logged to agent_runs with its token counts.
 """
+import asyncio
 import json
 from datetime import datetime
 from urllib.parse import urlparse
@@ -116,6 +117,40 @@ async def look_up(uid: int, chosen: Chosen, person_id: int) -> dict | None:
              u.get("input_tokens", 0), u.get("cached_input_tokens", 0), u.get("output_tokens", 0)),
         )
     return {"ok": saved, "message": reply, "usage": usage}
+
+
+# A web lookup takes a minute or more, so it runs on its own and the page checks back: (user, person) -> its state.
+RUNNING: dict[tuple[int, int], dict] = {}
+_TASKS: set[asyncio.Task] = set()  # held so a running lookup isn't garbage-collected
+
+
+def start(uid: int, chosen: Chosen, person_id: int) -> dict | None:
+    """Start looking someone up (or say one is already running). None if they aren't in this user's tracker."""
+    init_db()
+    with connect(read_only=True) as conn:
+        if conn.execute("SELECT 1 FROM people WHERE id = ? AND user_id = ?", (person_id, uid)).fetchone() is None:
+            return None
+    key = (uid, person_id)
+    if RUNNING.get(key, {}).get("running"):
+        return {"ok": True, "running": True}
+    RUNNING[key] = {"running": True, "started": datetime.now().isoformat(timespec="seconds")}
+
+    async def run() -> None:
+        try:
+            out = await look_up(uid, chosen, person_id) or {"ok": False, "message": "That person is no longer in your tracker."}
+        except Exception as exc:  # look_up records its own failures; this is the last resort
+            out = {"ok": False, "message": f"The lookup failed ({type(exc).__name__}). Nothing was saved."}
+        RUNNING[key] = {"running": False, "ok": out["ok"], "message": "" if out["ok"] else out["message"]}
+
+    task = asyncio.create_task(run())
+    _TASKS.add(task)
+    task.add_done_callback(_TASKS.discard)
+    return {"ok": True, "running": True}
+
+
+def status(uid: int, person_id: int) -> dict:
+    """Whether a lookup is running for this person, and how the last one ended."""
+    return RUNNING.get((uid, person_id), {"running": False})
 
 
 def clear(uid: int, person_id: int) -> dict:

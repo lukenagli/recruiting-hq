@@ -1039,10 +1039,16 @@ def record_thank_you(req: RecordRequest, user: dict = Depends(current_user)):
 
 @app.post("/api/people/{person_id}/background")
 async def look_up_background(person_id: int, user: dict = Depends(current_user)):
-    result = await research.look_up(user["id"], ai_for(user), person_id)
+    """Start a web lookup; it takes a minute or more, so the page checks /background/status until it's done."""
+    result = research.start(user["id"], ai_for(user), person_id)
     if result is None:
         raise HTTPException(status_code=404, detail="No such person in your tracker")
     return result
+
+
+@app.get("/api/people/{person_id}/background/status")
+def background_status(person_id: int, user: dict = Depends(current_user)):
+    return research.status(user["id"], person_id)
 
 
 @app.post("/api/people/{person_id}/background/clear")

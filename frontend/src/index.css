@@ -1673,3 +1673,8 @@ details.card.fold > .card, details.card.fold section.card { box-shadow: none; bo
 @media (hover: none) { .ov-edit { opacity: 1; } }
 .ov-editor textarea { width: 100%; min-height: 90px; font: inherit; font-size: 14px; line-height: 1.45; padding: 8px 10px; border: 1.5px solid var(--line); border-radius: 10px; resize: vertical; box-sizing: border-box; }
 .ov-editor .notes-editor-actions { margin-top: 6px; }
+
+/* Dictating a follow-up question in Interview Prep */
+.fu-mic { display: inline-grid; place-items: center; padding: 0 12px; flex: none; }
+.fu-mic svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; }
+.fu-mic.listening { color: #c62828; border-color: #c62828; }

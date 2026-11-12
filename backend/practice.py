@@ -289,7 +289,9 @@ def next_question(uid: int, categories: list[str], topics: list[str], stage: str
         rows = conn.execute(f"SELECT * FROM questions WHERE {' AND '.join(where)}", params).fetchall() if use_bank else []
 
     pool = [q for q in map(_bank_question, rows) if q["key"] not in seen_set and len(q["question"]) > 12]
-    if bank == "Any":  # every bank: the standard questions too (they aren't tied to a bank)
+    # Superday prep: only the questions asked at Superdays, plus the hardest technicals from the student's guides
+    superday = stage == "Superday"
+    if bank == "Any" and not superday:  # every bank: the standard questions too (they aren't tied to a bank)
         pool += [q for q in map(_core_question, range(len(pb.CORE))) if q["key"] not in seen_set and q["category"] in categories]
         if "Technical" in categories:
             pool += [q for q in map(_tech_question, range(len(core_technicals.QUESTIONS))) if q["key"] not in seen_set]
@@ -298,13 +300,16 @@ def next_question(uid: int, categories: list[str], topics: list[str], stage: str
                  if q["key"] not in seen_set and q["category"] in categories and (not guides or q["guide"] in guides)
                  and answer_library.asks(q["question"])  # older uploads kept some scenarios without their question
                  # a follow-up is only asked right after the question it builds on (see next_part), never on its own
-                 and not (q["step"] > 1 or (q["step"] == 0 and answer_library.follows_previous(q["question"])))]
+                 and not (q["step"] > 1 or (q["step"] == 0 and answer_library.follows_previous(q["question"])))
+                 and (not superday or (q["category"] == "Technical" and q["difficulty"] == "hard"))]
     pool = [q for q in pool if q["category"] != "Technical" or q["topic"] in topics]
     # restructuring and LevFin questions only for someone recruiting for them
     pool = [q for q in pool if specialty(q) in ("", *wanted)]
     pool = _fresh(uid, pool)
 
     def allowed(topic: str) -> set[str]:
+        if superday:  # every question asked at a Superday; the guides' are already only the hard ones
+            return set(LEVELS)
         if bank == "":  # guides only: a guide's questions aren't graded by level, so all of them
             return set(LEVELS)
         if stage in STAGE_DIFFICULTY:
@@ -323,7 +328,7 @@ def next_question(uid: int, categories: list[str], topics: list[str], stage: str
         if q["category"] == "Technical" and q["difficulty"] not in allowed(q["topic"]):
             continue
         by_cat.setdefault(q["category"], []).append(q)
-    templates_ok = "Technical" in categories and bank == "Any"  # the number problems come with "every bank"
+    templates_ok = "Technical" in categories and bank == "Any" and not superday  # the number problems come with "every bank"
     choices = [c for c in categories if by_cat.get(c) or (c == "Technical" and templates_ok)]
     if not choices:
         return None

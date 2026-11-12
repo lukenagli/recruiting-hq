@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useState } from 'react'
-import { post } from './api'
+import { get, post } from './api'
 import type { BankDetail, Interaction, Person, ThankYouDraft } from './api'
 import { useBullets } from './bullets'
 import DraftCard from './DraftCard'
@@ -140,8 +140,45 @@ function QuestionList({ title, items }: { title: string; items: string[] }) {
 /** Public-web background, kept visibly separate from Luke's own notes. */
 function Background({ p, onChanged }: { p: Person; onChanged: () => void }) {
   const [busy, setBusy] = useState(false)
+  const [looking, setLooking] = useState(false) // a web lookup is running (it takes a minute or two)
   const [message, setMessage] = useState('')
   useEffect(() => setMessage(''), [p.id])
+  // While a lookup runs, check on it every few seconds (also when coming back to someone mid-lookup).
+  useEffect(() => {
+    let live = true
+    let timer = 0
+    async function check() {
+      try {
+        const s = await get<{ running: boolean; ok?: boolean; message?: string }>(`/api/people/${p.id}/background/status`)
+        if (!live) return
+        setLooking(s.running)
+        if (s.running) {
+          timer = window.setTimeout(check, 4000)
+        } else if (s.ok !== undefined && looking) {
+          if (!s.ok && s.message) setMessage(s.message)
+          onChanged()
+        }
+      } catch {
+        if (live) timer = window.setTimeout(check, 8000)
+      }
+    }
+    void check()
+    return () => {
+      live = false
+      window.clearTimeout(timer)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [p.id, looking])
+
+  async function lookUp() {
+    setMessage('')
+    try {
+      await post(`/api/people/${p.id}/background`, {})
+      setLooking(true)
+    } catch (e) {
+      setMessage(`Could not start the lookup (${(e as Error).message}).`)
+    }
+  }
 
   async function run(path: string) {
     setBusy(true)
@@ -173,14 +210,19 @@ function Background({ p, onChanged }: { p: Person; onChanged: () => void }) {
         </p>
       )}
       {message && <p className="notice error">{message}</p>}
+      {looking && (
+        <p className="notice looking">
+          Searching the web for {p.name}. This usually takes a minute or two; you can keep using the site and it will appear here.
+        </p>
+      )}
       <a className="btn" href={p.linkedin_url || search} target="_blank" rel="noreferrer">
         {p.linkedin_url ? 'Open LinkedIn profile' : 'Search LinkedIn'}
       </a>
-      <button className="btn" disabled={busy} onClick={() => run(`/api/people/${p.id}/background`)}>
-        {busy ? 'Looking…' : p.background ? 'Look up again' : 'Look up background'}
+      <button className="btn" disabled={busy || looking} onClick={lookUp}>
+        {looking ? 'Searching…' : p.background ? 'Look up again' : 'Look up background'}
       </button>
       {(p.background || p.linkedin_url) && (
-        <button className="btn" disabled={busy} onClick={() => run(`/api/people/${p.id}/background/clear`)}>
+        <button className="btn" disabled={busy || looking} onClick={() => run(`/api/people/${p.id}/background/clear`)}>
           Remove
         </button>
       )}

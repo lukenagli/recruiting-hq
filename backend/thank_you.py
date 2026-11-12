@@ -86,7 +86,10 @@ throughout the process.[ extra]
 
 Rules:
 - paragraph: exactly two sentences. The first starts exactly "I enjoyed hearing more about what led you to [Bank] and" \
-and is about their path to the bank or their group. The second starts with "I also" and covers a different topic, \
+and is about their path to the bank or their group. After "and", write one simple "how ..." clause about one clear \
+point, for example "how working mostly with Consumer & Retail during your summer internship drew you to the group". \
+Don't tuck a clause between commas (", where ...," or ", which ...,") and don't say "led" again: the sentence \
+already has "what led you". The second starts with "I also" and covers a different topic, \
 in the way the student's own emails do.
 - extra: a short friendly line the student adds after the closing, only if their past emails do this and this \
 chat's notes have something personal to call back to. Otherwise an empty string.
@@ -142,6 +145,11 @@ def voice_problems(paragraph: str, extra: str, bank: str) -> list[str]:
     if not paragraph.startswith(start):
         found.append(f'the paragraph must start exactly "{start}"')
     sentences = [s for s in SENTENCE_END.split(paragraph.strip()) if s]
+    first = sentences[0][len(start):] if sentences and paragraph.startswith(start) else ""
+    if re.search(r"\bled\b", first):
+        found.append('the first sentence says "led" twice; use another verb (drew you to, pointed you toward)')
+    if re.search(r",\s*(where|which|who|when|while)\b", first):
+        found.append("the first sentence tucks a clause between commas; make it one simple clause")
     if len(sentences) != 2:
         found.append(f"the paragraph has {len(sentences)} sentences; it must have exactly two")
     elif not sentences[1].startswith("I also"):
