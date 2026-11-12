@@ -4,6 +4,7 @@ import type { BankDetail, Interaction, Person, ThankYouDraft } from './api'
 import { useBullets } from './bullets'
 import DraftCard from './DraftCard'
 import JourneyMap from './JourneyMap'
+import NotesText from './NotesText'
 import ClubFeed from './ClubFeed'
 import RecommendedDeals from './RecommendedDeals'
 import { Loading, Logo, StatusTag, alumLabel, fmtDate, roleOf, useApi, useSchool } from './ui'
@@ -243,7 +244,7 @@ function ChatNotes({ c, onChanged }: { c: Interaction; onChanged: () => void }) 
     el.style.height = 'auto'
     el.style.height = `${Math.min(el.scrollHeight + 4, window.innerHeight * 0.7)}px`
   }, [text, bullets.ref])
-  const shown = c.summary ? <p className="notes-text">{c.summary}</p> : c.status === 'done' ? <p className="muted">No notes recorded for this conversation yet.</p> : null
+  const shown = c.summary ? <NotesText text={c.summary} /> : c.status === 'done' ? <p className="muted">No notes recorded for this conversation yet.</p> : null
   if (text === null)
     return (
       <>
@@ -340,7 +341,7 @@ function EventPanel({ i, detail, onSelect }: { i: Interaction; detail: BankDetai
         <StatusTag status={i.status as 'done'} />
       </div>
       <p className="role">{[i.date || i.date_note ? when(i) : '', i.format].filter(Boolean).join(' · ')}</p>
-      {i.summary && <p className="notes-text">{i.summary}</p>}
+      {i.summary && <NotesText text={i.summary} />}
       {i.people.length > 0 && <h4>People I met</h4>}
       {i.people.map((j) => {
         const p = detail.contacts.find((c) => c.id === j.person_id)
