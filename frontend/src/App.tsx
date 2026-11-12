@@ -128,7 +128,6 @@ export default function App() {
         </main>
       </SchoolContext.Provider>
     )
-  const isHome = !section
   // Each section gets its own photo along the top, fading into the navy page.
   const backdrop = ({ prep: 'harkness', map: 'yale-night', bank: 'yale-night', deals: 'nyse', letters: 'sterling', settings: 'yale-night' } as Record<string, string>)[section ?? '']
   let page = <HomeNext name={user.name} />
@@ -176,7 +175,7 @@ export default function App() {
       {/* Re-keying the page after the assistant changes something makes it reload its data. */}
       <main key={version} className="preview-on">{page}</main>
       {/* the assistant opens only from the home page's update bar (no corner button, no panel on other pages) */}
-      {isHome && <Assistant key={user.id} userId={user.id} onChanged={() => setVersion((v) => v + 1)} />}
+      {section !== 'tour' && section !== 'catch-up' && <Assistant key={user.id} userId={user.id} onChanged={() => setVersion((v) => v + 1)} />}
     </SchoolContext.Provider>
   )
 }

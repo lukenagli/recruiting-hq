@@ -31,7 +31,8 @@ TEMPLATE = (
     "I enjoyed hearing more about what led you to {bank} and {detail1}. I also liked learning about {detail2}.\n\n"
     "Thank you again for your time and insight. I really enjoyed our conversation and hope we can stay in touch throughout the process."
 )
-LIMITS = UsageLimits(request_limit=2, total_tokens_limit=20_000)
+LIMITS = UsageLimits(request_limit=2, total_tokens_limit=40_000)
+MIN_EXAMPLES = 3  # with fewer of the student's own sent emails on file, the club's rules alone guide the writer
 PART_HOURS = {"morning": 10, "afternoon": 14, "evening": 18}
 DAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
 
@@ -60,6 +61,118 @@ class Details(BaseModel):
 
 
 agent = Agent(output_type=Details, instructions=INSTRUCTIONS, name="thank_you_writer")
+
+# ---------------- In the student's own voice ----------------
+# The thank-yous the student actually sent (read from their Outlook, or pasted in) show how they write them: what
+# they pick from a chat, how specific they get, the phrases they reuse, a friendly last line. With enough of those
+# on file, the writer is shown them with each chat's notes and writes the middle paragraph the same way.
+
+VOICE_INSTRUCTIONS = """\
+You write the middle of an MBA student's thank-you email after a coffee chat, in the student's own voice. You are \
+given emails the student actually sent after earlier chats, each with the notes from that chat, and then the notes \
+from this chat. Study how the student turns notes into sentences: which details they pick, how specific they are, \
+their wording and length, and the phrases they reuse. Write this one the way they would.
+
+The greeting, opening line and closing are fixed and filled in for you:
+
+  [First name],
+
+  I just want to thank you again for meeting with me [when].
+
+  [paragraph]
+
+  Thank you again for your time and insight. I really enjoyed our conversation and hope we can stay in touch \
+throughout the process.[ extra]
+
+Rules:
+- paragraph: exactly two sentences. The first starts exactly "I enjoyed hearing more about what led you to [Bank] and" \
+and is about their path to the bank or their group. The second starts with "I also" and covers a different topic, \
+in the way the student's own emails do.
+- extra: a short friendly line the student adds after the closing, only if their past emails do this and this \
+chat's notes have something personal to call back to. Otherwise an empty string.
+- Use only details from this chat's notes. Never invent a name, deal, number, group or fact, and never borrow a \
+detail from the example emails.
+- An example marked SAME BANK went to someone else at this bank, and bankers compare notes: don't repeat its \
+details or its phrasing.
+- No em dashes, semicolons, parentheses or emojis. Write "investment banking" in lowercase.
+"""
+
+
+class Voiced(BaseModel):
+    paragraph: str = Field(description="The two-sentence middle paragraph.")
+    extra: str = Field(default="", description="An optional short friendly line after the closing, or an empty string.")
+
+
+voice_agent = Agent(output_type=Voiced, instructions=VOICE_INSTRUCTIONS, name="thank_you_writer")
+
+
+def past_emails(uid: int, interaction_id: int, bank: str, limit: int = 8) -> list[dict]:
+    """The student's own sent thank-yous after coffee chats (not drafts the site wrote), newest chats first,
+    with the notes of each chat; up to three at this bank are always included, marked same_bank."""
+    with connect(read_only=True) as conn:
+        rows = [dict(r) for r in conn.execute(
+            """SELECT d.body, i.bank, i.date, i.summary, p.name, p.title, p.grp FROM thank_you_drafts d
+               JOIN interactions i ON i.id = d.interaction_id JOIN people p ON p.id = d.person_id
+               WHERE d.user_id = ? AND COALESCE(d.sent_at, '') != '' AND d.check_line = '' AND i.kind = 'coffee_chat'
+                 AND d.interaction_id != ? AND length(d.body) > 120
+               ORDER BY COALESCE(i.date, '') DESC, d.id DESC""", (uid, interaction_id))]
+    same = [r for r in rows if r["bank"] == bank][:3]
+    rest = [r for r in rows if r["bank"] != bank and r["summary"]][: max(0, limit - len(same))]
+    for r in same:
+        r["same_bank"] = True
+    return rest + same
+
+
+def _examples(examples: list[dict]) -> str:
+    out = []
+    for i, e in enumerate(examples, 1):
+        who = ", ".join(filter(None, [e["name"], e["title"], e["bank"], e["grp"]]))
+        mark = " SAME BANK" if e.get("same_bank") else ""
+        out.append(f"Example {i}{mark} ({who}):\nNotes from that chat:\n{(e['summary'] or '(no notes)')[:1200]}\n"
+                   f"The email the student sent:\n{e['body'][:1500]}")
+    return "\n\n".join(out)
+
+
+SENTENCE_END = re.compile(r"(?<=[.?!])\s+(?=[A-Z])")
+
+
+def voice_problems(paragraph: str, extra: str, bank: str) -> list[str]:
+    found = []
+    start = f"I enjoyed hearing more about what led you to {bank} and"
+    if not paragraph.startswith(start):
+        found.append(f'the paragraph must start exactly "{start}"')
+    sentences = [s for s in SENTENCE_END.split(paragraph.strip()) if s]
+    if len(sentences) != 2:
+        found.append(f"the paragraph has {len(sentences)} sentences; it must have exactly two")
+    elif not sentences[1].startswith("I also"):
+        found.append('the second sentence must start with "I also"')
+    for s in sentences:
+        if not 12 <= len(s.split()) <= 40:
+            found.append(f"a sentence is {len(s.split())} words; keep each to 12 to 40")
+    for name, text in (("paragraph", paragraph), ("extra", extra)):
+        if re.search(r"[—–;()]", text) or "--" in text:
+            found.append(f"the {name} has an em dash, semicolon or parenthesis")
+        if re.search(r"Investment Banking", text):
+            found.append(f"the {name} capitalizes 'investment banking'")
+    if len(extra.split()) > 25:
+        found.append("the extra line is too long; keep it to one short sentence")
+    return found
+
+
+async def _voiced(chosen: Chosen, notes: str, examples: list[dict], bank: str, total: dict) -> tuple[str, str, list[str]]:
+    base = f"{_examples(examples)}\n\nThis chat (bank: {bank}):\n{notes}"
+    prompt, issues, para, extra = base, [], "", ""
+    for _ in range(2):
+        output = NativeOutput(Voiced) if chosen.provider == "anthropic" else None
+        result = await voice_agent.run(prompt, model=chosen.model, model_settings=chosen.settings, usage_limits=LIMITS, output_type=output)
+        for k, v in usage_dict(result.usage).items():
+            total[k] += v
+        para, extra = " ".join(result.output.paragraph.split()), " ".join(result.output.extra.split())
+        issues = voice_problems(para, extra, bank)
+        if not issues:
+            break
+        prompt = f"{base}\n\nYour last attempt broke these rules, fix them:\n- " + "\n- ".join(issues) + f"\nLast attempt: paragraph={para!r} extra={extra!r}"
+    return para, extra, issues
 
 
 def _part(note: str) -> str:
@@ -153,10 +266,20 @@ async def draft(uid: int, chosen: Chosen, interaction_id: int, person_id: int | 
     if template.strip() and not templates.is_default("post_chat", template):
         with connect(read_only=True) as conn:
             me = conn.execute("SELECT name FROM users WHERE id = ?", (uid,)).fetchone()["name"]
-        body, issues, total = await draft_custom(uid, chosen, template, prof["email_rules"], dict(chat), person, notes, when, me)
+        past = past_emails(uid, interaction_id, bank)
+        voice = f"Emails the student sent after earlier chats, for their voice (never borrow their details):\n\n{_examples(past)}\n\n" if past else ""
+        body, issues, total = await draft_custom(uid, chosen, template, prof["email_rules"], dict(chat), person, voice + notes, when, me)
         return _save(uid, interaction_id, person, bank, first, send_at, send_note, body, issues, total, started)
 
     total = {"input_tokens": 0, "cached_input_tokens": 0, "output_tokens": 0, "requests": 0}
+    examples = past_emails(uid, interaction_id, bank)
+    if len(examples) >= MIN_EXAMPLES:
+        para, extra, issues = await _voiced(chosen, notes, examples, bank, total)
+        body = TEMPLATE.split("I enjoyed")[0].format(first=first, when=when) + para + "\n\n" + \
+            "Thank you again for your time and insight. I really enjoyed our conversation and hope we can stay in touch throughout the process." + \
+            (f" {extra}" if extra else "")
+        return _save(uid, interaction_id, person, bank, first, send_at, send_note, body, issues, total, started)
+
     prompt, issues, details = notes, [], None
     for _ in range(2):
         # Claude Opus 5.5 rejects forced tool calls, so ask it for the typed result as native structured output.
