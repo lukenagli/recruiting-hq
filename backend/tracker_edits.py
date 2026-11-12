@@ -153,7 +153,10 @@ def _op(conn, uid: int, op: dict) -> str:
         bank, category = nz.bank(op["bank"]), op.get("category", "")
         if category not in FACT_CATEGORIES:
             raise EditError(f"category must be one of {FACT_CATEGORIES}.")
-        n = fact_tidy.replace(conn, uid, bank, category, op.get("lines", []), nz.clean(op.get("source", "")))
+        was_due = fact_tidy.due(conn, uid, bank)
+        n = fact_tidy.replace(conn, uid, bank, category, op.get("lines", []), nz.clean(op.get("source", "")), limit=20)
+        if not was_due:  # lines written on purpose aren't tidied again (a bank already due still is)
+            fact_tidy._mark(conn, uid, bank)
         return f"Set the {bank} {category} to {n} line{'s' if n != 1 else ''}"
     raise EditError(f"Unknown edit {kind!r}.")
 
@@ -283,6 +286,10 @@ def add_entry(conn, uid: int, op: dict) -> str:
 def apply(uid: int, ops: list[dict], note: str = "") -> dict:
     """Make every edit or none. Recorded with a snapshot, so the assistant's Undo reverses it."""
     init_db()
+    if any(op.get("op") == "set_facts" for op in ops):
+        from . import fact_tidy
+
+        fact_tidy.ensure()  # its table records which banks were tidied
     conn = connect()
     try:
         with conn:

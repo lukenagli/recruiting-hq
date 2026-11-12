@@ -342,6 +342,67 @@ function factBullets(fact: string): { text: string; steps?: string[] }[] {
     })
 }
 
+/** One overview box's text, editable in place: Edit opens its lines (one per line) in a box; Save rewrites the box. */
+function OverviewEdit({ bank, category, lines, onSaved, children }: {
+  bank: string; category: string; lines: string[]; onSaved: () => void; children: React.ReactNode
+}) {
+  const [text, setText] = useState<string | null>(null) // null: not editing
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('')
+  const bullets = useBullets(text ?? '', (v) => setText(v))
+  useLayoutEffect(() => {
+    const el = bullets.ref.current
+    if (!el) return
+    el.style.height = 'auto'
+    el.style.height = `${Math.min(el.scrollHeight + 4, window.innerHeight * 0.6)}px`
+  }, [text, bullets.ref])
+  if (text === null)
+    return (
+      <>
+        {children}
+        <button type="button" className="link ov-edit" onClick={() => { setText(lines.map((l) => `• ${l}`).join('\n')); setError('') }}>
+          {lines.length ? 'Edit' : 'Add'}
+        </button>
+      </>
+    )
+  async function save() {
+    setBusy(true)
+    setError('')
+    try {
+      const out = (text ?? '').split('\n').map((l) => l.replace(/^\s*(?:[-•◦▪*]|\d+[.)])\s*/, '').trim()).filter(Boolean)
+      const r = await post<{ ok: boolean; reason?: string }>('/api/tracker/edits', {
+        note: `Edited the ${bank} ${category}`, ops: [{ op: 'set_facts', bank, category, lines: out, source: 'your edit' }],
+      })
+      if (!r.ok) return setError(r.reason || 'Not saved.')
+      setText(null)
+      onSaved()
+    } catch (e) {
+      setError(String((e as Error).message || e))
+    } finally {
+      setBusy(false)
+    }
+  }
+  return (
+    <div className="ov-editor">
+      <textarea ref={bullets.ref} value={text} onChange={bullets.onChange} aria-label={`${bank} ${category}`} autoFocus
+        placeholder="- One point per line"
+        onKeyDown={(e) => {
+          if (e.key === 'Escape') return setText(null)
+          if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+            e.preventDefault()
+            return void save()
+          }
+          bullets.onKeyDown(e)
+        }} />
+      <div className="notes-editor-actions">
+        <button type="button" className="primary" disabled={busy} onClick={save}>{busy ? 'Saving…' : 'Save'}</button>
+        <button type="button" className="link muted" onClick={() => setText(null)}>Cancel</button>
+      </div>
+      {error && <p className="notice error">{error}</p>}
+    </div>
+  )
+}
+
 /** "You: 5 coffee chats, 2 events, 1 interview" from the entries that have happened. */
 function yourChats(entries: { kind: string; status: string }[]): string {
   const done = entries.filter((e) => e.status === 'done')
@@ -404,6 +465,7 @@ export default function BankView({ bank, initial = '' }: { bank: string; initial
             <div className={`ov-item ${items.length || mine ? '' : 'unknown'}`} key={field}>
               <small>{label}</small>
               {mine && <span className="ov-mine">{mine}</span>}
+              <OverviewEdit bank={data.bank} category={field} lines={items.map((f) => f.fact)} onSaved={reload}>
               {items.length === 0 ? (
                 mine ? null : (
                 <span className="muted">Not known yet</span>
@@ -424,6 +486,7 @@ export default function BankView({ bank, initial = '' }: { bank: string; initial
                   )}
                 </ul>
               )}
+              </OverviewEdit>
             </div>
           )
         })}

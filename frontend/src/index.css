@@ -1665,3 +1665,11 @@ details.card.fold > .card, details.card.fold section.card { box-shadow: none; bo
 .ov-bullets > li::marker { color: var(--muted); }
 .ov-steps { margin: 3px 0 0; padding-left: 20px; display: flex; flex-direction: column; gap: 2px; }
 .ov-steps li::marker { color: var(--muted); font-size: 12px; }
+
+/* Editing an overview box in place */
+.ov-item { position: relative; }
+.ov-edit { position: absolute; top: 10px; right: 12px; font-size: 12.5px; opacity: 0; transition: opacity 0.15s; }
+.ov-item:hover .ov-edit, .ov-edit:focus-visible { opacity: 1; }
+@media (hover: none) { .ov-edit { opacity: 1; } }
+.ov-editor textarea { width: 100%; min-height: 90px; font: inherit; font-size: 14px; line-height: 1.45; padding: 8px 10px; border: 1.5px solid var(--line); border-radius: 10px; resize: vertical; box-sizing: border-box; }
+.ov-editor .notes-editor-actions { margin-top: 6px; }

@@ -82,9 +82,17 @@ def _mark(conn, uid: int, bank: str) -> None:
                  (uid, bank, top))
 
 
-def replace(conn, uid: int, bank: str, category: str, lines: list[str], source: str = "", added_at: str = "") -> int:
+def due(conn, uid: int, bank: str) -> bool:
+    """Whether the bank has facts newer than its last tidy (the next refresh would tidy it)."""
+    top = conn.execute("SELECT COALESCE(MAX(id), 0) FROM bank_facts WHERE user_id = ? AND bank = ?", (uid, bank)).fetchone()[0]
+    row = conn.execute("SELECT upto_id FROM fact_tidy WHERE user_id = ? AND bank = ?", (uid, bank)).fetchone()
+    return top > (row["upto_id"] if row else 0)
+
+
+def replace(conn, uid: int, bank: str, category: str, lines: list[str], source: str = "", added_at: str = "",
+            limit: int = MAX_LINES * 2) -> int:
     """Put `lines` in place of everything a bank's topic holds. Returns how many lines it now has."""
-    clean = [" ".join(str(x).split())[:400] for x in lines if str(x).strip()][:MAX_LINES * 2]
+    clean = [" ".join(str(x).split())[:400] for x in lines if str(x).strip()][:limit]
     conn.execute("DELETE FROM bank_facts WHERE user_id = ? AND bank = ? AND category = ?", (uid, bank, category))
     for line in clean:
         conn.execute("INSERT INTO bank_facts (user_id, bank, category, fact, source, added_at) VALUES (?, ?, ?, ?, ?, ?)",
