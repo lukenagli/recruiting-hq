@@ -27,7 +27,8 @@ function YourLetter({ state, onChange, letters }: { state: SetupState; onChange:
 
   if (info.has_template) {
     const submitted = letters.filter((l) => l.submitted).map((l) => l.bank)
-    const first = info.filename.replace(/\.docx$/i, '')
+    // "Nagli_Luke Cover Letter (Guggenheim).docx" reads as "Guggenheim"
+    const first = info.filename.match(/\(([^)]+)\)/)?.[1] ?? info.filename.replace(/\.docx$/i, '')
     return (
       <section className="card your-letters">
         <h2>Your letters</h2>

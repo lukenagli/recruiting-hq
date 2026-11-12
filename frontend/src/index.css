@@ -1329,8 +1329,8 @@ main h1 { text-shadow: 0 2px 16px rgba(4, 10, 26, 0.5); }
 .letter-steps { padding-left: 20px; display: flex; flex-direction: column; gap: 12px; }
 .letter-steps .btn { margin-left: 6px; }
 .letter-steps .dropzone { margin-top: 8px; }
-.your-letter .file-link input { display: none; }
-.your-letter .file-link { cursor: pointer; }
+.your-letter .file-link input, .your-letters .file-link input { display: none; }
+.your-letter .file-link, .your-letters .file-link { cursor: pointer; }
 
 /* Club feed and the admin panel */
 .club-feed { margin: 16px 0; }
