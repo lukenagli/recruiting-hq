@@ -131,7 +131,7 @@ export default function App() {
   // Each section gets its own photo along the top, fading into the navy page.
   const backdrop = ({ prep: 'harkness', map: 'yale-night', bank: 'yale-night', deals: 'nyse', letters: 'sterling', settings: 'yale-night' } as Record<string, string>)[section ?? '']
   let page = <HomeNext name={user.name} />
-  if (section === 'prep') page = <Prep bank={query.get('bank') ?? ''} round={query.get('round') ?? ''} who={query.get('who') ?? ''} tab={query.get('tab') ?? ''} />
+  if (section === 'prep') page = <Prep bank={query.get('bank') ?? ''} round={query.get('round') ?? ''} who={query.get('who') ?? ''} tab={query.get('tab') ?? ''} topic={query.get('topic') ?? ''} cats={query.get('categories') ?? ''} />
   if (section === 'map') page = <MapView />
   if (section === 'deals') page = <Deals />
   if (section === 'tour') page = <Tour />

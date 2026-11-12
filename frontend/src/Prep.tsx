@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import Practice from './Practice'
 import Progress from './Progress'
+import SuperdayPrep from './SuperdayPrep'
 import type { PrepOptions, Question } from './api'
 import { Loading, Logo, useApi, useSchool } from './ui'
 
@@ -88,11 +89,16 @@ function Results({ bank, round, who }: { bank: string; round: string; who: strin
 
 const TABS = [
   ['practice', 'Practice'],
+  ['superday', 'Superday prep'],
   ['progress', 'My progress'],
   ['browse', 'Browse the question bank'],
 ]
 
-export default function Prep({ bank, round, who, tab }: { bank: string; round: string; who: string; tab: string }) {
+const ALL_CATEGORIES = ['Technical', 'Behavioral', 'Deal', 'Markets']
+
+export default function Prep({ bank, round, who, tab, topic: linkTopic = '', cats = '' }: {
+  bank: string; round: string; who: string; tab: string; topic?: string; cats?: string
+}) {
   const { data, error } = useApi<PrepOptions>('/api/prep/options')
   const school = useSchool()
   const [topic, setTopic] = useState('')
@@ -111,11 +117,25 @@ export default function Prep({ bank, round, who, tab }: { bank: string; round: s
       </div>
     </>
   )
-  if (current === 'practice')
+  if (current === 'practice') {
+    // a link from Superday prep (or elsewhere) can set the round, bank, area and question types to start from
+    const fromLink = tab === 'practice' && (round || bank || linkTopic || cats)
+      ? { ...(round ? { stage: round } : {}), ...(bank ? { bank } : {}), ...(cats === 'all' ? { categories: ALL_CATEGORIES } : {}),
+          ...(linkTopic ? { categories: ['Technical'], topics: [linkTopic], difficulty: 'adaptive' } : {}) }
+      : undefined
+    const start = topic ? { categories: ['Technical'], topics: [topic], stage: '', difficulty: 'adaptive' } : fromLink
     return (
       <div className="prep">
         {header}
-        <Practice key={topic} options={data} start={topic ? { categories: ['Technical'], topics: [topic], stage: '', difficulty: 'adaptive' } : undefined} />
+        <Practice key={topic || JSON.stringify(fromLink ?? {})} options={data} start={start} />
+      </div>
+    )
+  }
+  if (current === 'superday')
+    return (
+      <div className="prep">
+        {header}
+        <SuperdayPrep bank={bank} options={data} />
       </div>
     )
   if (current === 'progress')

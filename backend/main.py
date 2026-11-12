@@ -17,7 +17,7 @@ from starlette.background import BackgroundTask
 from . import banks as banks_info
 from . import tracker_edits
 from . import chat_notes, filing_queue, folder_setup, interviewer, scan_cleanup
-from . import accounts, assistant, attachments, auth, budget, capiq, catch_up, config, cover_letters, deal_docs, deal_recs, deal_sources, deals, importer, legal, llm, market, network, onboarding, practice, profile, schools, reference, research, shared, stars, sync, templates, test_scan, thank_backfill, thank_you, transfer, user_keys
+from . import accounts, assistant, attachments, auth, budget, capiq, catch_up, config, cover_letters, deal_docs, deal_recs, deal_sources, deals, importer, legal, llm, market, network, onboarding, practice, profile, question_clean, schools, reference, research, shared, stars, superday, sync, templates, test_scan, thank_backfill, thank_you, transfer, user_keys
 from .auth import admin_user, current_user
 from .db import connect, init_db
 from .llm import get_model, usage_dict
@@ -31,6 +31,8 @@ async def start_filing_worker():
     import asyncio
 
     app.state.filing_worker = asyncio.create_task(filing_queue.worker())
+    # new school bank entries get the answer some students typed into them split out (question_clean)
+    app.state.question_clean = asyncio.create_task(question_clean.on_start())
 app.add_middleware(
     CORSMiddleware,
     allow_origins=config.FRONTEND_ORIGINS,
@@ -208,6 +210,24 @@ def prep_questions(bank: str = "Any", round: str = "Any", user: dict = Depends(c
     if not schools.for_user(user["id"])["club"]:
         return {"total": 0, "questions": []}
     return network.prep_questions(bank, round)
+
+
+@app.get("/api/prep/superday")
+def superday_brief(bank: str, user: dict = Depends(current_user)):
+    """Superday prep for one bank: its Superday questions, your weakest technical areas, and your saved story."""
+    out = superday.brief(user["id"], bank)
+    if not schools.for_user(user["id"])["club"]:  # the question bank is the school club's material
+        out |= {"questions": [], "total": 0, "by_type": {}}
+    return out
+
+
+class StoryRequest(BaseModel):
+    bank: str = Field(min_length=1, max_length=120)
+
+
+@app.post("/api/prep/superday/story")
+async def superday_story(req: StoryRequest, user: dict = Depends(current_user)):
+    return await superday.write_story(user["id"], ai_for(user), req.bank)
 
 
 class PracticeRequest(BaseModel):

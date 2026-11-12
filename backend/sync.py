@@ -845,6 +845,13 @@ async def ingest_many(user: dict, chosen: Chosen, batches: list[Batch]) -> dict:
             await fact_tidy.tidy_some(uid, chosen)
         except Exception:  # noqa: BLE001 - filing already happened
             pass
+    # thank-yous the student sent are kept on their chats (after filing, so a chat filed just now is there to match)
+    try:
+        from . import thank_backfill
+
+        thank_backfill.capture(uid, user.get("name", ""), [i for w in work for i in w["fresh"]])
+    except Exception:  # noqa: BLE001 - filing already happened
+        pass
     for w in work:
         batch, fresh = w["batch"], w["fresh"]
         _mark_behind(uid, now, batch, w["done"])

@@ -21,7 +21,7 @@ from pydantic_ai import Agent, NativeOutput
 from pydantic_ai.usage import UsageLimits
 
 from . import deals as deal_book
-from . import core_technicals, stars
+from . import core_technicals, question_clean, stars
 from . import practice_bank as pb
 from . import reference as answer_library
 from . import profile as user_profile
@@ -121,17 +121,24 @@ def difficulty_of(question: str) -> str:
 
 # ---------------- Building questions ----------------
 
-def _bank_question(row) -> dict:
+def _bank_question(row, done: dict | None = None) -> dict:
+    """A school bank entry as a practice question; the answer some students typed into the question goes to the notes."""
     cat = next((c for c, types in CATEGORIES.items() if row["qtype"] in types), "Technical")
     technical = cat == "Technical"
+    asked, notes, skip = question_clean.apply(row["id"], row["question"], row["answer_notes"] or "",
+                                              question_clean.splits() if done is None else done)
+    return {"skip": skip, **_bank_fields(row, cat, technical, asked, notes)}
+
+
+def _bank_fields(row, cat: str, technical: bool, asked: str, notes: str) -> dict:
     return {
         "key": f"q:{row['id']}", "kind": "bank", "category": cat,
-        "topic": topic_of(row["question"], row["topic"]) if technical else "",
-        "difficulty": difficulty_of(row["question"]) if technical else "",
-        "question": re.sub(r"\s*\(edited\)\s*$", "", row["question"]), "bank": row["bank"] if row["bank"] != "Unknown" else "",
+        "topic": topic_of(asked, row["topic"]) if technical else "",
+        "difficulty": difficulty_of(asked) if technical else "",
+        "question": re.sub(r"\s*\(edited\)\s*$", "", asked), "bank": row["bank"] if row["bank"] != "Unknown" else "",
         "round": row["round"] if row["round"] != "Unknown" else "", "group": row["grp"] or "",
         "who": row["interviewer"] or "", "source": SOURCE_LABEL.get(row["source"], ""),
-        "notes": row["answer_notes"] or "",
+        "notes": notes,
     }
 
 
@@ -288,7 +295,8 @@ def next_question(uid: int, categories: list[str], topics: list[str], stage: str
         use_bank = club and bank != ""
         rows = conn.execute(f"SELECT * FROM questions WHERE {' AND '.join(where)}", params).fetchall() if use_bank else []
 
-    pool = [q for q in map(_bank_question, rows) if q["key"] not in seen_set and len(q["question"]) > 12]
+    done = question_clean.splits()
+    pool = [q for q in (_bank_question(r, done) for r in rows) if q["key"] not in seen_set and not q["skip"] and len(q["question"]) > 12]
     # Superday prep: only the questions asked at Superdays, plus the hardest technicals from the student's guides
     superday = stage == "Superday"
     if bank == "Any" and not superday:  # every bank: the standard questions too (they aren't tied to a bank)

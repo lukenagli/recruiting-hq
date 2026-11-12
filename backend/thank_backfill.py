@@ -25,21 +25,25 @@ STATUS = re.compile(r"^((Collapsed|Expanded|Selected|Unread|Replied|Forwarded|Ha
 class Email(BaseModel):
     label: str   # the row in the mail list: recipient (or sender), subject, preview
     text: str    # the conversation as shown in the reading pane
+    at: str = "" # when it was sent, if known (a refresh's email): the day used when the text shows no date
 
 
 def extract(email: Email, own_name: str) -> dict | None:
     """{greeting, body, sent, at_event, recipient} for the student's own thank-you in a conversation, or None."""
     text = email.text.replace("\r", "")
-    m = GREETING.search(text)
     own = own_name.split() or [""]
-    if not m or m[1].split()[0].lower() == own[0].lower():  # "<student>, thanks for..." is a reply to the student
+    m = GREETING.search(text)
+    # "<student>, thanks for..." is a reply to the student: look past it for the student's own note further down the thread
+    while m and own[0] and m[1].split()[0].lower() == own[0].lower():
+        m = GREETING.search(text, m.end(1))
+    if not m:
         return None
     body = f"{m[1]},\n\n{m[2]}"
     signed = rf"|\n\s*{re.escape(own[0])}( {re.escape(own[-1])})?\s*\n" if own[0] else ""
     stop = re.search(STOP + signed, body)
     body = re.sub(r"\n{3,}", "\n\n", body[:stop.start()] if stop and stop.start() > 0 else body).strip()[:4000]
     dates = list(SENT_ON.finditer(text[:m.start()]))
-    sent = date(int(dates[-1][3]), int(dates[-1][1]), int(dates[-1][2])).isoformat() if dates else ""
+    sent = date(int(dates[-1][3]), int(dates[-1][1]), int(dates[-1][2])).isoformat() if dates else email.at[:10]
     label = STATUS.sub("", email.label)
     recipient = ""
     if r := re.search(r"/ ([A-Z][\w'.-]+(?: [A-Z][\w'.-]+)+) -", label):  # "<student> / <banker> - Coffee Chat"
@@ -82,6 +86,13 @@ def _match(conn, uid: int, found: dict) -> tuple[int, int] | None:
         if fit:
             return fit[-1]["iid"], fit[-1]["pid"]
     return None
+
+
+def capture(uid: int, own_name: str, items: list) -> int:
+    """After a refresh files its email: any thank-you the student sent in it is saved on that chat or event, so the
+    thank-you writer learns from the version the student actually sent. No AI; returns how many were saved."""
+    emails = [Email(label=i.author or "", text=i.text, at=i.at) for i in items if "thank" in i.text.lower()]
+    return save(uid, emails, own_name)["saved"] if emails else 0
 
 
 def save(uid: int, emails: list[Email], own_name: str) -> dict:
