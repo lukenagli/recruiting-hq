@@ -213,9 +213,9 @@ def prep_questions(bank: str = "Any", round: str = "Any", user: dict = Depends(c
 
 
 @app.get("/api/prep/superday")
-def superday_brief(bank: str, user: dict = Depends(current_user)):
+def superday_brief(bank: str = "", user: dict = Depends(current_user)):
     """Superday prep for one bank: its Superday questions, your weakest technical areas, and your saved story."""
-    out = superday.brief(user["id"], bank)
+    out = superday.brief(user["id"], bank.strip())
     if not schools.for_user(user["id"])["club"]:  # the question bank is the school club's material
         out |= {"questions": [], "total": 0, "by_type": {}}
     return out
