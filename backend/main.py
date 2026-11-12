@@ -1332,6 +1332,12 @@ def trim_check(user: dict = Depends(admin_user)):
     return mail_trim.check(rows)
 
 
+@app.get("/api/admin/question-clean")
+def question_clean_status(user: dict = Depends(admin_user)):
+    """How much of the school bank has had typed-in answers split out of its questions."""
+    return {"split": len(question_clean.splits()), "pending": len(question_clean.pending())}
+
+
 @app.get("/api/admin/filing-messages")
 def filing_messages(n: int = 3, user: dict = Depends(admin_user)):
     """What the reader's last few filing runs sent the model, for your own account (to trace a missed email)."""

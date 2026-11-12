@@ -17,6 +17,7 @@ type Brief = {
   spoken: number
 }
 
+const possessive = (name: string) => (name.endsWith('s') ? `${name}'` : `${name}'s`)
 const practiceLink = (params: Record<string, string>) => `#/prep?${new URLSearchParams({ tab: 'practice', round: 'Superday', ...params })}`
 
 /** One bank's Superday: what it asks there, where you're weakest, and your "why this bank, why this group". */
@@ -111,7 +112,7 @@ function Brief({ bank }: { bank: string }) {
             <li key={a.topic}>
               <span>
                 <strong>{a.topic}</strong>
-                <small>{Math.round((a.score ?? 0) * 100)}% over your last {Math.min(a.graded, 12)} · {a.note || `at ${a.level} level`}</small>
+                <small>{Math.round((a.score ?? 0) * 100)}% {a.graded === 1 ? 'on your one try' : `over your last ${Math.min(a.graded, 12)}`} · {a.note || `at ${a.level} level`}</small>
               </span>
               <a className="btn" href={practiceLink({ bank: 'Any', topic: a.topic })}>Practice at Superday level</a>
             </li>
@@ -158,7 +159,7 @@ function StoryCard({ bank, group, story, spoken, onChanged }: { bank: string; gr
         </button>
       </div>
       <p className="muted">
-        Your answers to "Why {bank}?" and "{whyGroup}?", written from your resume, what you wrote about yourself, {bank}'s overview and your{' '}
+        Your answers to "Why {bank}?" and "{whyGroup}?", written from your resume, what you wrote about yourself, {possessive(bank)} overview and your{' '}
         {spoken} chat{spoken === 1 ? '' : 's'} there. Nothing is made up; read them aloud and make them yours.
       </p>
       {error && <p className="notice error">{error}</p>}

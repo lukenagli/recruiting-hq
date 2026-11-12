@@ -396,10 +396,16 @@ export default function Practice({ options, start }: { options: PrepOptions; sta
               </button>
             )}
           </div>
-          <p className="muted">
-            {school.club ? 'Questions come from your club question banks, plus' : 'Questions are common interview questions plus'} technical
-            problems with new numbers each time (worked out so the math is doable by hand).
-          </p>
+          {setup.stage === 'Superday' ? (
+            <p className="muted">
+              Superday practice asks only questions logged from real Superdays{setup.guides === null ? '' : ', plus the hard technical questions from your guides'}.
+            </p>
+          ) : (
+            <p className="muted">
+              {school.club ? 'Questions come from your club question banks, plus' : 'Questions are common interview questions plus'} technical
+              problems with new numbers each time (worked out so the math is doable by hand).
+            </p>
+          )}
         </div>
       )}
       {error && <p className="notice error">{error}</p>}
