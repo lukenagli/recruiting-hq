@@ -1707,6 +1707,7 @@ details.card.fold > .card, details.card.fold section.card { box-shadow: none; bo
 .sd-story ul { margin: 0 0 6px; padding-left: 20px; line-height: 1.5; }
 
 /* Cover letters: your letters, and which one a draft starts from */
+.card.your-letters { margin-bottom: 22px; }
 .your-letters h2 { margin: 0 0 6px; font-size: 20px; }
 .your-letters p { margin: 0 0 10px; }
 .your-letter-chips { margin: 4px 0 10px; }
