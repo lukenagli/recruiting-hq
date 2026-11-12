@@ -88,8 +88,8 @@ def brief(uid: int, bank: str) -> dict:
     ensure()
     with connect(read_only=True) as conn:
         rows = [dict(r) for r in conn.execute(
-            "SELECT id, question, qtype, grp, interviewer, source, answer_notes FROM questions WHERE bank = ? AND round = 'Superday'",
-            (bank,))]
+            """SELECT id, question, qtype, grp, interviewer, source, answer_notes FROM questions WHERE round = 'Superday'
+               AND (bank = ? OR ? LIKE bank || ' %')""", (bank, bank))]  # the club writes "PJT" for "PJT Partners"
         story = _story(conn, uid, bank)
         ctx = cover_letters._context(conn, uid, bank)
     done = question_clean.splits()
@@ -103,9 +103,10 @@ def brief(uid: int, bank: str) -> dict:
     for r in rows:
         r["source"] = practice.SOURCE_LABEL.get(r["source"], "")
     areas = practice.progress(uid)["areas"]
+    areas = [a for a in areas if a["topic"] != "Other"]  # not an area you can practice on its own
     practiced = sorted((a for a in areas if a["graded"]), key=lambda a: (a["score"] if a["score"] is not None else 1, -a["graded"]))
     weak = [a for a in practiced if (a["score"] or 0) < 0.85][:3]
-    untried = [a["topic"] for a in areas if not a["graded"] and a["topic"] != "Other"]
+    untried = [a["topic"] for a in areas if not a["graded"]]
     return {"bank": bank, "questions": rows[:80], "total": len(rows), "by_type": by_type,
             "weak": weak, "untried": untried, "story": story,
             "group": "generalist program" if ctx["generalist"] else ctx["group"], "spoken": len(ctx["spoken"])}
