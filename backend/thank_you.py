@@ -175,9 +175,20 @@ async def _voiced(chosen: Chosen, notes: str, examples: list[dict], bank: str, t
     return para, extra, issues
 
 
+CLOCK = re.compile(r"\b(\d{1,2})(?::\d{2})?\s*([ap])\.?m\b", re.I)
+
+
 def _part(note: str) -> str:
+    """Morning or afternoon, from the chat's date note ("afternoon", or a time like "5:00 PM–5:30 PM ET")."""
     note = (note or "").lower()
-    return next((p for p in PART_HOURS if p in note), "")
+    named = next((p for p in PART_HOURS if p in note), "")
+    if named:
+        return named
+    m = CLOCK.search(note)
+    if not m:
+        return ""
+    hour = int(m[1]) % 12 + (12 if m[2] == "p" else 0)
+    return "morning" if hour < 12 else "afternoon"  # the club's wording: noon or later is afternoon
 
 
 def _next_working_morning(day: date) -> datetime:
