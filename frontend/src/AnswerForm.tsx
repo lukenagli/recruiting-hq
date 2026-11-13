@@ -127,7 +127,9 @@ export default function AnswerForm({ form, parts, setParts, onSubmit }: {
 
 /** Technical questions that need a tax rate but don't give one are answered at 25%. */
 export function taxNote(q: PracticeQuestion) {
-  return q.category === 'Technical' && ['Accounting', 'DCF', 'Merger Math', 'LBO'].includes(q.topic) && /\d/.test(q.question) && !/tax/i.test(q.question)
-    ? 'Assume a 25% tax rate.'
-    : ''
+  const taxed = ['Accounting', 'DCF', 'Merger Math', 'LBO'].includes(q.topic) || TAXED.test(q.question) // e.g. an EV question with a write-down
+  return q.category === 'Technical' && taxed && /\d/.test(q.question) && !/tax/i.test(q.question) ? 'Assume a 25% tax rate.' : ''
 }
+
+// Anything that runs through the income statement, so the answer depends on the tax rate.
+const TAXED = /write[\s-]*(down|off|up)s?|impair|depreciat|amortiz|expense|net income|earnings|\bEPS\b|\bgains?\b|\bloss(es)?\b|interest|revenue|\bsales\b|\bEBIT\b|\bCOGS\b|salar|bonus|inventory|dividend|accretive|dilutive/i
