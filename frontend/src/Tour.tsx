@@ -251,7 +251,7 @@ const STEPS: { kicker: string; title: string; text: ReactNode; demo: ReactNode }
       <>
         Pick behavioral, technical or deal questions, by bank, round and difficulty, from the questions Yale students were actually asked.
         Answer by typing, by dictating, or in a spoken mock interview, and you get a grade, the answer from your own study guides, and you
-        can ask follow-ups. Behavioral answers are checked against your resume and what you wrote about yourself in Settings.
+        can ask follow-ups. Behavioral answers are checked against your resume and your story bank, and the feedback says which of your stories to use.
       </>
     ),
     demo: (

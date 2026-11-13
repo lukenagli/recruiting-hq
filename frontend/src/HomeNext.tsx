@@ -232,12 +232,12 @@ function clock(note: string) {
   return h && ap ? `${Number(h)}:${m ?? '00'} ${ap.toUpperCase()}M` : ''
 }
 
-/** True once a timed item started more than an hour ago (it has happened); untimed items stay until the day is over. */
-function isPast(date: string, time: string, today: string) {
+/** True once a timed item is over (a coffee chat runs 30 minutes, anything else an hour); untimed items stay until the day is over. */
+function isPast(date: string, time: string, today: string, kind = '') {
   if (date < today) return true
   if (date > today || minutes(time) >= 24 * 60) return false
   const now = new Date()
-  return minutes(time) + 60 <= now.getHours() * 60 + now.getMinutes()
+  return minutes(time) + (kind === 'coffee_chat' ? 30 : 60) <= now.getHours() * 60 + now.getMinutes()
 }
 
 /** Where an item on the agenda opens: an interview goes to its bank's practice questions, anything else to that
@@ -266,7 +266,7 @@ function Agenda({ d, out }: { d: HomeData; out: Set<string> }) {
           <h3>{dayLabel(day, d.today)}</h3>
           <ul>
             {items.filter((i) => i.date === day).map((i) => (
-              <li key={`${i.bank}-${i.title}`} className={`k-${i.kind} ${isPast(i.date, i.time, d.today) ? 'past' : ''}`}>
+              <li key={`${i.bank}-${i.title}`} className={`k-${i.kind} ${isPast(i.date, i.time, d.today, i.kind) ? 'past' : ''}`}>
                 <a href={agendaLink(i)}>
                   <span className="agenda-time">{i.time || (i.kind === 'deadline' ? 'Due' : '')}</span>
                   <span className="agenda-what">

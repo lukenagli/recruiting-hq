@@ -103,6 +103,25 @@ def main() -> int:
                             json={"categories": ["Technical", "Behavioral"], "stage": stage, "difficulty": level, "bank": "Any", "guides": []})
             if r.status_code != 200:
                 problems.append(f"{who} POST /api/practice/next ({stage or 'any round'}, {level}): {r.status_code} {r.text[:200]}")
+    # The story bank by hand (no AI): add a story, see it in the bank, take it out again
+    uid, token = users["student"]
+    auth = {"Authorization": f"Bearer {token}"}
+    r = client.post("/api/stories", headers=auth, json={"title": "The pricing model", "situation": "A client needed a price in a week.",
+                                                         "action": "I built the model.", "result": "They won; I learned to ask early.",
+                                                         "buckets": ["rigor", "pressure"], "polarity": "went well"})
+    opened += 1
+    if r.status_code != 200 or len(r.json().get("stories", [])) != 1 or r.json()["coverage"]["rigor"]["went well"] != ["The pricing model"]:
+        problems.append(f"student POST /api/stories: {r.status_code} {r.text[:200]}")
+    else:
+        sid = r.json()["stories"][0]["id"]
+        for method, path, body in (("post", f"/api/stories/{sid}", {"title": "The pricing model", "action": "I built it.", "buckets": ["judgment"], "polarity": "went wrong"}),
+                                   ("delete", f"/api/stories/{sid}", None)):
+            opened += 1
+            r = getattr(client, method)(path, headers=auth, **({"json": body} if body else {}))
+            if r.status_code != 200:
+                problems.append(f"student {method.upper()} {path}: {r.status_code} {r.text[:200]}")
+        if r.status_code == 200 and r.json().get("stories"):
+            problems.append("student DELETE /api/stories: the story is still there")
     # Signed out: the data routes refuse, the public ones answer.
     for path in ("/api/home", "/api/banks", "/api/profile"):
         r = client.get(path)

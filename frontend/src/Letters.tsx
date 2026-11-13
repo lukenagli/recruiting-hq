@@ -68,7 +68,7 @@ function YourLetter({ state, onChange, letters }: { state: SetupState; onChange:
         </li>
         <li>
           <strong>Write one letter in it</strong>, for any bank you're applying to: why that bank, the people you've spoken with, and your
-          experience. Keep the template's layout: the "Dear …:" line, your paragraphs, then "Sincerely," and your name.
+          experience. Keep the template's layout: the "Dear …" line, your paragraphs, then "Sincerely," and your name.
         </li>
         <li>
           <strong>Upload it here.</strong> A letter you already sent to a bank works too.

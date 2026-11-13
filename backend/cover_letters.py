@@ -144,11 +144,11 @@ def shape(template: str) -> tuple[int, int, int]:
 def _salutation(recruiter: str) -> str:
     recruiter = " ".join(recruiter.split())
     if not recruiter:
-        return "Dear Hiring Manager:"
+        return "Dear Hiring Manager,"
     parts = recruiter.split()
     if parts[0].rstrip(".").lower() in ("mr", "ms", "mrs", "mx", "dr") and len(parts) > 1:
-        return f"Dear {parts[0].rstrip('.')}. {parts[-1]}:"
-    return f"Dear {recruiter}:"
+        return f"Dear {parts[0].rstrip('.')}. {parts[-1]},"
+    return f"Dear {recruiter},"
 
 
 def _context(conn, uid: int, bank: str) -> dict:
@@ -602,6 +602,16 @@ def _document(uid: int, bank: str, paragraphs: list[str] | None = None):
     if spots["date"] is not None:
         date_p = paras[spots["date"]]
         _set_text(date_p, templates.DATE.sub(letter["date"], date_p.text, count=1), keep)
+
+    # One blank line between the date and the recipient block, and between the block and the salutation (the Yale
+    # template has two empty lines under the date, which reads as a double space in Word).
+    first = spots["recipient"][0] if spots["recipient"] else spots["salutation"]
+    for start, stop in ((spots["date"], first), (spots["recipient"][-1] if spots["recipient"] else None, spots["salutation"])):
+        if start is None:
+            continue
+        blanks = [paras[i] for i in range(start + 1, stop) if not paras[i].text.strip()]
+        for extra in blanks[1:]:
+            extra._p.getparent().remove(extra._p)
 
     # Recipient block: reuse the template's lines, adding or dropping lines to match.
     slots = [paras[i] for i in spots["recipient"]]

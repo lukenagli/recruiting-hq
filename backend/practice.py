@@ -22,6 +22,7 @@ from pydantic_ai.usage import UsageLimits
 
 from . import deals as deal_book
 from . import core_technicals, question_clean, stars
+from . import stories as story_bank
 from . import levels as rated_levels  # (next_question has its own `levels`: the adaptive level per area)
 from . import practice_bank as pb
 from . import reference as answer_library
@@ -422,6 +423,10 @@ convincing) and use the same three levels.
 arithmetic shown. For behavioral or deal questions give a strong model answer structure and what \
 interviewers listen for, using the student's own background when it is provided. Plain text, short \
 paragraphs or numbered steps, no markdown headings, at most 220 words.
+- tip: only for a behavioral question when the student's story bank is given. Say which of their stories to use \
+("Use your <title> story") and how to bend it to this question: what to lead with, which part of the action to \
+spend the time on, which number to land on, in 2 or 3 sentences. If none of their stories fits, say in one sentence \
+what kind of story they should add to their bank. Leave it empty for every other question.
 - Grade against the standard answers bankers expect in interviews (for example: cash is usually the cheapest \
 way to pay for an acquisition, then debt, then stock), not academic edge cases. Mention a nuance only after \
 confirming the standard answer.
@@ -443,6 +448,10 @@ class Grade(BaseModel):
     verdict: Literal["correct", "partial", "incorrect"]
     feedback: str = Field(description="2-4 sentences to the student about their answer.")
     explanation: str = Field(description="The worked explanation or model answer, plain text, at most 220 words.")
+    tip: str = Field("", description="Behavioral questions only, when the student's story bank is given: which of their stories to use "
+                                     "and how to bend it to this question (lead with what, emphasise what, which number), in 2-3 sentences "
+                                     "starting 'Use your <title> story'. If none fits, one sentence on which kind of story they're missing. "
+                                     "Empty for every other question.")
 
 
 grader = Agent(output_type=Grade, instructions=GRADER, name="prep_grader")
@@ -464,11 +473,14 @@ def _numeric_check(answer: str, problem: pb.Problem) -> str | None:
 def _background(uid: int, q: dict) -> str:
     if q["category"] == "Behavioral":
         p = user_profile.get(uid)
-        stories = stars.as_text(uid)
-        return ("Student background (resume, notes and their STAR stories, for tailoring the model answer; when a "
-                "STAR story fits the question, build the model answer from it):\n"
+        bank = story_bank.as_text(uid)
+        old = stars.as_text(uid)
+        return ("Student background (resume and notes, for tailoring the model answer):\n"
                 f"{(p.get('resume_text') or '')[:2500]}\n{user_profile.background(p)[:2500]}"
-                + (f"\n\nTheir STAR stories:\n{stories}" if stories else ""))
+                + (f"\n\nThe student's story bank (their own stories, each tagged with the buckets it answers and whether it went "
+                   f"well or went wrong). When one fits this question, build the model answer from it and set tip to which story to "
+                   f"use and how to bend it:\n{bank}" if bank else "\n\nThe student has no stories in their story bank yet.")
+                + (f"\n\nTheir older STAR notes:\n{old}" if old else ""))
     if q["category"] == "Deal":
         names = [d["title"] for d in deal_book.all_deals(uid).get("deals", [])]
         return f"Deals the student has prepared: {', '.join(names) or 'none yet'}." if names else ""
@@ -482,7 +494,7 @@ async def grade(uid: int, chosen: Chosen | None, key: str, answer: str) -> dict 
         return None
     q, problem = built
     answer = answer.strip()
-    verdict, feedback, explanation, usage, outcome = None, "", "", None, "ok"
+    verdict, feedback, explanation, tip, usage, outcome = None, "", "", "", None, "ok"
     reference = (f"Reference answer: {problem.answer}\nReference solution:\n{problem.solution}" if problem
                  else f"Model answer (correct; grade against it): {q['notes']}" if q["notes"] and key.startswith("ct:")
                  else (f"Answer from the student's own copy of {q['guide']} ({q['location']}). It is correct: grade against it and "
@@ -505,6 +517,7 @@ async def grade(uid: int, chosen: Chosen | None, key: str, answer: str) -> dict 
             result = await grader.run(prompt, model=chosen.model, model_settings=chosen.settings, usage_limits=LIMITS, output_type=output)
             usage, g = usage_dict(result.usage), result.output
             verdict, feedback, explanation = g.verdict, g.feedback.strip(), g.explanation.strip()
+            tip = g.tip.strip() if q["category"] == "Behavioral" else ""
             if not answer:
                 feedback = ""  # they asked to see the answer; no need to tell them they did not answer
         except Exception as exc:
@@ -546,7 +559,7 @@ async def grade(uid: int, chosen: Chosen | None, key: str, answer: str) -> dict 
                 (uid, started, f"Grade: {q['question'][:200]}", f"{verdict}: {feedback}"[:500], outcome, u.get("requests", 0),
                  u.get("input_tokens", 0), u.get("cached_input_tokens", 0), u.get("output_tokens", 0)),
             )
-    return {"attempt_id": aid, "verdict": verdict, "feedback": feedback, "explanation": explanation,
+    return {"attempt_id": aid, "verdict": verdict, "feedback": feedback, "explanation": explanation, "tip": tip,
             "answer": problem.answer if problem else "", "question": q,
             "sources": list({(p["source"], p["location"]): {"source": p["source"], "location": p["location"], "private": p["private"]}
                              for p in passages}.values())}

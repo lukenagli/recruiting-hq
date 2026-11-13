@@ -11,12 +11,12 @@ import json
 import os
 import tempfile
 
-from . import stars
+from . import stars, stories
 from .db import connect, init_db
 
 SHARED = ("questions", "applications", "calendar_items")
 OWN_TABLES = ("people", "interactions", "links", "my_banks", "bank_facts", "deals", "transcripts", "thank_you_drafts",
-              "agent_runs", "cover_letters", "prep_attempts", "deal_documents", "star_stories")
+              "agent_runs", "cover_letters", "prep_attempts", "deal_documents", "star_stories", "stories")
 
 
 # Not exported: the copy of the whole tracker each assistant run keeps so it can be undone. It grows with every
@@ -45,6 +45,7 @@ def _queries(uid: int, include_shared: bool) -> dict:
         "prep_attempts": ("SELECT * FROM prep_attempts WHERE user_id = ?", (uid,)),
         "deal_documents": ("SELECT * FROM deal_documents WHERE user_id = ?", (uid,)),
         "star_stories": ("SELECT * FROM star_stories WHERE user_id = ?", (uid,)),
+        "stories": ("SELECT * FROM stories WHERE user_id = ?", (uid,)),
     }
     if include_shared:
         queries.update({t: (f"SELECT * FROM {t}", ()) for t in SHARED})
@@ -69,6 +70,7 @@ def _rows(conn, table: str, sql: str, params: tuple):
 def export_all(uid: int, include_shared: bool) -> dict:
     init_db()
     stars.ensure()
+    stories.ensure()
     with connect(read_only=True) as conn:
         return {t: list(_rows(conn, t, sql, params)) for t, (sql, params) in _queries(uid, include_shared).items()}
 
@@ -78,6 +80,7 @@ def export_to_file(uid: int, include_shared: bool) -> str:
     server's memory (the whole JSON at once took the hosted site down). The caller deletes the file."""
     init_db()
     stars.ensure()
+    stories.ensure()
     fd, path = tempfile.mkstemp(prefix="rhq-export-", suffix=".json")
     try:
         with os.fdopen(fd, "w", encoding="utf-8") as out, connect(read_only=True) as conn:
@@ -103,6 +106,7 @@ def import_all(uid: int, data: dict, is_admin: bool, replace: bool = False) -> d
     """Load an export into this user's account. Refuses if the account already has a tracker, unless replace."""
     init_db()
     stars.ensure()
+    stories.ensure()
     conn = connect()
     try:
         with conn:
@@ -150,7 +154,7 @@ def import_all(uid: int, data: dict, is_admin: bool, replace: bool = False) -> d
                 if r["interaction_id"] in chats and r["person_id"] in people:
                     _insert(conn, "thank_you_drafts", {**own(r), "interaction_id": chats[r["interaction_id"]], "person_id": people[r["person_id"]]},
                             cols["thank_you_drafts"])
-            for table in ("my_banks", "bank_facts", "transcripts", "cover_letters", "prep_attempts", "star_stories"):
+            for table in ("my_banks", "bank_facts", "transcripts", "cover_letters", "prep_attempts", "star_stories", "stories"):
                 for r in data.get(table, []):
                     _insert(conn, table, own(r), cols[table], drop_id=table != "my_banks")
             for r in data.get("agent_runs", []):

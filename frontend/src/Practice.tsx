@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { post } from './api'
-import type { Graded, PracticeQuestion, PrepOptions, Verdict } from './api'
+import type { Graded, StoryBank, PracticeQuestion, PrepOptions, Verdict } from './api'
 import AnswerForm, { anyFilled, compose, formFor, taxNote } from './AnswerForm'
 import { useBullets } from './bullets'
 import { useDictation } from './dictation'
@@ -312,6 +312,7 @@ export default function Practice({ options, start }: { options: PrepOptions; sta
   const [typeItOut, setTypeItOut] = useState(false) // the student would rather write the whole answer
   const bullets = useBullets(answer, setAnswer) // "- " makes a bullet, Tab and Shift+Tab indent
   const library = useApi<{ source: string; private: boolean; questions: number }[]>('/api/practice/library')
+  const storyBank = useApi<StoryBank>('/api/stories') // behavioral feedback points to these
   const myGuides = (library.data ?? []).filter((g) => g.private && g.questions > 0).map((g) => g.source)
   const form = q && !typeItOut ? formFor(q) : null
   const written = form ? compose(form, parts, answer) : answer
@@ -423,6 +424,12 @@ export default function Practice({ options, start }: { options: PrepOptions; sta
               problems with new numbers each time (worked out so the math is doable by hand).
             </p>
           )}
+          {setup.categories.includes('Behavioral') && storyBank.data?.stories.length === 0 && (
+            <p className="muted pq-story-hint">
+              Behavioral feedback can tell you which of your own stories to use once you have some: <a href="#/settings/stories">build your story bank</a> with
+              the coach (a short conversation).
+            </p>
+          )}
         </div>
       )}
       {error && <p className="notice error">{error}</p>}
@@ -501,6 +508,12 @@ export default function Practice({ options, start }: { options: PrepOptions; sta
                 <p className="verdict v-none">How did you do?</p>
               )}
               {graded.feedback && <p className="pq-feedback">{graded.feedback}</p>}
+              {graded.tip && (
+                <div className="pq-tip">
+                  <strong>Story to use</strong>
+                  <p>{graded.tip}</p>
+                </div>
+              )}
               {answer.trim() && (
                 <div className="pq-yours">
                   <strong>Your answer</strong>

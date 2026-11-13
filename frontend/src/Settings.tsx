@@ -1,7 +1,8 @@
 import { useState } from 'react'
 import { post } from './api'
-import type { AiSettings, SetupState, User } from './api'
+import type { AiSettings, SetupState, StoryBank, User } from './api'
 import AboutYou from './AboutYou'
+import Stories from './Stories'
 import ReaderSettings from './ReaderSettings'
 import StudyGuides from './StudyGuides'
 import { CoverTemplate, EmailTemplates } from './Templates'
@@ -21,6 +22,7 @@ const SECTIONS = [
   { id: 'outlook', title: 'Outlook reader', note: 'Keeps your tracker up to date from your email and calendar.' },
   { id: 'ai', title: 'AI', note: 'The key that powers the assistant, practice feedback and writing.' },
   { id: 'about', title: 'About you', note: 'Your resume, the banks you are recruiting for and your groups.' },
+  { id: 'stories', title: 'Your stories', note: 'The six to eight stories behind your behavioral answers, built in a conversation with the coach.' },
   { id: 'templates', title: 'Writing templates', note: 'The cover letter and emails Recruiting HQ writes follow these exactly.' },
   { id: 'guides', title: 'Study guides', note: 'The Breaking Into Wall Street guides your practice questions come from.' },
   { id: 'history', title: 'Practice history', note: "Every question you've answered, and how you did." },
@@ -37,10 +39,13 @@ export default function Settings({ user, onSignOut, section = '' }: { user: User
 /** The list of sections, like a phone's Settings: tap one to open it. */
 function SettingsList({ user, onSignOut, ai }: { user: User; onSignOut: () => void; ai: AiSettings }) {
   const sync = useApi<SyncState>('/api/sync/state')
+  const stories = useApi<StoryBank>('/api/stories')
   const aiOn = !!ai.provider || ai.using_site_key
+  const saved = stories.data?.stories.length ?? 0
   const status: Record<string, { on: boolean; text: string } | undefined> = {
     ai: { on: aiOn, text: aiOn ? 'On' : 'Off' },
     outlook: sync.data ? { on: sync.data.has_key, text: sync.data.has_key ? 'Connected' : 'Not connected' } : undefined,
+    stories: stories.data ? { on: saved > 0, text: saved ? `${saved} saved` : 'None yet' } : undefined,
   }
   return (
     <div className="settings simple-settings">
@@ -82,6 +87,7 @@ function Section({ id, ai, reloadAi }: { id: string; ai: AiSettings; reloadAi: (
   if (id === 'outlook') return <ReaderSettings />
   if (id === 'ai') return <AiCard ai={ai} reload={reloadAi} />
   if (id === 'about') return <AboutYou />
+  if (id === 'stories') return <Stories />
   if (id === 'templates') return <TemplatesCard />
   if (id === 'guides') return <StudyGuides />
   return <PracticeHistory />

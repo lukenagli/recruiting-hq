@@ -17,7 +17,7 @@ from starlette.background import BackgroundTask
 from . import banks as banks_info
 from . import tracker_edits
 from . import chat_notes, filing_queue, folder_setup, interviewer, scan_cleanup
-from . import accounts, assistant, attachments, auth, budget, capiq, catch_up, config, cover_letters, deal_docs, deal_recs, deal_sources, deals, importer, legal, llm, market, network, onboarding, levels, practice, profile, question_clean, schools, reference, research, shared, stars, superday, sync, templates, test_scan, thank_backfill, thank_you, transfer, user_keys
+from . import accounts, assistant, attachments, auth, budget, capiq, catch_up, config, cover_letters, deal_docs, deal_recs, deal_sources, deals, importer, legal, llm, market, network, onboarding, levels, practice, profile, question_clean, schools, reference, research, shared, stars, stories, superday, sync, templates, test_scan, thank_backfill, thank_you, transfer, user_keys
 from .auth import admin_user, current_user
 from .db import connect, init_db
 from .llm import get_model, usage_dict
@@ -1284,6 +1284,58 @@ def save_star_story(key: str, fields: dict, user: dict = Depends(current_user)):
     if out is None:
         raise HTTPException(status_code=404, detail="Unknown question")
     return out
+
+
+# ---- The story bank: the student's six to eight stories, built in a conversation with the coach ----
+
+class StoryChat(BaseModel):
+    message: str = ""
+    history: list[dict] = []
+
+
+class StoryFields(BaseModel):
+    title: str = Field(min_length=1, max_length=200)
+    situation: str = ""
+    action: str = ""
+    result: str = ""
+    buckets: list[str] = []
+    polarity: str = "went well"
+
+
+@app.get("/api/stories")
+def get_stories(user: dict = Depends(current_user)):
+    """The stories, the eight buckets interviewers test, and which buckets the stories cover."""
+    return stories.overview(user["id"])
+
+
+@app.post("/api/stories/chat")
+async def story_chat(req: StoryChat, user: dict = Depends(current_user)):
+    """One turn of the conversation that builds the story bank (the coach saves stories as it goes)."""
+    chosen = ai_for(user)
+    return await stories.chat(user, chosen, req.message, req.history)
+
+
+@app.post("/api/stories")
+def add_story(req: StoryFields, user: dict = Depends(current_user)):
+    out = stories.save(user["id"], req.title, req.situation, req.action, req.result, req.buckets, req.polarity)
+    if not out["ok"]:
+        raise HTTPException(status_code=400, detail=out["reason"])
+    return stories.overview(user["id"])
+
+
+@app.post("/api/stories/{story_id}")
+def edit_story(story_id: int, req: StoryFields, user: dict = Depends(current_user)):
+    out = stories.save(user["id"], req.title, req.situation, req.action, req.result, req.buckets, req.polarity, story_id)
+    if not out["ok"]:
+        raise HTTPException(status_code=404 if out["reason"].startswith("No story") else 400, detail=out["reason"])
+    return stories.overview(user["id"])
+
+
+@app.delete("/api/stories/{story_id}")
+def delete_story(story_id: int, user: dict = Depends(current_user)):
+    if not stories.remove(user["id"], story_id)["ok"]:
+        raise HTTPException(status_code=404, detail="No such story.")
+    return stories.overview(user["id"])
 
 
 @app.get("/api/practice/library")

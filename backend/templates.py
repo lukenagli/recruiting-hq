@@ -202,7 +202,7 @@ def check_cover_template(data: bytes) -> tuple[str, str]:
     except Exception:
         return "", "That doesn't look like a Word (.docx) file."
     if layout(doc) is None:
-        return "", ("Couldn't find the letter's parts. Upload a cover letter in the Yale SOM format: a \"Dear ...:\" line, "
+        return "", ("Couldn't find the letter's parts. Upload a cover letter in the Yale SOM format: a \"Dear ...\" line, "
                     "your body paragraphs, then \"Sincerely,\" and your name.")
     return "\n\n".join(p.text for p in doc.paragraphs if p.text.strip()), ""
 

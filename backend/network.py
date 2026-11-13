@@ -409,8 +409,9 @@ def _thanks_due(uid: int, data: dict, names: dict) -> list[dict]:
         if i["kind"] not in ("coffee_chat", "event") or (i["thank_you"] or "") not in ("",) or not i["date"] or not since <= i["date"] <= today:
             continue
         start = _start_minutes(i["date_note"] or "")
+        length = 30 if i["kind"] == "coffee_chat" else 60  # coffee chats run half an hour
         happened = i["status"] == "done" or (i["status"] == "upcoming" and (
-            i["date"] < today or (start is not None and start + 60 <= now.hour * 60 + now.minute)))
+            i["date"] < today or (start is not None and start + length <= now.hour * 60 + now.minute)))
         ids = [j["person_id"] for j in i["people"] if (i["id"], j["person_id"]) not in thanked and j["person_id"] in names]
         left = [names[p] for p in ids]
         if happened and left:

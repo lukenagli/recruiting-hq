@@ -230,7 +230,7 @@ export default function VoiceInterview({ setup, onExit }: { setup: Setup; onExit
         if (pref !== 'end') {
           const verdict = g.verdict ? `${VERDICT[g.verdict]}. ` : ''
           const key = g.verdict && g.verdict !== 'correct' && g.answer && g.answer.length < 160 ? ` The answer is ${g.answer}.` : ''
-          await say(`${verdict}${spoken(g.feedback || g.explanation || '')}${key}`)
+          await say(`${verdict}${spoken(g.feedback || g.explanation || '')}${key}${g.tip ? ` ${g.tip}` : ''}`)
         } else if (n < count - 1) {
           await say('Thanks.')
         }
@@ -342,6 +342,7 @@ export default function VoiceInterview({ setup, onExit }: { setup: Setup; onExit
                 <p className="muted"><em>You said:</em> {r.said}</p>
                 {r.g.verdict && <p className={`verdict v-${r.g.verdict}`}>{VERDICT[r.g.verdict]}</p>}
                 {r.g.feedback && <p>{r.g.feedback}</p>}
+                {r.g.tip && <p className="vi-tip"><strong>Story to use:</strong> {r.g.tip}</p>}
                 {r.g.answer && <p><strong>Answer:</strong> {r.g.answer}</p>}
               </li>
             ))}

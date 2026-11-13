@@ -292,10 +292,26 @@ export type Graded = {
   verdict: Verdict | null
   feedback: string
   explanation: string
+  tip?: string // behavioral questions: which of your stories to use and how to bend it
   answer: string
   question: PracticeQuestion
   sources?: { source: string; location: string; private: boolean }[]
 }
+
+/** One story in the story bank: your experience, told so it bends to any behavioral question. */
+export type Story = {
+  id: number
+  title: string
+  situation: string
+  action: string
+  result: string
+  buckets: string[] // the buckets it answers (ownership, judgment, rigor, pressure, backbone, client, leadership, learning)
+  polarity: 'went well' | 'went wrong'
+  created_at: string
+  updated_at: string
+}
+export type StoryBucket = { key: string; name: string; asks: string }
+export type StoryBank = { stories: Story[]; buckets: StoryBucket[]; coverage: Record<string, Record<string, string[]>> }
 export type PracticeArea = {
   topic: string
   attempts: number
