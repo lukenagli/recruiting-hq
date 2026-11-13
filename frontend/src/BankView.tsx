@@ -505,7 +505,7 @@ export default function BankView({ bank, initial = '' }: { bank: string; initial
           const mine = field === 'Recruiting process' ? yourChats(data.interactions) : ''
           if (onlyWhenKnown && items.length === 0 && !mine) return null
           return (
-            <div className={`ov-item ${items.length || mine ? '' : 'unknown'}`} key={field}>
+            <div className={`ov-item ${items.length || mine ? '' : 'unknown'} ${field === 'Recruiting process' ? 'ov-process' : ''}`} key={field}>
               <small>{label}</small>
               {mine && <span className="ov-mine">{mine}</span>}
               <OverviewEdit bank={data.bank} category={field} lines={items.map((f) => f.fact)} onSaved={reload}>

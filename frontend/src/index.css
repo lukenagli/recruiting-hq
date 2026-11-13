@@ -1725,3 +1725,9 @@ details.deal-docs.fold[open] > summary { margin-bottom: 10px; }
 .add-deal .chips { margin: 6px 0 8px; }
 .add-deal .chip { padding: 5px 11px; font-size: 14px; }
 .deal-recs.compact .fine { margin-bottom: 0; }
+
+/* The recruiting process box holds the most, so it takes the full width, its points in two columns */
+.ov-item.ov-process { grid-column: 1 / -1; }
+.ov-process .ov-bullets { columns: 2; column-gap: 28px; }
+.ov-process .ov-bullets > li { break-inside: avoid; }
+@media (max-width: 760px) { .ov-process .ov-bullets { columns: 1; } }
