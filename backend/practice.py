@@ -355,21 +355,22 @@ def next_question(uid: int, categories: list[str], topics: list[str], stage: str
         s = strengths.get(topic)
         return 1.6 if not s else 0.4 + (1 - s[0]) * 1.6
     bank_tech = by_cat.get("Technical", [])
-    area_pool = [t for t in topics if any(q["topic"] == t for q in bank_tech) or (templates_ok and any(tp.topic == t for tp in pb.TEMPLATES))]
+    # an area is asked only when it has something at the wanted level: a real question, or a number problem
+    area_pool = [t for t in topics if any(q["topic"] == t for q in bank_tech)
+                 or (templates_ok and any(tp.topic == t and tp.difficulty in allowed(t) for tp in pb.TEMPLATES))]
     if not area_pool:
         return None
     topic = rng.choices(area_pool, weights=[weight(t) for t in area_pool])[0]
     tpls = [tp for tp in pb.TEMPLATES if tp.topic == topic and tp.difficulty in allowed(topic)] if templates_ok else []
+    banked = [q for q in bank_tech if q["topic"] == topic]
     if like and like.get("kind") == "template":
         same = like["key"].split(":")[1]
         tpls = [pb.BY_NAME[same]]
-    else:
-        if not tpls and templates_ok:  # nothing at this level in this area: the nearest level, the harder one first
-            want = max(LEVELS.index(d) for d in allowed(topic))
-            near = sorted({tp.difficulty for tp in pb.TEMPLATES if tp.topic == topic},
-                          key=lambda d: (abs(LEVELS.index(d) - want), -LEVELS.index(d)))
-            tpls = [tp for tp in pb.TEMPLATES if tp.topic == topic and near and tp.difficulty == near[0]]
-    banked = [q for q in bank_tech if q["topic"] == topic]
+    elif not tpls and not banked and templates_ok:  # nothing at all at this level: the nearest level's problems
+        want = max(LEVELS.index(d) for d in allowed(topic))
+        near = sorted({tp.difficulty for tp in pb.TEMPLATES if tp.topic == topic},
+                      key=lambda d: (abs(LEVELS.index(d) - want), -LEVELS.index(d)))
+        tpls = [tp for tp in pb.TEMPLATES if tp.topic == topic and near and tp.difficulty == near[0]]
     # Numbers practice from templates; real asked questions from the bank and guides. With a bank filter, or when the
     # user has their own guides, favour real questions.
     has_guides = any(q["kind"] == "guide" for q in banked)

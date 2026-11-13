@@ -474,6 +474,153 @@ def lbo_moic(r: random.Random) -> Problem:
     )
 
 
+def ev_full_bridge(r: random.Random) -> Problem:
+    """Diluted equity value (treasury stock method) and the full EV bridge in one go."""
+    basic = r.choice([100, 200])
+    price = r.choice([20, 40, 50])
+    strike = price // 2
+    opts = r.choice([10, 20])
+    bought = opts * strike / price
+    diluted = basic + opts - bought
+    eq = diluted * price
+    debt = r.choice([500, 800, 1000])
+    cash = r.choice([100, 200])
+    nci = r.choice([0, 50, 100])
+    inv = r.choice([0, 50, 100])
+    ev = eq + debt + nci - cash - inv
+    extras = (f", {_m(nci)} of noncontrolling interest" if nci else "") + (f" and {_m(inv)} of equity investments in other companies" if inv else "")
+    return Problem(
+        f"A company has {basic} million basic shares at ${price}, plus {opts} million options with a ${strike} strike. It has {_m(debt)} of debt, "
+        f"{_m(cash)} of cash{extras}. What are its diluted equity value and enterprise value?",
+        f"Diluted equity value {_m(eq)}; enterprise value {_m(ev)}",
+        f"Treasury stock method: the options are in the money, so +{opts} million shares; proceeds {opts} x ${strike} = ${opts * strike:g}M buy back "
+        f"{opts * strike:g} / {price} = {bought:g} million. Diluted shares = {basic} + {opts} - {bought:g} = {diluted:g} million.\n"
+        f"Diluted equity value = {diluted:g} x ${price} = {_m(eq)}.\n"
+        f"EV = equity value + debt + noncontrolling interest - cash - equity investments = {eq:g} + {debt:g}" + (f" + {nci:g}" if nci else "")
+        + f" - {cash:g}" + (f" - {inv:g}" if inv else "") + f" = {_m(ev)}.\n"
+        "NCI is added because the consolidated EBITDA includes 100% of the subsidiary; equity investments are subtracted because their earnings are not in EBITDA.",
+        [eq, ev],
+    )
+
+
+def levered_recap_multiples(r: random.Random) -> Problem:
+    """A debt-funded buyback: what moves (equity value, P/E) and what doesn't (EV, EV/EBITDA)."""
+    eq = r.choice([1000, 1200, 2000])
+    debt = r.choice([200, 400])
+    cash = r.choice([100, 200])
+    ev = eq + debt - cash
+    mult = r.choice([m for m in (8, 10, 12) if ev % m == 0] or [10])
+    ebitda = ev / mult
+    ni = r.choice([50, 80, 100])
+    x = r.choice([200, 400])
+    rate = r.choice([5, 10])
+    after_tax = x * rate / 100 * (1 - TAX / 100)
+    new_ni, new_eq = ni - after_tax, eq - x
+    pe0, pe1 = eq / ni, new_eq / new_ni
+    return Problem(
+        f"A company has an equity value of {_m(eq)}, {_m(debt)} of debt and {_m(cash)} of cash. EBITDA is {_m(ebitda)} and net income {_m(ni)}. "
+        f"It raises {_m(x)} of new debt at {rate}% and uses all of it to buy back shares (tax rate {TAX}%). "
+        "What happens to enterprise value, equity value, EV/EBITDA and P/E? Give the new figures.",
+        f"EV {_m(ev)} (unchanged); equity value {_m(new_eq)}; EV/EBITDA {mult}x (unchanged); P/E from {pe0:.1f}x to {pe1:.1f}x",
+        f"EV before = {eq:g} + {debt:g} - {cash:g} = {_m(ev)}; EV/EBITDA = {ev:g} / {ebitda:g} = {mult}x.\n"
+        f"The buyback retires {_m(x)} of shares, so equity value falls to {_m(new_eq)}; debt rises {_m(x)}, so EV is unchanged at {_m(ev)} and so is EV/EBITDA "
+        "(the debt and the buyback offset, and EBITDA is before interest).\n"
+        f"Net income falls by the after-tax interest: {x:g} x {rate}% x (1 - {TAX}%) = {_m(after_tax)}, to {_m(new_ni)}.\n"
+        f"P/E goes from {eq:g} / {ni:g} = {pe0:.1f}x to {new_eq:g} / {new_ni:g} = {pe1:.1f}x: a levered recap changes the equity multiple, not the enterprise multiple.",
+        [new_eq, round(pe1, 1)],
+    )
+
+
+def multiple_and_upside(r: random.Random) -> Problem:
+    """Back out a company's own multiple, then the price a peer multiple implies."""
+    price = r.choice([20, 40, 50])
+    shares = r.choice([50, 100])
+    eq = price * shares
+    debt = r.choice([500, 1000])
+    cash = r.choice([100, 200, 500])
+    ev = eq + debt - cash
+    mult = r.choice([m for m in (8, 10, 12, 15) if ev % m == 0])
+    ebitda = ev // mult
+    peer = mult + r.choice([2, 3, 5])
+    implied_ev = peer * ebitda
+    implied_eq = implied_ev - debt + cash
+    implied_price = implied_eq / shares
+    upside = (implied_price / price - 1) * 100
+    return Problem(
+        f"Your company's stock trades at ${price} with {shares} million shares. It has {_m(debt)} of debt, {_m(cash)} of cash and {_m(ebitda)} of EBITDA. "
+        f"Peers trade at {peer}x EBITDA. What multiple does your company trade at, what share price does the peer multiple imply, and what is the upside?",
+        f"{mult}x EV/EBITDA; implied price ${implied_price:,.2f} ({upside:+.0f}%)",
+        f"Equity value = {shares} x ${price} = {_m(eq)}; EV = {eq:g} + {debt:g} - {cash:g} = {_m(ev)}; EV/EBITDA = {ev:g} / {ebitda:g} = {mult}x.\n"
+        f"At the peer multiple: implied EV = {peer} x {ebitda:g} = {_m(implied_ev)}; implied equity value = {implied_ev:g} - {debt:g} + {cash:g} = {_m(implied_eq)}.\n"
+        f"Implied price = {implied_eq:g} / {shares} = ${implied_price:,.2f}, {upside:+.0f}% against ${price} today: on comps the stock looks undervalued.",
+        [mult, round(implied_price, 2)],
+    )
+
+
+def diluted_simple(r: random.Random) -> Problem:
+    """RSUs count in full; out-of-the-money options don't count at all."""
+    basic = r.choice([50, 100, 200])
+    price = r.choice([20, 30, 50])
+    rsus = r.choice([2, 5, 10])
+    opts = r.choice([5, 10])
+    strike = price + r.choice([5, 10, 20])
+    diluted = basic + rsus
+    return Problem(
+        f"A company has {basic} million basic shares at ${price}. It also has {rsus} million unvested RSUs and {opts} million options with a ${strike} strike. "
+        "What is the diluted share count?",
+        f"{diluted} million shares",
+        f"RSUs convert into shares with no exercise price, so they count in full: +{rsus} million.\n"
+        f"The options are out of the money (${strike} strike against a ${price} share price), so nobody would exercise them: they add nothing.\n"
+        f"Diluted shares = {basic} + {rsus} = {diluted} million.",
+        [diluted],
+    )
+
+
+def lbo_sources_uses(r: random.Random) -> Problem:
+    ebitda = r.choice([50, 100, 200])
+    mult = r.choice([8, 10, 12])
+    lev = r.choice([4, 5, 6])
+    price, debt = ebitda * mult, ebitda * lev
+    equity = price - debt
+    return Problem(
+        f"A sponsor buys a company with {_m(ebitda)} of EBITDA at {mult}x EBITDA and finances the deal with {lev}x debt/EBITDA. "
+        "What is the purchase price, how much debt is raised, and how much equity does the sponsor put in?",
+        f"Price {_m(price)}; debt {_m(debt)}; sponsor equity {_m(equity)} (about {equity / price * 100:.0f}% of the price)",
+        f"Purchase price = {mult} x {ebitda:g} = {_m(price)}.\nDebt = {lev} x {ebitda:g} = {_m(debt)}.\n"
+        f"Sponsor equity = {price:g} - {debt:g} = {_m(equity)}, about {equity / price * 100:.0f}% of the price (the rest, {debt / price * 100:.0f}%, is debt). "
+        "Sources (debt + equity) always equal uses (the purchase price, plus fees in a full model).",
+        [price, debt, equity],
+    )
+
+
+IRR_RULES = {3: {2: "about 26%", 2.5: "about 36%", 3: "about 44%"}, 5: {2: "about 15%", 2.5: "about 20%", 3: "about 25%"}}
+
+
+def lbo_exit_moic(r: random.Random) -> Problem:
+    ebitda = r.choice([100, 200])
+    mult = r.choice([8, 10])
+    debt_pct = r.choice([50, 60])
+    price = ebitda * mult
+    debt = price * debt_pct / 100
+    equity = price - debt
+    years = r.choice([3, 5])
+    moic = r.choice([2, 2.5, 3]) if years == 5 else 2
+    exit_eq = equity * moic
+    paydown = r.choice([0.25, 0.5]) * debt
+    exit_ev = exit_eq + (debt - paydown)
+    irr = IRR_RULES[years][moic]
+    return Problem(
+        f"A sponsor buys a company for {_m(price)}, financed {debt_pct}% with debt. After {years} years it sells the company for an enterprise value of "
+        f"{_m(exit_ev)}, having paid down {_m(paydown)} of the debt. What is the multiple of money, and roughly the IRR?",
+        f"{moic:g}x MOIC, IRR {irr}",
+        f"Sponsor equity at entry = {price:g} x (1 - {debt_pct}%) = {_m(equity)}; debt = {_m(debt)}.\n"
+        f"Debt at exit = {debt:g} - {paydown:g} = {_m(debt - paydown)}; exit equity = {exit_ev:g} - {debt - paydown:g} = {_m(exit_eq)}.\n"
+        f"MOIC = {exit_eq:g} / {equity:g} = {moic:g}x over {years} years, so the IRR is {irr} "
+        f"(rules of thumb: over 5 years 2x is about 15%, 2.5x about 20%, 3x about 25%; over 3 years 2x is about 26%).",
+        [moic],
+    )
+
+
 @dataclass
 class Template:
     name: str
@@ -493,20 +640,26 @@ TEMPLATES = [
     Template("asset_sale_gain", "Accounting", "hard", asset_sale_gain),
     Template("ev_bridge", "Enterprise & Equity Value", "easy", ev_bridge),
     Template("ev_change", "Enterprise & Equity Value", "medium", ev_change),
+    Template("ev_full_bridge", "Enterprise & Equity Value", "hard", ev_full_bridge),
+    Template("levered_recap_multiples", "Enterprise & Equity Value", "hard", levered_recap_multiples),
     Template("ev_or_equity_multiple", "Valuation", "easy", ev_or_equity_multiple),
     Template("implied_price_pe", "Valuation", "easy", implied_price_pe),
     Template("implied_price_ev_ebitda", "Valuation", "medium", implied_price_ev_ebitda),
+    Template("multiple_and_upside", "Valuation", "hard", multiple_and_upside),
     Template("capm", "DCF", "easy", capm),
     Template("pv_one_year", "DCF", "easy", pv_one_year),
     Template("ufcf", "DCF", "medium", ufcf),
     Template("gordon_tv", "DCF", "medium", gordon_tv),
     Template("wacc", "DCF", "hard", wacc),
+    Template("diluted_simple", "Diluted Share Count", "easy", diluted_simple),
     Template("tsm", "Diluted Share Count", "medium", tsm),
     Template("tsm_two_tranches", "Diluted Share Count", "hard", tsm_two_tranches),
     Template("pe_rule", "Merger Math", "easy", pe_rule),
     Template("goodwill", "Merger Math", "medium", goodwill),
     Template("stock_deal_eps", "Merger Math", "hard", stock_deal_eps),
     Template("debt_deal_eps", "Merger Math", "hard", debt_deal_eps),
+    Template("lbo_sources_uses", "LBO", "easy", lbo_sources_uses),
+    Template("lbo_exit_moic", "LBO", "medium", lbo_exit_moic),
     Template("lbo_moic", "LBO", "hard", lbo_moic),
 ]
 BY_NAME = {t.name: t for t in TEMPLATES}
