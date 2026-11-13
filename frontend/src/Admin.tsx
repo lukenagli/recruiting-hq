@@ -114,7 +114,7 @@ function BankDetails({ initial, domains }: { initial: Record<string, BankFields>
       <p className="fine">
         Who each letter is addressed to, the firm's formal name and the office address. When you push, every account gets these as its
         default. A student who typed their own recruiter or address for a bank keeps theirs. Whether a recruiter is addressed as Mr. or Ms.
-        is looked up from their own profile after a push (type it before the name to set it yourself).
+        is worked out after a push: from the name when it is clear, with a quick lookup when it isn't (or type it before the name).
       </p>
       <input className="admin-filter" placeholder="Find a bank" value={filter} onChange={(e) => setFilter(e.target.value)} />
       <div className="admin-banks">

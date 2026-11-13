@@ -193,9 +193,8 @@ def greeting_warning(letter: dict) -> list[str]:
         return []
     name = letter["recruiter_name"]
     if letter.get("greeting_lookup") == "unknown":
-        return [f"nothing public says whether {name} is addressed as Mr. or Ms., so the greeting uses the full name (which is correct); "
-                f"if you know, type it before the name under Addressed to"]
-    return [f"finding out whether to write Mr. or Ms. for {name} (a quick lookup runs on its own); the greeting uses the full name until then"]
+        return [f"the site couldn't tell whether to write Mr. or Ms. for {name}: answer the question above the letter"]
+    return [f"working out whether to write Mr. or Ms. for {name}; the greeting uses the full name until then"]
 
 
 def _context(conn, uid: int, bank: str) -> dict:
@@ -515,7 +514,7 @@ def get(uid: int, bank: str) -> dict:
         "recruiter_title": info["recruiter_title"],
         "recruiter_honorific": _title(_name_parts(info["recruiter_name"])[0], info["recruiter_honorific"]),
         "needs_honorific": needs_honorific(info["recruiter_name"], info["recruiter_honorific"]),
-        "greeting_lookup": "unknown" if info["recruiter_honorific"] == "?" else "",  # "?": looked up, nothing public states it
+        "greeting_lookup": "unknown" if info["recruiter_honorific"] == "none" else "",  # "none": the name and the web didn't settle it
         "address": info["address"],
         "office": mine.get("office", ""),
         "basis": basis(uid, bank),
@@ -533,12 +532,17 @@ def save_edits(uid: int, bank: str, paragraphs: list[str] | None, details: dict)
             if field in details:
                 value = str(details[field]).strip()[:300]
                 if field == "recruiter_name" and value != ((mine["recruiter_name"] if mine else "") or ""):
-                    # a different recruiter: how they are addressed is looked up afresh (honorific.py)
+                    # a different recruiter: how they are addressed is worked out afresh (honorific.py)
                     conn.execute("UPDATE my_banks SET recruiter_honorific = '' WHERE user_id = ? AND bank = ?", (uid, bank))
                 # a filled-in field emptied on purpose stays empty (no default), on this save and later ones
                 if not value and (shown.get(field) or (mine and mine[field] == shared.CLEARED)):
                     value = shared.CLEARED
                 conn.execute(f"UPDATE my_banks SET {field} = ? WHERE user_id = ? AND bank = ?", (value, uid, bank))
+        answer = HONORIFICS.get(str(details.get("recruiter_honorific") or "").rstrip(".").lower(), "")
+        if answer and shown["recruiter_name"] and "recruiter_name" not in details:
+            # the student's answer to "Mr. or Ms.?", kept with the name the letter shows (theirs, or the pushed default)
+            conn.execute("UPDATE my_banks SET recruiter_name = ?, recruiter_honorific = ? WHERE user_id = ? AND bank = ?",
+                         (shown["recruiter_name"], answer, uid, bank))
         if paragraphs is not None:
             clean = [" ".join(p.split()) for p in paragraphs if p.strip()]
             row = conn.execute("SELECT warnings FROM cover_letters WHERE user_id = ? AND bank = ?", (uid, bank)).fetchone()

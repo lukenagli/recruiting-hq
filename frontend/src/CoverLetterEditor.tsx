@@ -12,6 +12,17 @@ export default function CoverLetterEditor({ bank }: { bank: string }) {
   const [dirty, setDirty] = useState(false)
   const [busy, setBusy] = useState('')
   const [message, setMessage] = useState('')
+  const [asked, setAsked] = useState('') // the recruiter the "Mr. or Ms.?" question was put aside for
+
+  // While the site works out Mr. or Ms. for the recruiter (a few seconds, in the background), check back.
+  const polls = useRef(0)
+  useEffect(() => {
+    if (!data || !data.needs_honorific || data.greeting_lookup === 'unknown' || polls.current >= 12) return
+    polls.current += 1
+    const timer = setTimeout(reload, 4000)
+    return () => clearTimeout(timer)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data])
 
   useEffect(() => {
     if (!data) return
@@ -79,11 +90,34 @@ export default function CoverLetterEditor({ bank }: { bank: string }) {
       if (!out.ok) throw new Error(out.reason)
     })
   }
-  const saveDetails = () => run('details', () => post(path, { details }))
+  const saveDetails = () => {
+    polls.current = 0
+    return run('details', () => post(path, { details }))
+  }
+  const answer = (h: string) => run('honorific', () => post(path, { details: { recruiter_honorific: h } }))
+  const askNow = data.needs_honorific && data.greeting_lookup === 'unknown' && asked !== data.recruiter_name
   const words = paragraphs.join(' ').split(/\s+/).filter(Boolean).length
 
   return (
     <div className="letter-editor">
+      {askNow && (
+        <div className="modal-back" role="dialog" aria-modal="true">
+          <div className="modal ask-honorific">
+            <h3>How should the letter address {data.recruiter_name}?</h3>
+            <p className="muted">The site couldn't tell from the name or from anything public. The greeting uses the full name until you say.</p>
+            <div className="ask-honorific-choices">
+              {['Ms.', 'Mr.', 'Mx.'].map((h) => (
+                <button key={h} className="primary" disabled={!!busy} onClick={() => answer(h)}>
+                  {busy === 'honorific' ? '…' : h}
+                </button>
+              ))}
+              <button className="ghost" disabled={!!busy} onClick={() => setAsked(data.recruiter_name)}>
+                Not sure yet
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       <div className="card letter-to">
         <h3>Addressed to</h3>
         <div className="letter-fields">
