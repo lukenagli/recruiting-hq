@@ -1623,6 +1623,8 @@ details.card.fold > .card, details.card.fold section.card { box-shadow: none; bo
 .af-parts { display: grid; gap: 8px; grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .af-parts.n1 { grid-template-columns: 1fr; }
 .af-parts.n2 { grid-template-columns: repeat(2, minmax(0, 220px)); }
+.af-value .af-parts.n2 { grid-template-columns: repeat(2, minmax(0, 300px)); }
+.af-parts.n4 { grid-template-columns: repeat(2, minmax(0, 300px)); }
 .af-field { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
 .af-field small { font-size: 11px; font-weight: 700; letter-spacing: 0.03em; color: var(--muted); }
 .af-input { display: flex; align-items: center; border: 1.5px solid var(--line); border-radius: 9px; background: var(--card, #fff); }

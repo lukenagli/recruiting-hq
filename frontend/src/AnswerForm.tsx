@@ -21,6 +21,10 @@ const RETURNS = /multiple of money|\bMOM\b|\bMOIC\b|cash[- ]on[- ]cash|\bIRR\b/i
 const EV = /enterprise value|\bT?EV\b/i
 const EQV = /equity value|\bEQV\b|\bEqV\b/i
 const ASKS = /\b(what (is|are|would|'s)|calculate|find|compute|how much|implied|new|resulting)\b/i
+// "How do Equity Value and Enterprise Value change?", "What happens to EV?": a direction and amount, not a figure
+const CHANGES = /\bhow (do|does|would|will|did)\b[^?]*\b(change|move|affected|impacted)\b|\bwhat happens to\b|\b(impact|effect) on\b|\bdirectionally\b|\b(go|goes) up or down\b/i
+const EV_EBITDA = /\bEV\s*\/\s*EBITDA\b/i
+const PE = /\bP\s*\/\s*E\b/i
 
 export function formFor(q: PracticeQuestion): Form | null {
   if (q.category !== 'Technical') return null
@@ -50,6 +54,16 @@ export function formFor(q: PracticeQuestion): Form | null {
     }
   if (RETURNS.test(text) && /\d/.test(text))
     return { kind: 'returns', rows: [{ label: 'Returns', fields: [{ key: 'mom', label: 'MOM', suffix: 'x' }, { key: 'irr', label: 'IRR', suffix: '%' }] }] }
+  if ((EV.test(text) || EQV.test(text)) && CHANGES.test(text)) {
+    const both = (EV.test(text) && EQV.test(text)) || q.topic === 'Enterprise & Equity Value'
+    const hint = 'e.g. +$50, −$100 or no change'
+    const fields: Field[] = []
+    if (both || EV.test(text)) fields.push({ key: 'ev', label: 'Enterprise value (EV)', placeholder: hint })
+    if (both || EQV.test(text)) fields.push({ key: 'eqv', label: 'Equity value (EqV)', placeholder: hint })
+    if (EV_EBITDA.test(text)) fields.push({ key: 'ev_ebitda', label: 'EV / EBITDA', placeholder: 'e.g. goes up' })
+    if (PE.test(text)) fields.push({ key: 'pe', label: 'P / E', placeholder: 'e.g. goes down' })
+    return { kind: 'value', rows: [{ label: 'Changes', fields }] }
+  }
   if ((EV.test(text) || EQV.test(text)) && /\d/.test(text) && ASKS.test(text)) {
     const both = (EV.test(text) && EQV.test(text)) || q.topic === 'Enterprise & Equity Value'
     const fields: Field[] = []
