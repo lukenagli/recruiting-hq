@@ -23,10 +23,38 @@ def ticker(name: str) -> str:
     """The company's main listed share on Yahoo Finance, or '' for a private company."""
     if not name:
         return ""
-    r = httpx.get(SEARCH, params={"q": name, "quotesCount": 5, "newsCount": 0}, headers=HEADERS, timeout=20)
-    r.raise_for_status()
-    quotes = [q for q in r.json().get("quotes", []) if q.get("quoteType") == "EQUITY" and q.get("symbol")]
-    return quotes[0]["symbol"] if quotes else ""
+    for host in ("query2", "query1"):  # one of Yahoo's search hosts sometimes answers empty from a server
+        r = httpx.get(SEARCH.replace("query2", host), params={"q": name, "quotesCount": 5, "newsCount": 0, "lang": "en-US", "region": "US"},
+                      headers=HEADERS, timeout=20)
+        r.raise_for_status()
+        quotes = [q for q in r.json().get("quotes", []) if q.get("quoteType") == "EQUITY" and q.get("symbol")]
+        if quotes:
+            return quotes[0]["symbol"]
+    return ""
+
+
+# A listing written the way filings and Capital IQ write it ("easyJet (LSE: EZJ)", "NYSE: APO") -> Yahoo's symbol.
+EXCHANGE_SUFFIX = {"LSE": ".L", "LON": ".L", "AIM": ".L", "NYSE": "", "NASDAQ": "", "NYSE AMERICAN": "", "TSX": ".TO", "ASX": ".AX",
+                   "SIX": ".SW", "XETRA": ".DE", "FWB": ".DE", "EURONEXT PARIS": ".PA", "EURONEXT AMSTERDAM": ".AS", "EURONEXT BRUSSELS": ".BR",
+                   "HKEX": ".HK", "SEHK": ".HK", "TSE": ".T", "TYO": ".T", "BIT": ".MI", "BME": ".MC", "OMX": ".ST", "OSE": ".OL"}
+LISTING = re.compile(r"\b(Euronext (?:Paris|Amsterdam|Brussels)|NYSE American|LSE|LON|AIM|NYSE|NASDAQ|TSX|ASX|SIX|XETRA|FWB|HKEX|SEHK|TSE|TYO|BIT|BME|OMX|OSE)"
+                     r"\s*[:\-]\s*([A-Z][A-Z0-9.]{0,5})\b", re.I)
+
+
+def ticker_from_points(deal_id: int, uid: int, name: str) -> str:
+    """The company's listing as the deal's own points write it, where the company's name comes just before it."""
+    first = name.split()[0].lower() if name else ""
+    if not first:
+        return ""
+    with connect(read_only=True) as conn:
+        rows = [r[0] for r in conn.execute(
+            """SELECT p.value FROM deal_points p JOIN deals d ON d.id = p.deal_id
+               WHERE p.deal_id = ? AND d.user_id = ? AND p.value != ''""", (deal_id, uid))]
+    for text in rows:
+        for m in LISTING.finditer(text):
+            if first in text[max(0, m.start() - 60):m.start()].lower():
+                return m.group(2).upper() + EXCHANGE_SUFFIX.get(m.group(1).upper(), "")
+    return ""
 
 
 def history(symbol: str, start: date) -> tuple[list[tuple[date, float]], str]:
@@ -97,9 +125,10 @@ def fill(uid: int, deal_id: int, announced: str = "") -> dict:
     filled, notes = 0, []
     for side, name in (("Buyer", buyer), ("Target", target)):
         try:
-            symbol = ticker(name)
+            # the listing the deal's own points name comes first (exact); Yahoo's search is the fallback
+            symbol = ticker_from_points(deal_id, uid, name) or ticker(name)
             if not symbol:
-                notes.append(f"{name}: no listed shares on Yahoo Finance.")
+                notes.append(f"{name}: no listed shares found on Yahoo Finance (a private company, or its listing isn't in the pitch yet).")
                 continue
             days, currency = history(symbol, when)
             value = reaction(days, currency, when)
