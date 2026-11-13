@@ -546,6 +546,17 @@ def clear_deal_point(point_id: int, user: dict = Depends(current_user)):
     return deal_docs.clear_point(user["id"], point_id)
 
 
+class PointEdit(BaseModel):
+    value: str = Field(max_length=700)
+    source: str = Field("My notes", max_length=200)
+
+
+@app.post("/api/deals/points/{point_id}")
+def edit_deal_point(point_id: int, req: PointEdit, user: dict = Depends(current_user)):
+    """The student types a point in themselves (their own view, or a number they looked up)."""
+    return deals.update_point(user["id"], point_id, req.value, req.source)
+
+
 # ---- First-run setup ----
 
 class SchoolRequest(BaseModel):

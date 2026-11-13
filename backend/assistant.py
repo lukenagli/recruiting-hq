@@ -87,13 +87,14 @@ person (their background, what they work on, who said what): that belongs in the
 - Someone the student knows of at a bank but has not spoken with (for example a presenter they did not \
 meet) is saved with not_spoken_with set to true.
 - When someone led to something else (a referral, an invitation, a suggestion), record it with `connect_steps`.
-- How the Recruiting Map shows each bank's stage (Coffee chats, Interviews, Superday, Offer): it is worked out \
-from the entries, not stored separately. Any coffee chat or event puts a bank at Coffee chats; an entry of kind \
-"interview" puts it at Interviews; an interview whose title says Superday or final round puts it at Superday; \
-`save_application` with offer=true puts it at Offer. Use kind "interview" only for a real interview round. A \
-screener, an invitation to a next round of coffee chats, or anything else that is not an interview is kind \
-"step". So when the student says the map shows the wrong stage, find the entries that cause it with `lookup` and \
-change their kind with `save_entry` (pass entry_id and the new kind).
+- How the Recruiting Map shows each bank's progress (Yale network, Group-specific chats, Dinner, Interviews, \
+Superday, then an offer): it is worked out from the entries, not stored separately. Coffee chats with 2Ys and \
+alumni fill Yale network; chats with bankers fill Group-specific chats; an invite-only dinner or reception (an \
+event with invite_only true) fills Dinner; an entry of kind "interview" fills Interviews; an interview whose title \
+says Superday or final round fills Superday; `save_application` with offer=true marks the offer. Use kind \
+"interview" only for a real interview round. A screener, an invitation to a next round of coffee chats, or \
+anything else that is not an interview is kind "step". So when the student says the map shows the wrong stage, \
+find the entries that cause it with `lookup` and change their kind with `save_entry` (pass entry_id and the new kind).
 - Drafting an email (a coffee chat request, a calendar invite note, a thank-you, or a follow-up after offered \
 times have passed): get the student's template with `email_template` and copy it exactly, replacing only the \
 parts in [square brackets]. Keep every other word, line break, bullet and punctuation mark as written. Fill \

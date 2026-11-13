@@ -1701,3 +1701,27 @@ details.card.fold > .card, details.card.fold section.card { box-shadow: none; bo
 .chip.static { cursor: default; }
 .letter-basis { margin: 8px 0 10px; font-size: 14px; color: var(--muted); }
 .letter-basis strong { color: var(--ink); }
+
+/* My Deals: build the pitch in one go, type a point in yourself, fold the documents away */
+.build-pitch { margin-bottom: 14px; }
+.build-pitch h3 { margin: 0; font-size: 16px; }
+.build-pitch .primary { margin: 0; }
+.build-steps { list-style: none; padding: 0; margin: 10px 0 0; display: flex; flex-direction: column; gap: 7px; }
+.build-steps li { display: flex; gap: 10px; align-items: flex-start; }
+.build-steps li > b { width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center; flex: none; border: 1.5px solid var(--line); font-size: 12px; color: var(--muted); margin-top: 1px; }
+.build-steps li.st-done > b { border-color: var(--green); background: var(--green-soft); color: var(--green); }
+.build-steps li.st-running > b { border-color: var(--blue); color: var(--blue); }
+.build-steps li.st-skipped > b { border-color: var(--amber); color: var(--amber); }
+.build-steps li.st-failed > b { border-color: #c62828; color: #c62828; }
+.build-steps li span { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.build-steps li small { color: var(--muted); }
+.point-edit { display: flex; flex-direction: column; gap: 6px; }
+.point-edit textarea { width: 100%; font: inherit; font-size: 14px; line-height: 1.4; padding: 7px 9px; border: 1.5px solid var(--line); border-radius: 8px; resize: vertical; box-sizing: border-box; background: var(--card); color: var(--ink); }
+.point-edit-actions { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+.point-edit-actions .primary { margin: 0; padding: 6px 14px; }
+.deal-section .missing dd .link { font-style: normal; }
+details.deal-docs.fold > summary { margin-bottom: 0; }
+details.deal-docs.fold[open] > summary { margin-bottom: 10px; }
+.add-deal .chips { margin: 6px 0 8px; }
+.add-deal .chip { padding: 5px 11px; font-size: 14px; }
+.deal-recs.compact .fine { margin-bottom: 0; }

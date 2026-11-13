@@ -73,6 +73,19 @@ def add_deal(uid: int, title: str, banks: list[str]) -> dict:
     return {"ok": True}
 
 
+def update_point(uid: int, point_id: int, value: str, source: str = "My notes") -> dict:
+    """The student fills in or corrects one point by hand (on the My Deals page)."""
+    init_db()
+    value, source = " ".join(value.split())[:700], " ".join(source.split())[:200] or "My notes"
+    if not value:
+        return {"ok": False, "reason": "Type the value first (or use Clear to empty the point)."}
+    with connect() as conn:
+        n = conn.execute(
+            """UPDATE deal_points SET value = ?, source = ?, source_kind = 'user', doc_id = '', page = '', quote = ''
+               WHERE id = ? AND deal_id IN (SELECT id FROM deals WHERE user_id = ?)""", (value, source, point_id, uid)).rowcount
+    return {"ok": bool(n)} if n else {"ok": False, "reason": "That point isn't on one of your deals."}
+
+
 def all_deals(uid: int) -> dict:
     init_db()
     with connect(read_only=True) as conn:

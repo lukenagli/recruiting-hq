@@ -12,7 +12,7 @@ export default function AboutYou() {
   const [banks, setBanks] = useState<string[]>([])
   const [groups, setGroups] = useState<string[]>([])
   const [extra, setExtra] = useState('')
-  const [fields, setFields] = useState({ resume_text: '' })
+  const [fields, setFields] = useState({ resume_text: '', why_group: '', highlights: '', projects: '' })
   const [dirty, setDirty] = useState(false)
   const [busy, setBusy] = useState('')
   const [message, setMessage] = useState('')
@@ -22,7 +22,7 @@ export default function AboutYou() {
     if (!setup.data || !prof.data) return
     setBanks(setup.data.banks)
     setGroups(setup.data.profile.target_groups ? setup.data.profile.target_groups.split(',').map((g) => g.trim()).filter(Boolean) : [])
-    setFields({ resume_text: prof.data.resume_text ?? '' })
+    setFields({ resume_text: prof.data.resume_text ?? '', why_group: prof.data.why_group ?? '', highlights: prof.data.highlights ?? '', projects: prof.data.projects ?? '' })
     setDirty(false)
   }, [setup.data, prof.data])
 
@@ -151,6 +151,26 @@ export default function AboutYou() {
             </div>
           </div>
         ))}
+      </div>
+
+      <div className="about-block">
+        <h4>In your own words</h4>
+        <p className="fine">Your cover letters and interview feedback draw on these. A few sentences each is plenty; nothing here is ever made up for you.</p>
+        <label className="field">
+          Why your target groups
+          <textarea rows={3} value={fields.why_group} onChange={setField('why_group')}
+            placeholder="e.g. Four years in consumer brands; I want to advise the companies I used to compete with…" />
+        </label>
+        <label className="field">
+          What you want to highlight
+          <textarea rows={3} value={fields.highlights} onChange={setField('highlights')}
+            placeholder="e.g. Led a $40M product launch; built the pricing model the team still uses…" />
+        </label>
+        <label className="field">
+          Projects and experiences to draw on
+          <textarea rows={4} value={fields.projects} onChange={setField('projects')}
+            placeholder="The stories behind your resume lines: what you did, what it changed, numbers if you have them." />
+        </label>
       </div>
 
       {error && <p className="notice error">{error}</p>}

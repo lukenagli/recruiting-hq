@@ -443,7 +443,7 @@ def home(uid: int) -> dict:
             for i in chats if i["status"] == "done" and not i["thank_you"]
         ],
         "upcoming": [
-            {"bank": i["bank"], "title": i["title"], "date": i["date"], "kind": i["kind"], "date_note": i["date_note"] or ""}
+            {"id": i["id"], "bank": i["bank"], "title": i["title"], "date": i["date"], "kind": i["kind"], "date_note": i["date_note"] or ""}
             for i in data["interactions"] if i["status"] == "upcoming" and i["date"] >= today
         ],
         # open to-dos (steps still to be done), soonest first, undated last
@@ -492,4 +492,13 @@ def prep_questions(bank: str, round_: str, limit: int = 400) -> dict:
             (*params, limit),
         )
         total = conn.execute(f"SELECT COUNT(*) FROM questions {clause}", params).fetchone()[0]
-    return {"total": total, "questions": rows}
+    # the answer some students typed into the question goes with the notes here too, as it does in practice
+    from . import question_clean
+
+    done = question_clean.splits()
+    out = []
+    for r in rows:
+        r["question"], r["answer_notes"], skip = question_clean.apply(r["id"], r["question"] or "", r["answer_notes"] or "", done)
+        if not skip:
+            out.append(r)
+    return {"total": total, "questions": out}

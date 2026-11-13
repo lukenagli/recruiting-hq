@@ -175,16 +175,16 @@ const STEPS: { kicker: string; title: string; text: ReactNode; demo: ReactNode }
     title: 'See exactly where you stand at every bank',
     text: (
       <>
-        Each bank shows how far along you are, from coffee chats to an offer, whether you've applied, and what's next. Click a bank to see
-        everyone you've met there and what each of them told you.
+        Each bank shows how far along you are against the season, from your first Yale chats to Super Week, whether you've applied, and
+        what's next. Click a bank to see everyone you've met there and what each of them told you.
       </>
     ),
     demo: (
       <MockWindow title="Recruiting Map">
         {[
-          ['Evercore', 0, 'Next: thank-you to Sarah Chen, then reach out to Marcus Patel', false],
-          ['Goldman Sachs', 1, 'Round 1 interview Thu, Nov 6', true],
-          ['Moelis', 2, 'Superday Fri, Nov 14', true],
+          ['Evercore', 1, 'Next: thank-you to Sarah Chen, then reach out to Marcus Patel', false],
+          ['Goldman Sachs', 2, 'Invite-only dinner Mon, Nov 16', true],
+          ['Moelis', 3, 'Superday Fri, Dec 4', true],
         ].map(([bank, at, next, applied], r) => (
           <div key={bank as string} className="tour-bank" style={{ animationDelay: `${r * 150}ms` }}>
             <div className="tour-bank-head">
@@ -192,7 +192,7 @@ const STEPS: { kicker: string; title: string; text: ReactNode; demo: ReactNode }
               <span className={applied ? 'ok' : ''}>{applied ? '✓ Applied' : '✗ Not applied'}</span>
             </div>
             <div className="tour-stages">
-              {['Coffee chats', 'Interviews', 'Superday', 'Offer'].map((s, i) => (
+              {['Yale network', 'Group chats', 'Dinner', 'Super Week'].map((s, i) => (
                 <span key={s} className={i < (at as number) ? 'done' : i === (at as number) ? 'current' : ''}>
                   {s}
                 </span>
@@ -249,9 +249,9 @@ const STEPS: { kicker: string; title: string; text: ReactNode; demo: ReactNode }
     title: 'Practice the questions interviewers actually ask',
     text: (
       <>
-        Pick behavioral, technical or deal questions, by bank and difficulty. Answer by typing or out loud and you get a grade, the model
-        answer from your study guides, and you can ask follow-ups. In <em>Key information</em>, write your pitch and STAR stories once; practice
-        grades your behavioral answers against them.
+        Pick behavioral, technical or deal questions, by bank, round and difficulty, from the questions Yale students were actually asked.
+        Answer by typing, by dictating, or in a spoken mock interview, and you get a grade, the answer from your own study guides, and you
+        can ask follow-ups. Behavioral answers are checked against your resume and what you wrote about yourself in Settings.
       </>
     ),
     demo: (
@@ -275,8 +275,8 @@ const STEPS: { kicker: string; title: string; text: ReactNode; demo: ReactNode }
     title: 'Know your deals cold',
     text: (
       <>
-        Upload the press release, merger agreement or proxy for a deal you want to talk about. A checklist shows which documents you have, and the
-        numbers are pulled out into a 90-second pitch, each one marked with where it came from.
+        Pick a deal to pitch, or let it find one your banks advised on. It gathers the filings from the companies' sites and SEC EDGAR, pulls
+        the numbers into a 90-second pitch with a source for each one, adds how the shares reacted, and finds the analysis worth reading.
       </>
     ),
     demo: (
@@ -304,7 +304,7 @@ const START: [string, string, string][] = [
   ['Add your AI key', 'Powers the assistant, grading and writing. Takes two minutes.', '#/settings/ai'],
   ['Upload your resume and pick your banks', 'Everything else is built from these.', '#/settings/about'],
   ['Upload your study guides', 'Your own Breaking Into Wall Street PDFs, so practice can use their answers.', '#/settings/guides'],
-  ['Tell it about your first coffee chat', 'The "Anything happen?" box on your homepage.', '#/'],
+  ['Tell it about your first coffee chat', 'The box at the top of your homepage, or Add a coffee chat under it.', '#/'],
 ]
 
 /** `beforeSetup`: a new account sees the tour first; its end leads into setup instead of the homepage. */

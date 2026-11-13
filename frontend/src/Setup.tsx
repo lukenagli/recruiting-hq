@@ -263,7 +263,7 @@ function BanksStep({ s, next, back, part }: { s: SetupState; next: () => void; b
         </div>
       ))}
       {(part !== 'groups' || groups.length > 0) && <label className="field">
-        Why are you interested in {groups[0] ?? 'that group'}? <small>(optional, you can add more in Interview Prep → Key information)</small>
+        Why are you interested in {groups[0] ?? 'that group'}? <small>(optional, you can add more in Settings → About you)</small>
         <textarea rows={3} value={why} onChange={(e) => setWhy(e.target.value)} placeholder="A sentence or two your cover letters can build on…" />
       </label>}
       </>)}

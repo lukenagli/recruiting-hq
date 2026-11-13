@@ -1,17 +1,9 @@
 import { useEffect, useState } from 'react'
 import { API_URL, del, get, post, uploadWith } from './api'
-import type { Deal, DealDocument, DealPoint, DealsData } from './api'
+import type { BankSummary, Deal, DealDocument, DealPoint, DealsData } from './api'
 import CapIQ from './CapIQ'
 import RecommendedDeals from './RecommendedDeals'
 import { Loading, Logo, useApi } from './ui'
-
-const DOMAINS: Record<string, string> = {
-  'J.P. Morgan': 'jpmorgan.com',
-  'Goldman Sachs': 'goldmansachs.com',
-  Citi: 'citi.com',
-  'Bank of America': 'bankofamerica.com',
-  Barclays: 'barclays.com',
-}
 
 const fileUrl = (docId: string | number, page?: string | null) =>
   `${API_URL}/api/deals/documents/${docId}/file${page ? `#page=${page}` : ''}`
@@ -58,6 +50,156 @@ function NotedSource({ source, deal }: { source: string; deal: Deal }) {
       title={href === deal.capiq_url ? 'Opens the deal in Capital IQ (Yale Wi-Fi and Capital IQ sign-in needed)' : ''}>
       {(url && source.replace(url, '').replace(/[;,\s]+$/, '').trim()) || source}
     </a>
+  )
+}
+
+/** One point of the pitch: its value and source, or "Still need this"; click to type it in yourself. */
+function PointRow({ p, deal, onChanged }: { p: DealPoint; deal: Deal; onChanged: () => void }) {
+  const [editing, setEditing] = useState(false)
+  const [text, setText] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('')
+  const mine = p.section === '5. My take'
+
+  async function save(e?: React.FormEvent) {
+    e?.preventDefault()
+    if (!text.trim()) return
+    setBusy(true)
+    setError('')
+    try {
+      const out = await post<{ ok: boolean; reason?: string }>(`/api/deals/points/${p.id}`, { value: text, source: 'My notes' })
+      if (!out.ok) return setError(out.reason ?? 'Not saved.')
+      setEditing(false)
+      onChanged()
+    } catch (err) {
+      setError((err as Error).message)
+    } finally {
+      setBusy(false)
+    }
+  }
+  async function clear() {
+    await post(`/api/deals/points/${p.id}/clear`, {})
+    onChanged()
+  }
+
+  return (
+    <div className={p.value ? '' : 'missing'}>
+      <dt>{p.label}</dt>
+      <dd>
+        {editing ? (
+          <form className="point-edit" onSubmit={save}>
+            <textarea
+              autoFocus
+              rows={2}
+              value={text}
+              onChange={(e) => setText(e.target.value)}
+              placeholder={mine ? 'Your view, in a sentence or two' : 'The figure, with its units (e.g. $2.1bn, 32% premium)'}
+              onKeyDown={(e) => {
+                if (e.key === 'Escape') setEditing(false)
+                if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+                  e.preventDefault()
+                  void save()
+                }
+              }}
+            />
+            <span className="point-edit-actions">
+              <button className="primary" disabled={busy || !text.trim()}>{busy ? 'Saving…' : 'Save'}</button>
+              <button type="button" className="link muted" onClick={() => setEditing(false)}>Cancel</button>
+              {error && <small className="danger-link">{error}</small>}
+            </span>
+          </form>
+        ) : (
+          <>
+            {p.value || (mine ? 'Your call: type it in' : 'Still need this')}
+            <span className="point-meta">
+              {p.value && <Source p={p} deal={deal} />}
+              <button className="link clear" onClick={() => { setText(p.value); setEditing(true) }}>{p.value ? 'Edit' : 'Type it in'}</button>
+              {p.value && (
+                <button className="link clear" title="Clear this point so it can be filled again" onClick={clear}>Clear</button>
+              )}
+            </span>
+          </>
+        )}
+      </dd>
+    </div>
+  )
+}
+
+type StepState = { status: 'todo' | 'running' | 'done' | 'skipped' | 'failed'; note: string }
+const BUILD_STEPS: [string, string, string][] = [
+  ['gather', 'Gather the filings', "from the companies' own sites and SEC EDGAR"],
+  ['fill', 'Pull the numbers into the pitch', 'each one with the page it came from'],
+  ['web', 'Look up what the filings leave out', 'marked as found online, so you know what to double-check'],
+  ['market', 'Add the share price reaction', 'from Yahoo Finance, no AI'],
+  ['reading', 'Find analysis worth reading', 'a different angle in each piece'],
+]
+
+/** One button that runs the whole pitch build, step by step, with what each step did. */
+function BuildPitch({ deal, onChanged }: { deal: Deal; onChanged: () => void }) {
+  const [state, setState] = useState<Record<string, StepState>>({})
+  const [running, setRunning] = useState(false)
+  const set = (key: string, s: StepState) => setState((st) => ({ ...st, [key]: s }))
+
+  async function run() {
+    setRunning(true)
+    setState(Object.fromEntries(BUILD_STEPS.map(([k]) => [k, { status: 'todo', note: '' }])))
+    type Out = { ok: boolean; message?: string; reason?: string }
+    const calls: Record<string, () => Promise<Out>> = {
+      gather: () => post<Out>(`/api/deals/${deal.id}/gather`, {}),
+      fill: () => post<Out>(`/api/deals/${deal.id}/fill-from-documents`, {}),
+      web: () => post<Out>(`/api/deals/${deal.id}/find-online`, {}),
+      market: async () => {
+        const a = await get<{ announced: string }>(`/api/deals/${deal.id}/announced`)
+        if (!a.announced) return { ok: false, reason: "The announcement date isn't in the pitch yet. Enter it under Market reaction and click Fill share prices." }
+        return post<Out>(`/api/deals/${deal.id}/market`, { announced: a.announced })
+      },
+      reading: () => post<Out>(`/api/deals/${deal.id}/reading`, {}),
+    }
+    for (const [key] of BUILD_STEPS) {
+      set(key, { status: 'running', note: '' })
+      try {
+        const out = await calls[key]()
+        set(key, { status: out.ok ? 'done' : 'skipped', note: out.message ?? out.reason ?? '' })
+      } catch (e) {
+        set(key, { status: 'failed', note: (e as Error).message })
+      }
+      onChanged()
+    }
+    setRunning(false)
+  }
+
+  const started = Object.keys(state).length > 0
+  const mark = { todo: '', running: '…', done: '✓', skipped: '–', failed: '!' }
+  return (
+    <section className="card build-pitch">
+      <div className="deal-docs-head">
+        <h3>{deal.filled ? `${deal.filled} of ${deal.total} points ready` : 'Build this pitch'}</h3>
+        <button className="primary" disabled={running} onClick={run}>
+          {running ? 'Working…' : deal.filled ? 'Fill in the rest for me' : 'Build this pitch for me'}
+        </button>
+      </div>
+      <p className="fine">
+        Five steps, about three to five minutes: it gathers the filings, pulls every number it can into the pitch with the page it came
+        from, looks up the rest online (marked, so you know what to double-check), adds how the shares reacted, and finds the analysis
+        worth reading. Your own view in "My take" is yours to write: click any point to type it in.
+      </p>
+      {started && (
+        <ol className="build-steps">
+          {BUILD_STEPS.map(([key, label, sub]) => {
+            const s = state[key] ?? { status: 'todo', note: '' }
+            return (
+              <li key={key} className={`st-${s.status}`}>
+                <b aria-hidden>{mark[s.status]}</b>
+                <span>
+                  <strong>{label}</strong>
+                  <small>{s.status === 'running' ? 'Working…' : s.note || sub}</small>
+                </span>
+              </li>
+            )
+          })}
+        </ol>
+      )}
+    </section>
   )
 }
 
@@ -155,7 +297,10 @@ function Reading({ deal, onChanged }: { deal: Deal; onChanged: () => void }) {
   )
 }
 
+/** The documents behind the pitch: gather them, upload your own, pull from Capital IQ, read the numbers out of them.
+ *  Folded away once there are documents, since the pitch above is what matters day to day. */
 function Documents({ deal, data, onChanged }: { deal: Deal; data: DealsData; onChanged: () => void }) {
+  const [open, setOpen] = useState(deal.documents.length === 0)
   const [kind, setKind] = useState(data.wanted[0]?.kind ?? 'Other')
   const [busy, setBusy] = useState('')
   const [message, setMessage] = useState('')
@@ -210,19 +355,26 @@ function Documents({ deal, data, onChanged }: { deal: Deal; data: DealsData; onC
   }
 
   const edgar = `https://www.sec.gov/edgar/search/#/q=${encodeURIComponent(deal.title.replace(/\b(acquiring|acquires|acquisition of|merger with)\b/gi, ' '))}`
+  const n = deal.documents.length
   return (
-    <section className="card deal-docs">
-      <div className="deal-docs-head">
-        <h3>Source documents</h3>
-        <a className="link" href={edgar} target="_blank" rel="noreferrer">
-          Find filings on SEC EDGAR
-        </a>
-      </div>
+    <details className="card deal-docs fold" open={open} onToggle={(e) => setOpen(e.currentTarget.open)}>
+      <summary>
+        <strong>Source documents</strong>
+        <small>
+          {n
+            ? `${n} on file. Open to add more, pull from Capital IQ, or read the numbers out of them again.`
+            : 'The filings the pitch is built from: gather them, or upload your own.'}
+        </small>
+      </summary>
       <div className="gather">
         <button className="primary" disabled={busy !== ''} onClick={() => run(`/api/deals/${deal.id}/gather`, 'gather')}>
           {busy === 'gather' ? 'Gathering from SEC EDGAR and the companies’ sites…' : 'Gather the documents for me'}
         </button>
-        <p className="fine">Pulls the announcement, agreement, presentation, proxy and annual reports as PDFs from the companies' own investor relations pages, and from SEC EDGAR for anything they don't post. Run it again to replace older SEC web-page copies with PDFs. Takes up to a minute.</p>
+        <p className="fine">
+          Pulls the announcement, agreement, presentation, proxy and annual reports as PDFs from the companies' own investor relations pages, and from
+          SEC EDGAR for anything they don't post. Run it again to replace older SEC web-page copies with PDFs. Takes up to a minute.{' '}
+          <a className="link" href={edgar} target="_blank" rel="noreferrer">Find filings on SEC EDGAR yourself</a>
+        </p>
       </div>
       <ul className="doc-checklist">
         {data.wanted.map((w) => {
@@ -311,35 +463,37 @@ function Documents({ deal, data, onChanged }: { deal: Deal; data: DealsData; onC
       </p>
       {message && <p className="notice ok">{message}</p>}
       {error && <p className="notice error">{error}</p>}
-    </section>
+    </details>
   )
 }
 
 export default function Deals() {
   const { data, error, reload } = useApi<DealsData>('/api/deals')
+  const banks = useApi<BankSummary[]>('/api/banks')
   const [open, setOpen] = useState(0)
   const [adding, setAdding] = useState(false)
   const [title, setTitle] = useState('')
-  const [banks, setBanks] = useState('')
+  const [picked, setPicked] = useState<string[]>([])
+  const [other, setOther] = useState('')
   const [addError, setAddError] = useState('')
   if (!data) return <Loading error={error} />
+  const domains: Record<string, string> = Object.fromEntries((banks.data ?? []).map((b) => [b.bank, b.domain]))
+  const myBanks = (banks.data ?? []).filter((b) => b.application.status !== 'out').map((b) => b.bank)
 
   async function addDeal(e: React.FormEvent) {
     e.preventDefault()
     setAddError('')
-    const out = await post<{ ok: boolean; reason?: string }>('/api/deals', { title, banks: banks.split(',') }).catch((err) => ({ ok: false, reason: String(err.message) }))
+    const list = [...picked, ...other.split(',').map((b) => b.trim()).filter(Boolean)]
+    const out = await post<{ ok: boolean; reason?: string }>('/api/deals', { title, banks: list }).catch((err) => ({ ok: false, reason: String(err.message) }))
     if (!out.ok) return setAddError(out.reason ?? 'Could not add it.')
     setAdding(false)
     setTitle('')
-    setBanks('')
+    setPicked([])
+    setOther('')
     setOpen(data!.deals.length)
     reload()
   }
 
-  async function clear(id: number) {
-    await post(`/api/deals/points/${id}/clear`, {})
-    reload()
-  }
   const deal = data.deals[open]
 
   return (
@@ -356,7 +510,7 @@ export default function Deals() {
             <span className="deal-banks">
               {d.banks.map((b) => (
                 <span key={b}>
-                  <Logo bank={b} domain={DOMAINS[b] ?? ''} size={16} /> {b}
+                  <Logo bank={b} domain={domains[b] ?? ''} size={16} /> {b}
                 </span>
               ))}
             </span>
@@ -382,24 +536,33 @@ export default function Deals() {
             Deal name
             <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="e.g. Buyer acquiring Target" autoFocus />
           </label>
-          <label className="field">
-            Banks you will pitch it to <small>(comma separated)</small>
-            <input value={banks} onChange={(e) => setBanks(e.target.value)} placeholder="e.g. Citi, Barclays" />
-          </label>
+          <div className="field">
+            Banks you will pitch it to <small>(tap any; optional)</small>
+            <div className="chips">
+              {myBanks.map((b) => (
+                <button key={b} type="button" className={`chip ${picked.includes(b) ? 'on' : ''}`}
+                  onClick={() => setPicked((cur) => (cur.includes(b) ? cur.filter((x) => x !== b) : [...cur, b]))}>
+                  <Logo bank={b} domain={domains[b] ?? ''} size={16} /> {b}
+                </button>
+              ))}
+            </div>
+            <input value={other} onChange={(e) => setOther(e.target.value)} placeholder="Another bank (comma separated)" />
+          </div>
           {addError && <p className="notice error">{addError}</p>}
           <button className="primary" disabled={!title.trim()}>Add deal</button>
           <button type="button" className="ghost" onClick={() => setAdding(false)}>Cancel</button>
         </form>
       )}
-      {data.deals.length === 0 && !adding && <p className="muted">No deals yet. Add the deal you plan to pitch, then upload its filings to fill it in.</p>}
+      {data.deals.length === 0 && !adding && (
+        <p className="muted">No deals yet. Let it find one above, or add the deal you plan to pitch and it will gather the filings and fill in the numbers.</p>
+      )}
 
       {deal && (
         <>
           {deal.status && <p className="notice">{deal.status}</p>}
           {deal.notes && <p className="muted">{deal.notes}</p>}
 
-          <Documents key={deal.id} deal={deal} data={data} onChanged={reload} />
-          <Reading key={`r${deal.id}`} deal={deal} onChanged={reload} />
+          <BuildPitch key={`b${deal.id}`} deal={deal} onChanged={reload} />
 
           <section className="card deal-section">
             <h3>
@@ -416,20 +579,7 @@ export default function Deals() {
               {s.name === '4. Market reaction' && <SharePrices deal={deal} onChanged={reload} />}
               <dl>
                 {s.points.map((p) => (
-                  <div key={p.id} className={p.value ? '' : 'missing'}>
-                    <dt>{p.label}</dt>
-                    <dd>
-                      {p.value || 'Still need this'}
-                      {p.value && (
-                        <span className="point-meta">
-                          <Source p={p} deal={deal} />
-                          <button className="link clear" title="Clear this point so it can be filled again" onClick={() => clear(p.id)}>
-                            Clear
-                          </button>
-                        </span>
-                      )}
-                    </dd>
-                  </div>
+                  <PointRow key={p.id} p={p} deal={deal} onChanged={reload} />
                 ))}
               </dl>
             </section>
@@ -443,6 +593,9 @@ export default function Deals() {
               ))}
             </ul>
           </section>
+
+          <Documents key={deal.id} deal={deal} data={data} onChanged={reload} />
+          <Reading key={`r${deal.id}`} deal={deal} onChanged={reload} />
           <p className="muted">
             You can also fill in a point by telling the assistant, for example: "For the {deal.title} deal, the termination fee is …"
           </p>

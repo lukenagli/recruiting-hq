@@ -35,6 +35,21 @@ export default function RecommendedDeals({ bank = '', mine = [], onAdded }: { ba
   }
 
   const have = new Set([...mine, ...added].map((t) => t.toLowerCase()))
+  // Until a search has been run, one line and a button; the full card comes with its results.
+  if (data.deals.length === 0 && !data.found_at && !busy && !message)
+    return (
+      <section className="card deal-recs compact">
+        <div className="deal-docs-head">
+          <h3>{bank ? `Deals to pitch to ${bank}` : 'Which deal should you pitch?'}</h3>
+          <button className="ghost" onClick={find}>{bank ? `Find deals ${bank} advised on` : 'Find deals for me'}</button>
+        </div>
+        <p className="fine">
+          {bank
+            ? `A recent M&A deal ${bank} advised on, in your groups, chosen by the Finance Club's rules (all cash, $1–10bn, closed in the last year). Takes about a minute.`
+            : "Recent M&A deals in your groups that your banks advised on, chosen by the Finance Club's rules (all cash, $1–10bn, closed in the last year). Takes about a minute."}
+        </p>
+      </section>
+    )
   return (
     <section className="card deal-recs">
       <div className="deal-docs-head">

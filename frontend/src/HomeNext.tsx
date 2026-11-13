@@ -240,10 +240,19 @@ function isPast(date: string, time: string, today: string) {
   return minutes(time) + 60 <= now.getHours() * 60 + now.getMinutes()
 }
 
+/** Where an item on the agenda opens: an interview goes to its bank's practice questions, anything else to that
+ *  entry on the bank's map (a deadline to the bank itself). */
+function agendaLink(i: { kind: string; bank: string; id?: number }) {
+  const bank = encodeURIComponent(i.bank)
+  if (i.kind === 'interview') return `#/prep?bank=${bank}`
+  if (i.kind === 'deadline' || !i.id) return `#/bank/${bank}`
+  return `#/bank/${bank}?sel=${encodeURIComponent(`interaction:${i.id}`)}`
+}
+
 function Agenda({ d, out }: { d: HomeData; out: Set<string> }) {
   const items = [
-    ...d.upcoming.map((u) => ({ date: u.date, time: clock(u.date_note ?? ''), title: u.title, bank: u.bank, kind: u.kind })),
-    ...d.deadlines.filter((a) => !out.has(a.bank)).map((a) => ({ date: a.date, time: '', title: 'Application due', bank: a.bank, kind: 'deadline' })),
+    ...d.upcoming.map((u) => ({ id: u.id, date: u.date, time: clock(u.date_note ?? ''), title: u.title, bank: u.bank, kind: u.kind })),
+    ...d.deadlines.filter((a) => !out.has(a.bank)).map((a) => ({ id: 0, date: a.date, time: '', title: 'Application due', bank: a.bank, kind: 'deadline' })),
   ]
     .filter((i) => daysUntil(i.date, d.today) <= 7)
     .sort((a, b) => a.date.localeCompare(b.date) || minutes(a.time) - minutes(b.time))
@@ -258,7 +267,7 @@ function Agenda({ d, out }: { d: HomeData; out: Set<string> }) {
           <ul>
             {items.filter((i) => i.date === day).map((i) => (
               <li key={`${i.bank}-${i.title}`} className={`k-${i.kind} ${isPast(i.date, i.time, d.today) ? 'past' : ''}`}>
-                <a href={i.kind === 'deadline' ? `#/bank/${encodeURIComponent(i.bank)}` : `#/prep?bank=${encodeURIComponent(i.bank)}`}>
+                <a href={agendaLink(i)}>
                   <span className="agenda-time">{i.time || (i.kind === 'deadline' ? 'Due' : '')}</span>
                   <span className="agenda-what">
                     <strong>{i.title}</strong>
@@ -583,10 +592,12 @@ function StartFork() {
   )
 }
 
-function summary(d: HomeData) {
+function summary(d: HomeData, out: Set<string>) {
   const today = d.upcoming.filter((u) => u.date === d.today).length
   const tomorrow = d.upcoming.filter((u) => daysUntil(u.date, d.today) === 1).length
-  const todo = d.thank_yous_due.length + (d.todos?.length ?? 0)
+  // the same items as the To do list below: thank-yous owed, open steps, and applications due beyond this week
+  const todo = (d.thanks_due?.length ?? 0) + (d.todos?.length ?? 0)
+    + d.deadlines.filter((a) => !out.has(a.bank) && daysUntil(a.date, d.today) > 7).length
   return [
     today ? `${today} on today` : tomorrow ? `${tomorrow} on tomorrow` : 'Nothing on tomorrow',
     todo ? `${todo} to do` : 'all caught up',
@@ -627,7 +638,7 @@ export default function HomeNext({ name }: { name: string }) {
             {greeting()}
             {first ? `, ${first}` : ''}.
           </h1>
-          <p className="hero-summary">{data ? (newcomer ? "Let's get your recruiting in one place." : summary(data)) : ' '}</p>
+          <p className="hero-summary">{data ? (newcomer ? "Let's get your recruiting in one place." : summary(data, out)) : ' '}</p>
           <UpdateBar onAdd={() => { setAdding(true); setAdded('') }} added={added} />
         </div>
         <a className="photo-credit" href="https://commons.wikimedia.org/wiki/File:Manhattan_Skyline_2016.jpg" target="_blank" rel="noreferrer">
