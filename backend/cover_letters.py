@@ -141,14 +141,58 @@ def shape(template: str) -> tuple[int, int, int]:
     return 4, WORDS[0] + 30, WORDS[1] - 20
 
 
-def _salutation(recruiter: str) -> str:
-    recruiter = " ".join(recruiter.split())
-    if not recruiter:
+HONORIFICS = {"mr": "Mr.", "ms": "Ms.", "mrs": "Mrs.", "mx": "Mx.", "dr": "Dr.", "prof": "Prof."}
+SUFFIXES = {"jr", "sr", "ii", "iii", "iv", "phd", "cfa", "mba", "esq"}
+PARTICLES = {"van", "von", "de", "der", "den", "del", "della", "di", "da", "du", "la", "le", "al", "bin", "ibn", "st"}
+
+
+def _name_parts(recruiter: str) -> tuple[str, list[str]]:
+    """(the honorific written in the name, if any; the name's words without it or a trailing Jr., III, CFA...)."""
+    parts = " ".join(recruiter.split()).split()
+    found = ""
+    if len(parts) > 1 and parts[0].rstrip(".").lower() in HONORIFICS:
+        found, parts = HONORIFICS[parts[0].rstrip(".").lower()], parts[1:]
+    while len(parts) > 1 and parts[-1].strip(",.").lower() in SUFFIXES:
+        parts = parts[:-1]
+    return found, [w.strip(",") for w in parts]  # "Rossi, PhD" leaves "Rossi,"
+
+
+def _last_name(parts: list[str]) -> str:
+    """The surname, with its particles ("van der Berg")."""
+    for i in range(1, len(parts)):
+        if parts[i].rstrip(".").lower() in PARTICLES:
+            return " ".join(parts[i:])
+    return parts[-1]
+
+
+def _title(found: str, honorific: str) -> str:
+    return found or HONORIFICS.get((honorific or "").rstrip(".").lower(), "")
+
+
+def _salutation(recruiter: str, honorific: str = "") -> str:
+    """"Dear Ms. Lee," for a known recruiter (the address block keeps the full name); "Dear Jordan Lee," until Mr. or
+    Ms. is chosen (never guessed from a name); "Dear Hiring Manager," when no recruiter is known."""
+    found, parts = _name_parts(recruiter)
+    if not parts:
         return "Dear Hiring Manager,"
-    parts = recruiter.split()
-    if parts[0].rstrip(".").lower() in ("mr", "ms", "mrs", "mx", "dr") and len(parts) > 1:
-        return f"Dear {parts[0].rstrip('.')}. {parts[-1]},"
-    return f"Dear {recruiter},"
+    title = _title(found, honorific)
+    if title and len(parts) > 1:
+        return f"Dear {title} {_last_name(parts)},"
+    return f"Dear {' '.join(parts)},"
+
+
+def needs_honorific(recruiter: str, honorific: str = "") -> bool:
+    """The recruiter is known but not whether to write Mr. or Ms., so the greeting uses the full name for now."""
+    found, parts = _name_parts(recruiter)
+    return len(parts) > 1 and not _title(found, honorific)
+
+
+def greeting_warning(letter: dict) -> list[str]:
+    if not letter.get("needs_honorific"):
+        return []
+    _, parts = _name_parts(letter["recruiter_name"])
+    return [f"choose Mr. or Ms. for {letter['recruiter_name']} under Addressed to, so the greeting reads \"Dear Mr. or Ms. "
+            f"{_last_name(parts)},\" instead of \"{letter['salutation']}\""]
 
 
 def _context(conn, uid: int, bank: str) -> dict:
@@ -462,10 +506,12 @@ def get(uid: int, bank: str) -> dict:
         "updated_at": row["updated_at"] if row else "",
         "date": f"{date.today():%B} {date.today().day}, {date.today().year}",
         "recipient": _recipient(uid, bank, mine),
-        "salutation": _salutation(info["recruiter_name"]),
+        "salutation": _salutation(info["recruiter_name"], info["recruiter_honorific"]),
         "signature": user["name"] if user else "",
         "recruiter_name": info["recruiter_name"],
         "recruiter_title": info["recruiter_title"],
+        "recruiter_honorific": _title(_name_parts(info["recruiter_name"])[0], info["recruiter_honorific"]),
+        "needs_honorific": needs_honorific(info["recruiter_name"], info["recruiter_honorific"]),
         "address": info["address"],
         "office": mine.get("office", ""),
         "basis": basis(uid, bank),
@@ -479,9 +525,11 @@ def save_edits(uid: int, bank: str, paragraphs: list[str] | None, details: dict)
         conn.execute("INSERT OR IGNORE INTO my_banks (user_id, bank, applied, deadline, link, prefs, notes) VALUES (?, ?, '', '', '', '', '')", (uid, bank))
         mine = conn.execute("SELECT * FROM my_banks WHERE user_id = ? AND bank = ?", (uid, bank)).fetchone()
         shown = shared.bank_detail(bank, dict(mine) if mine else {})
-        for field in ("recruiter_name", "recruiter_title", "address", "office"):
+        for field in ("recruiter_name", "recruiter_title", "recruiter_honorific", "address", "office"):
             if field in details:
                 value = str(details[field]).strip()[:300]
+                if field == "recruiter_honorific":
+                    value = HONORIFICS.get(value.rstrip(".").lower(), "")
                 # a filled-in field emptied on purpose stays empty (no default), on this save and later ones
                 if not value and (shown.get(field) or (mine and mine[field] == shared.CLEARED)):
                     value = shared.CLEARED

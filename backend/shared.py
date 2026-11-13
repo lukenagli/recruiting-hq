@@ -30,7 +30,7 @@ CREATE TABLE IF NOT EXISTS club_updates (
     hidden      INTEGER NOT NULL DEFAULT 0  -- the admin removed it from the feed
 )"""
 
-BANK_FIELDS = ("recruiter_name", "recruiter_title", "letter_name", "address")
+BANK_FIELDS = ("recruiter_name", "recruiter_title", "recruiter_honorific", "letter_name", "address")
 
 
 def ensure() -> None:
@@ -63,7 +63,7 @@ def bank_defaults() -> dict[str, dict]:
     saved = _get("bank_defaults", {})
     out = {}
     for bank in sorted(set(bank_info.DOMAINS) | set(saved), key=str.lower):
-        built_in = {"recruiter_name": "", "recruiter_title": "", "letter_name": bank_info.LETTER_NAMES.get(bank, ""),
+        built_in = {"recruiter_name": "", "recruiter_title": "", "recruiter_honorific": "", "letter_name": bank_info.LETTER_NAMES.get(bank, ""),
                     "address": bank_info.ADDRESSES.get(bank, "")}
         out[bank] = {f: (saved.get(bank, {}).get(f) or built_in[f]) for f in BANK_FIELDS}
     return out

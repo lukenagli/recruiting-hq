@@ -973,7 +973,7 @@ def merge_banks(ctx: RunContext[Deps], duplicate: str, into: str) -> dict:
                 rows[keep] = dict(conn.execute("SELECT * FROM my_banks WHERE user_id = ? AND bank = ?", (uid, keep)).fetchone())
             # the application: the kept bank's own entries win; blanks are filled from the duplicate; notes are joined
             dup_row = rows.get(dup, {})
-            for field in ("applied", "deadline", "link", "prefs", "status", "stage", "recruiter_name", "recruiter_title", "address", "office"):
+            for field in ("applied", "deadline", "link", "prefs", "status", "stage", "recruiter_name", "recruiter_title", "recruiter_honorific", "address", "office"):
                 if not (rows[keep].get(field) or "").strip() and (dup_row.get(field) or "").strip():
                     conn.execute(f"UPDATE my_banks SET {field} = ? WHERE user_id = ? AND bank = ?", (dup_row[field], uid, keep))
             notes = " ".join(n for n in ((rows[keep].get("notes") or "").strip(), (dup_row.get("notes") or "").strip()) if n)

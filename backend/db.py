@@ -157,6 +157,7 @@ CREATE TABLE IF NOT EXISTS my_banks (
     stage     TEXT DEFAULT '',   -- "" not started, then yale | bank | dinner | superday | offer
     recruiter_name   TEXT DEFAULT '',  -- who the cover letter is addressed to
     recruiter_title  TEXT DEFAULT '',
+    recruiter_honorific TEXT DEFAULT '',  -- Mr. / Ms. / Mx. / Dr. for the greeting (the address block keeps the full name)
     address          TEXT DEFAULT '',  -- office address for the cover letter (overrides the built-in one)
     office           TEXT DEFAULT '',  -- office applied to, e.g. New York
     PRIMARY KEY (user_id, bank)
@@ -233,6 +234,7 @@ LATER_COLUMNS = [
     ("users", "api_provider"), ("users", "api_key_enc"), ("users", "api_key_hint"), ("users", "email_verified_at"),
     ("interactions", "invite_only"),
     ("my_banks", "recruiter_name"), ("my_banks", "recruiter_title"), ("my_banks", "address"), ("my_banks", "office"),
+    ("my_banks", "recruiter_honorific"),
     # Who the user is, set in the first-run setup (schools.py turns these into wording and features).
     ("user_profiles", "school"), ("user_profiles", "level"), ("user_profiles", "class_year"), ("user_profiles", "target_groups"),
     ("user_profiles", "email_template"), ("user_profiles", "email_rules"), ("user_profiles", "onboarded_at"),

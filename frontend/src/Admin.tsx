@@ -6,7 +6,7 @@ import { Loading, Logo, fmtDate, useApi } from './ui'
 
 /** The admin panel: who uses the site, and what the admin pushes to every account. */
 
-type BankFields = { recruiter_name: string; recruiter_title: string; letter_name: string; address: string }
+type BankFields = { recruiter_name: string; recruiter_title: string; recruiter_honorific: string; letter_name: string; address: string }
 type DirectoryChat = { name: string; app: 'slack' | 'whatsapp'; groups: string[] }
 type FeedItem = { id: number; source: string; posted_at: string; kind: string; bank: string; happens_on: string; title: string; detail: string }
 type Overview = {
@@ -93,7 +93,7 @@ function BankDetails({ initial, domains }: { initial: Record<string, BankFields>
   const [busy, setBusy] = useState(false)
   const [message, setMessage] = useState('')
   const changed = JSON.stringify(banks) !== JSON.stringify(initial)
-  const set = (bank: string, field: keyof BankFields) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
+  const set = (bank: string, field: keyof BankFields) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) =>
     setBanks({ ...banks, [bank]: { ...banks[bank], [field]: e.target.value } })
 
   async function push() {
@@ -124,6 +124,13 @@ function BankDetails({ initial, domains }: { initial: Record<string, BankFields>
               <strong><Logo bank={b} domain={domains[b] ?? ''} size={20} /> {b}</strong>
               <input placeholder="Recruiter name" value={banks[b].recruiter_name} onChange={set(b, 'recruiter_name')} />
               <input placeholder="Recruiter title" value={banks[b].recruiter_title} onChange={set(b, 'recruiter_title')} />
+              <select value={banks[b].recruiter_honorific ?? ''} onChange={set(b, 'recruiter_honorific')} title="How the greeting addresses the recruiter (the address block keeps the full name)">
+                <option value="">Greeting: full name until chosen</option>
+                <option value="Mr.">Greeting: Dear Mr. …</option>
+                <option value="Ms.">Greeting: Dear Ms. …</option>
+                <option value="Mx.">Greeting: Dear Mx. …</option>
+                <option value="Dr.">Greeting: Dear Dr. …</option>
+              </select>
               <input placeholder={`Formal name (e.g. ${b}, LLC)`} value={banks[b].letter_name} onChange={set(b, 'letter_name')} />
               <textarea rows={2} placeholder="Office address" value={banks[b].address} onChange={set(b, 'address')} />
             </div>

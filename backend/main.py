@@ -1125,6 +1125,7 @@ def get_cover_letter(bank: str, user: dict = Depends(current_user)):
     out = cover_letters.get(user["id"], bank)
     if out["exists"]:  # say when it can't be kept on one page
         out["warnings"] = out["warnings"] + cover_letters.page_warning(user["id"], bank)
+    out["warnings"] = out["warnings"] + cover_letters.greeting_warning(out)
     return out
 
 
