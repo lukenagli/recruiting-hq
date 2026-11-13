@@ -74,9 +74,23 @@ def push_bank_defaults(updates: dict[str, dict]) -> dict:
     for bank, fields in updates.items():
         bank = " ".join(str(bank).split())[:60]
         if bank:
-            saved[bank] = {f: str(fields.get(f, "")).strip()[:300] for f in BANK_FIELDS}
+            new = {f: str(fields.get(f, "")).strip()[:300] for f in BANK_FIELDS}
+            # how the recruiter is addressed was looked up for that name: it stays while the name does
+            if not new["recruiter_honorific"] and new["recruiter_name"] == saved.get(bank, {}).get("recruiter_name", ""):
+                new["recruiter_honorific"] = saved.get(bank, {}).get("recruiter_honorific", "")
+            saved[bank] = new
     _set("bank_defaults", saved)
     return bank_defaults()
+
+
+def set_default_honorific(bank: str, name: str, honorific: str) -> bool:
+    """Save how the pushed recruiter is addressed, if the pushed name is still the one it was found for."""
+    saved = _get("bank_defaults", {})
+    if saved.get(bank, {}).get("recruiter_name") != name:
+        return False
+    saved[bank]["recruiter_honorific"] = honorific
+    _set("bank_defaults", saved)
+    return True
 
 
 CLEARED = "(none)"  # a field the student emptied on purpose (a letter to "Hiring Manager"): no admin default for it
@@ -86,7 +100,11 @@ def bank_detail(bank: str, mine: dict) -> dict:
     """The details a letter uses for one bank: the student's own where they typed one (or emptied on purpose), else
     the admin's default."""
     base = bank_defaults().get(bank, {f: "" for f in BANK_FIELDS})
-    return {f: "" if mine.get(f) == CLEARED else (mine.get(f) or base[f] or "") for f in BANK_FIELDS}
+    out = {f: "" if mine.get(f) == CLEARED else (mine.get(f) or base[f] or "") for f in BANK_FIELDS}
+    # Mr./Ms. goes with the name it was found for: a recruiter the student typed never takes the default's
+    own = mine.get("recruiter_name") and mine.get("recruiter_name") != CLEARED
+    out["recruiter_honorific"] = (mine.get("recruiter_honorific") or "") if own else (base["recruiter_honorific"] or "")
+    return out
 
 
 # ---- Chats ----

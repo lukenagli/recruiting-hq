@@ -249,8 +249,9 @@ export type CoverLetter = {
   signature: string
   recruiter_name: string
   recruiter_title: string
-  recruiter_honorific: string // Mr. / Ms. / Mx. / Dr. in the greeting; '' means the full name is used
-  needs_honorific: boolean // a recruiter is named but Mr. or Ms. has not been chosen
+  recruiter_honorific: string // Mr. / Ms. / Mx. / Dr. in the greeting (looked up from the recruiter's own profile); '' means the full name is used
+  needs_honorific: boolean // a recruiter is named but how they are addressed is not known yet
+  greeting_lookup?: 'unknown' | '' // 'unknown': looked up, nothing public states it
   address: string
   office: string
   /** the letter of yours the next draft starts from, and why it's the closest */

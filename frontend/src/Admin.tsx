@@ -113,7 +113,8 @@ function BankDetails({ initial, domains }: { initial: Record<string, BankFields>
       <h2>Bank details for cover letters</h2>
       <p className="fine">
         Who each letter is addressed to, the firm's formal name and the office address. When you push, every account gets these as its
-        default. A student who typed their own recruiter or address for a bank keeps theirs.
+        default. A student who typed their own recruiter or address for a bank keeps theirs. Whether a recruiter is addressed as Mr. or Ms.
+        is looked up from their own profile after a push (type it before the name to set it yourself).
       </p>
       <input className="admin-filter" placeholder="Find a bank" value={filter} onChange={(e) => setFilter(e.target.value)} />
       <div className="admin-banks">
@@ -124,13 +125,6 @@ function BankDetails({ initial, domains }: { initial: Record<string, BankFields>
               <strong><Logo bank={b} domain={domains[b] ?? ''} size={20} /> {b}</strong>
               <input placeholder="Recruiter name" value={banks[b].recruiter_name} onChange={set(b, 'recruiter_name')} />
               <input placeholder="Recruiter title" value={banks[b].recruiter_title} onChange={set(b, 'recruiter_title')} />
-              <select value={banks[b].recruiter_honorific ?? ''} onChange={set(b, 'recruiter_honorific')} title="How the greeting addresses the recruiter (the address block keeps the full name)">
-                <option value="">Greeting: full name until chosen</option>
-                <option value="Mr.">Greeting: Dear Mr. …</option>
-                <option value="Ms.">Greeting: Dear Ms. …</option>
-                <option value="Mx.">Greeting: Dear Mx. …</option>
-                <option value="Dr.">Greeting: Dear Dr. …</option>
-              </select>
               <input placeholder={`Formal name (e.g. ${b}, LLC)`} value={banks[b].letter_name} onChange={set(b, 'letter_name')} />
               <textarea rows={2} placeholder="Office address" value={banks[b].address} onChange={set(b, 'address')} />
             </div>

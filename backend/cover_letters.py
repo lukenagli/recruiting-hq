@@ -188,11 +188,14 @@ def needs_honorific(recruiter: str, honorific: str = "") -> bool:
 
 
 def greeting_warning(letter: dict) -> list[str]:
+    """What the greeting is doing while Mr./Ms. for the recruiter is being looked up, or when nothing public says."""
     if not letter.get("needs_honorific"):
         return []
-    _, parts = _name_parts(letter["recruiter_name"])
-    return [f"choose Mr. or Ms. for {letter['recruiter_name']} under Addressed to, so the greeting reads \"Dear Mr. or Ms. "
-            f"{_last_name(parts)},\" instead of \"{letter['salutation']}\""]
+    name = letter["recruiter_name"]
+    if letter.get("greeting_lookup") == "unknown":
+        return [f"nothing public says whether {name} is addressed as Mr. or Ms., so the greeting uses the full name (which is correct); "
+                f"if you know, type it before the name under Addressed to"]
+    return [f"finding out whether to write Mr. or Ms. for {name} (a quick lookup runs on its own); the greeting uses the full name until then"]
 
 
 def _context(conn, uid: int, bank: str) -> dict:
@@ -512,6 +515,7 @@ def get(uid: int, bank: str) -> dict:
         "recruiter_title": info["recruiter_title"],
         "recruiter_honorific": _title(_name_parts(info["recruiter_name"])[0], info["recruiter_honorific"]),
         "needs_honorific": needs_honorific(info["recruiter_name"], info["recruiter_honorific"]),
+        "greeting_lookup": "unknown" if info["recruiter_honorific"] == "?" else "",  # "?": looked up, nothing public states it
         "address": info["address"],
         "office": mine.get("office", ""),
         "basis": basis(uid, bank),
@@ -525,11 +529,12 @@ def save_edits(uid: int, bank: str, paragraphs: list[str] | None, details: dict)
         conn.execute("INSERT OR IGNORE INTO my_banks (user_id, bank, applied, deadline, link, prefs, notes) VALUES (?, ?, '', '', '', '', '')", (uid, bank))
         mine = conn.execute("SELECT * FROM my_banks WHERE user_id = ? AND bank = ?", (uid, bank)).fetchone()
         shown = shared.bank_detail(bank, dict(mine) if mine else {})
-        for field in ("recruiter_name", "recruiter_title", "recruiter_honorific", "address", "office"):
+        for field in ("recruiter_name", "recruiter_title", "address", "office"):
             if field in details:
                 value = str(details[field]).strip()[:300]
-                if field == "recruiter_honorific":
-                    value = HONORIFICS.get(value.rstrip(".").lower(), "")
+                if field == "recruiter_name" and value != ((mine["recruiter_name"] if mine else "") or ""):
+                    # a different recruiter: how they are addressed is looked up afresh (honorific.py)
+                    conn.execute("UPDATE my_banks SET recruiter_honorific = '' WHERE user_id = ? AND bank = ?", (uid, bank))
                 # a filled-in field emptied on purpose stays empty (no default), on this save and later ones
                 if not value and (shown.get(field) or (mine and mine[field] == shared.CLEARED)):
                     value = shared.CLEARED

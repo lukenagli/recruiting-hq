@@ -3,14 +3,12 @@ import { API_URL, post } from './api'
 import type { CoverLetter } from './api'
 import { Loading, useApi } from './ui'
 
-const HONORIFICS = ['Mr.', 'Ms.', 'Mx.', 'Dr.']
-
 /** One bank's cover letter: who it is addressed to, the draft (editable), its checks, and a Word download. */
 export default function CoverLetterEditor({ bank }: { bank: string }) {
   const path = `/api/cover-letters/${encodeURIComponent(bank)}`
   const { data, error, reload } = useApi<CoverLetter>(path)
   const [paragraphs, setParagraphs] = useState<string[]>([])
-  const [details, setDetails] = useState({ recruiter_name: '', recruiter_title: '', recruiter_honorific: '', office: '', address: '' })
+  const [details, setDetails] = useState({ recruiter_name: '', recruiter_title: '', office: '', address: '' })
   const [dirty, setDirty] = useState(false)
   const [busy, setBusy] = useState('')
   const [message, setMessage] = useState('')
@@ -18,7 +16,7 @@ export default function CoverLetterEditor({ bank }: { bank: string }) {
   useEffect(() => {
     if (!data) return
     setParagraphs(data.paragraphs)
-    setDetails({ recruiter_name: data.recruiter_name, recruiter_title: data.recruiter_title, recruiter_honorific: data.recruiter_honorific, office: data.office, address: data.address })
+    setDetails({ recruiter_name: data.recruiter_name, recruiter_title: data.recruiter_title, office: data.office, address: data.address })
     setDirty(false)
   }, [data])
 
@@ -97,21 +95,6 @@ export default function CoverLetterEditor({ bank }: { bank: string }) {
             Their title
             <input value={details.recruiter_title} onChange={(e) => setDetails({ ...details, recruiter_title: e.target.value })} placeholder="e.g. Campus Recruiter" />
           </label>
-          <div className="field">
-            Greeting <small>(the address block keeps the full name)</small>
-            <div className="choice-row honorifics">
-              {HONORIFICS.map((h) => (
-                <button
-                  key={h}
-                  type="button"
-                  className={`choice-pill ${details.recruiter_honorific === h ? 'on' : ''}`}
-                  onClick={() => setDetails({ ...details, recruiter_honorific: details.recruiter_honorific === h ? '' : h })}
-                >
-                  Dear {h} …
-                </button>
-              ))}
-            </div>
-          </div>
           <label className="field">
             Office you are applying to
             <input value={details.office} onChange={(e) => setDetails({ ...details, office: e.target.value })} placeholder="e.g. New York" />

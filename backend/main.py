@@ -17,7 +17,7 @@ from starlette.background import BackgroundTask
 from . import banks as banks_info
 from . import tracker_edits
 from . import chat_notes, filing_queue, folder_setup, interviewer, scan_cleanup
-from . import accounts, assistant, attachments, auth, budget, capiq, catch_up, config, cover_letters, deal_docs, deal_recs, deal_sources, deals, importer, legal, llm, market, network, onboarding, levels, practice, profile, question_clean, schools, reference, research, shared, stars, stories, superday, sync, templates, test_scan, thank_backfill, thank_you, transfer, user_keys
+from . import accounts, assistant, attachments, auth, budget, capiq, catch_up, config, cover_letters, deal_docs, deal_recs, deal_sources, deals, honorific, importer, legal, llm, market, network, onboarding, levels, practice, profile, question_clean, schools, reference, research, shared, stars, stories, superday, sync, templates, test_scan, thank_backfill, thank_you, transfer, user_keys
 from .auth import admin_user, current_user
 from .db import connect, init_db
 from .llm import get_model, usage_dict
@@ -35,6 +35,7 @@ async def start_filing_worker():
     app.state.question_clean = asyncio.create_task(question_clean.on_start())
     # technical questions not yet rated on the club's difficulty scale get rated (levels)
     app.state.level_rating = asyncio.create_task(levels.on_start())
+    app.state.greetings = asyncio.create_task(honorific.on_start())  # Mr./Ms. for recruiters saved without it
 app.add_middleware(
     CORSMiddleware,
     allow_origins=config.FRONTEND_ORIGINS,
@@ -1140,8 +1141,14 @@ class LetterEdits(BaseModel):
 
 
 @app.post("/api/cover-letters/{bank}")
-def edit_cover_letter(bank: str, req: LetterEdits, user: dict = Depends(current_user)):
-    return cover_letters.save_edits(user["id"], bank, req.paragraphs, req.details)
+async def edit_cover_letter(bank: str, req: LetterEdits, user: dict = Depends(current_user)):
+    out = cover_letters.save_edits(user["id"], bank, req.paragraphs, req.details)
+    if "recruiter_name" in req.details and out["needs_honorific"]:
+        try:  # how the recruiter is addressed, looked up in the background (skipped without an AI key)
+            honorific.schedule(honorific.fill_for_user(user["id"], ai_for(user), bank))
+        except HTTPException:
+            pass
+    return out
 
 
 class SubmittedRequest(BaseModel):
@@ -1477,9 +1484,14 @@ class BankDefaults(BaseModel):
 
 
 @app.post("/api/admin/bank-defaults")
-def push_bank_defaults(req: BankDefaults, user: dict = Depends(admin_user)):
+async def push_bank_defaults(req: BankDefaults, user: dict = Depends(admin_user)):
     """Push recruiter names, titles, formal names and addresses to every account (students' own entries win)."""
-    return shared.push_bank_defaults(req.banks)
+    out = shared.push_bank_defaults(req.banks)
+    try:  # Mr./Ms. for any pushed recruiter saved without it, looked up in the background
+        honorific.schedule(honorific.fill_defaults(user["id"], ai_for(user)))
+    except HTTPException:
+        pass
+    return out
 
 
 class ChatSettings(BaseModel):

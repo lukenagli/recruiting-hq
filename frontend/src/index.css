@@ -1785,8 +1785,3 @@ details.deal-docs.fold[open] > summary { margin-bottom: 10px; }
   .story-card dl { grid-template-columns: 1fr; gap: 2px; }
   .story-card dd { margin-bottom: 6px; }
 }
-
-/* Cover letter greeting: Mr. / Ms. for the recruiter (the address block keeps the full name) */
-.letter-fields .honorifics { margin: 6px 0 12px; gap: 6px; }
-.letter-fields .honorifics .choice-pill { padding: 6px 11px; font-size: 13.5px; }
-.admin-bank select { font: inherit; font-size: 13.5px; padding: 6px 8px; border: 1.5px solid var(--line); border-radius: 8px; background: var(--card); color: var(--ink); }
