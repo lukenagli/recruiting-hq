@@ -1,7 +1,6 @@
 import { useState } from 'react'
 import Practice from './Practice'
 import Progress from './Progress'
-import SuperdayPrep from './SuperdayPrep'
 import type { PrepOptions, Question } from './api'
 import { Loading, Logo, useApi, useSchool } from './ui'
 
@@ -90,7 +89,6 @@ function Results({ bank, round, who }: { bank: string; round: string; who: strin
 
 const TABS = [
   ['practice', 'Practice'],
-  ['superday', 'Superday prep'],
   ['progress', 'My progress'],
   ['browse', 'Browse the question bank'],
 ]
@@ -132,13 +130,6 @@ export default function Prep({ bank, round, who, tab, topic: linkTopic = '', cat
       </div>
     )
   }
-  if (current === 'superday')
-    return (
-      <div className="prep">
-        {header}
-        <SuperdayPrep bank={bank} options={data} />
-      </div>
-    )
   if (current === 'progress')
     return (
       <div className="prep">

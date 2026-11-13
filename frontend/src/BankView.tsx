@@ -497,7 +497,6 @@ export default function BankView({ bank, initial = '' }: { bank: string; initial
             {app.link && <a href={app.link} target="_blank" rel="noreferrer">Application</a>}
             <a href={`#/letters/${encodeURIComponent(data.bank)}`}>Cover letter</a>
             <a href={`#/prep?bank=${encodeURIComponent(data.bank)}`}>Practice questions</a>
-            <a href={`#/prep?tab=superday&bank=${encodeURIComponent(data.bank)}`}>Superday prep</a>
           </span>
         </div>
         {OVERVIEW_FIELDS.map(([field, label, onlyWhenKnown]) => {
