@@ -323,13 +323,12 @@ def next_question(uid: int, categories: list[str], topics: list[str], stage: str
     def allowed(topic: str) -> set[str]:
         if superday:  # every question asked at a Superday; the guides' are already only the hard ones
             return set(LEVELS)
-        if bank == "":  # guides only: a guide's questions aren't graded by level, so all of them
-            return set(LEVELS)
         if stage in STAGE_DIFFICULTY:
             return STAGE_DIFFICULTY[stage]
         if difficulty == "adaptive":
             return {levels.get(topic, "easy")}
-        return {difficulty} if difficulty in ("easy", "medium", "hard") else {"easy", "medium", "hard"}
+        picked = {d for d in difficulty.split(",") if d in LEVELS}  # any mix of easy, medium and hard
+        return picked or set(LEVELS)
 
     if like:  # "try a similar problem": same category and topic
         categories = [like["category"]]

@@ -16,7 +16,12 @@ const DIFFICULTIES = [
   ['hard', 'Hard'],
   ['adaptive', 'Adaptive (harder where you are strong, more practice where you are weak)'],
 ]
-const VERDICT_LABEL: Record<Verdict, string> = { correct: 'Correct', partial: 'Partly right', incorrect: 'Not quite' }
+const LEVELS = ['easy', 'medium', 'hard']
+/** "easy,hard" -> ['easy', 'hard']; adaptive (or anything else) -> [] */
+const levelsOf = (d: string) => LEVELS.filter((l) => d.split(',').includes(l))
+const difficultySummary = (d: string) =>
+  d === 'adaptive' ? 'Adaptive' : levelsOf(d).length === 3 ? 'Easy, medium and hard' : levelsOf(d).map((l) => l[0].toUpperCase() + l.slice(1)).join(' + ') || 'Adaptive'
+const VERDICT_LABEL: Record<Verdict, string> ={ correct: 'Correct', partial: 'Partly right', incorrect: 'Not quite' }
 
 // Where questions come from: bank "Any" (every bank), one bank, or "" (no banks); guides [] (all the student's own
 // guides), some of them, or null (none). Every session starts from all of both; a change lasts for that session only.
@@ -119,14 +124,26 @@ function SetupBar({ setup, setSetup, banks, guides }: { setup: Setup; setSetup: 
       </label>
 
       {setup.stage === '' && (
-        <label className="dd">
-          <span className="dd-label">Difficulty</span>
-          <select value={setup.difficulty} onChange={(e) => setSetup({ ...setup, difficulty: e.target.value })}>
-            {DIFFICULTIES.map(([v, l]) => (
-              <option key={v} value={v}>{v === 'adaptive' ? 'Adaptive' : l}</option>
-            ))}
-          </select>
-        </label>
+        // any mix of easy, medium and hard; adaptive stands alone (it picks the level itself)
+        <Dropdown label="Difficulty" summary={difficultySummary(setup.difficulty)}>
+          {DIFFICULTIES.map(([v, l]) => {
+            const picked = levelsOf(setup.difficulty)
+            const on = v === 'adaptive' ? setup.difficulty === 'adaptive' : picked.includes(v)
+            return (
+              <Check
+                key={v}
+                on={on}
+                onChange={(checked) => {
+                  if (v === 'adaptive') return checked && setSetup({ ...setup, difficulty: 'adaptive' })
+                  const next = LEVELS.filter((x) => (x === v ? checked : picked.includes(x)))
+                  setSetup({ ...setup, difficulty: next.length ? next.join(',') : 'adaptive' })
+                }}
+              >
+                {l}
+              </Check>
+            )
+          })}
+        </Dropdown>
       )}
 
       {(banks.length > 0 || guides.length > 0) && (

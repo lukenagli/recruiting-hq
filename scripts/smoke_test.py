@@ -97,7 +97,7 @@ def main() -> int:
             for path in (f"/api/banks/{bank}", f"/api/cover-letters/{bank}", f"/api/cover-letters/{bank}/docx"):
                 check(who, token, path)
         # Interview Prep's next question (no AI): every round, and every difficulty
-        for stage, level in (("", "adaptive"), ("", "hard"), ("Coffee Chat", "easy"), ("Superday", "adaptive")):
+        for stage, level in (("", "adaptive"), ("", "hard"), ("", "easy,hard"), ("Coffee Chat", "easy"), ("Superday", "adaptive")):
             opened += 1
             r = client.post("/api/practice/next", headers={"Authorization": f"Bearer {token}"},
                             json={"categories": ["Technical", "Behavioral"], "stage": stage, "difficulty": level, "bank": "Any", "guides": []})
