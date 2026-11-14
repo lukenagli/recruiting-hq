@@ -14,7 +14,9 @@ def state(uid: int) -> dict:
     init_db()
     prof = user_profile.get(uid)
     with connect(read_only=True) as conn:
-        chosen = [r["bank"] for r in conn.execute("SELECT bank FROM my_banks WHERE user_id = ? ORDER BY bank", (uid,))]
+        # a bank the student was cut from (or dropped) stays in the tracker but is no longer ticked
+        chosen = [r["bank"] for r in conn.execute(
+            "SELECT bank FROM my_banks WHERE user_id = ? AND COALESCE(status, '') != 'out' ORDER BY bank", (uid,))]
     ctx = schools.for_user(uid)
     key = user_keys.status(uid)
     return {
@@ -48,7 +50,8 @@ def _is_admin(uid: int) -> bool:
 
 
 def save_banks(uid: int, banks: list[str], groups: list[str]) -> dict:
-    """Set the banks the user is recruiting with. A bank they drop is removed only if nothing is logged there."""
+    """Set the banks the user is recruiting with. A bank they drop is removed only if nothing is logged there; a bank they
+    were cut from is never ticked here, so it stays as it is (ticking it again puts it back in the process)."""
     clean = []
     for b in banks:
         b = " ".join(str(b).split())[:60]
@@ -59,14 +62,17 @@ def save_banks(uid: int, banks: list[str], groups: list[str]) -> dict:
     init_db()
     kept, removed = [], []
     with connect() as conn:
-        have = {r["bank"]: r for r in conn.execute("SELECT bank, prefs FROM my_banks WHERE user_id = ?", (uid,))}
+        have = {r["bank"]: r for r in conn.execute("SELECT bank, prefs, status FROM my_banks WHERE user_id = ?", (uid,))}
+        out = {b for b, r in have.items() if (r["status"] or "") == "out"}
         for b in clean:
+            if b in out:  # ticked again: back in the process
+                conn.execute("UPDATE my_banks SET status = '' WHERE user_id = ? AND bank = ?", (uid, b))
             if b not in have:
                 conn.execute("INSERT INTO my_banks (user_id, bank, applied, deadline, link, prefs, notes) VALUES (?, ?, '', '', '', ?, '')",
                              (uid, b, pref))
             elif not (have[b]["prefs"] or "").strip() and pref:
                 conn.execute("UPDATE my_banks SET prefs = ? WHERE user_id = ? AND bank = ?", (pref, uid, b))
-        for b in set(have) - set(clean):
+        for b in set(have) - set(clean) - out:
             used = conn.execute(
                 "SELECT 1 FROM people WHERE user_id = ? AND bank = ? UNION SELECT 1 FROM interactions WHERE user_id = ? AND bank = ? LIMIT 1",
                 (uid, b, uid, b)).fetchone()

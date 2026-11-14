@@ -98,6 +98,7 @@ export default function AboutYou() {
 
       <div className="about-block">
         <h4>Banks you're recruiting with</h4>
+        <p className="fine">A bank you're cut from unticks itself and stays on your map. Tick it again if you're back in the process.</p>
         <div className="bank-grid">
           {s.bank_choices.map((b) => (
             <button key={b.bank} type="button" className={`bank-tile ${banks.includes(b.bank) ? 'on' : ''}`} onClick={() => change(setBanks)(toggle(banks, b.bank))}>
