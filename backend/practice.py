@@ -274,13 +274,26 @@ def _fresh(uid: int, pool: list[dict]) -> list[dict]:
 
 
 def next_question(uid: int, categories: list[str], topics: list[str], stage: str, difficulty: str, bank: str,
-                  seen: list[str], like: dict | None = None, club: bool = True, guides: list[str] | None = None) -> dict | None:
+                  seen: list[str], like: dict | None = None, club: bool = True, guides: list[str] | None = None,
+                  drill: str = "") -> dict | None:
     """One question matching the filters, not already in `seen`. Without `club`, the school question bank is left out.
     Where questions come from (all of both by default): `bank` "Any" for every bank plus the standard questions and
     number problems, one bank's name for only its questions, or "" for no banks; `guides` the student's own uploaded
     guides to include ([] for all of them, None for none)."""
     init_db()
     rng = random.Random()
+    if drill in pb.DRILLS:  # one kind of number problem on repeat, at the levels picked (all of them when adaptive)
+        names = pb.DRILLS[drill]
+        if like and like.get("kind") == "template" and like["key"].split(":")[1] in names:
+            names = [like["key"].split(":")[1]]
+        else:
+            picked = {d for d in difficulty.split(",") if d in LEVELS}
+            names = [n for n in names if not picked or pb.BY_NAME[n].difficulty in picked] or names
+        for _ in range(12):  # never the same numbers twice in a row
+            q = _template_question(rng.choice(names), rng.randrange(1, 10**9))[0]
+            if q["key"] not in seen and (not like or q["question"] != like["question"]):
+                break
+        return q
     categories = [c for c in categories if c in CATEGORIES] or list(CATEGORIES)
     topics = [t for t in topics if t in TOPICS] or TOPICS
     seen_set = set(seen)

@@ -449,6 +449,159 @@ def goodwill(r: random.Random) -> Problem:
     )
 
 
+# ---- Accretion / dilution the quick way: P/E ratios, the premium and how the deal is paid for ----
+# Each way of paying has an after-tax cost: new stock costs the acquirer's earnings yield (1 / its P/E), new debt
+# costs its interest rate x (1 - tax), and cash on hand costs the interest it would have earned x (1 - tax). The
+# deal is accretive when the target's earnings yield at the price paid (1 / the P/E paid) beats the weighted cost.
+
+# (target P/E, premium %) pairs where the P/E paid works out cleanly
+PAID = [(8, 25), (10, 25), (12, 25), (16, 25), (20, 25), (10, 50), (8, 50), (12, 50), (16, 50), (10, 20), (15, 20), (20, 20), (10, 60)]
+MIXES = [(100, 0, 0), (0, 100, 0), (0, 0, 100), (50, 50, 0), (50, 0, 50), (0, 50, 50), (40, 60, 0), (60, 40, 0), (25, 50, 25)]
+
+
+def _num(x: float) -> str:
+    return f"{x:g}" if float(x).is_integer() else f"{x:.2f}".rstrip("0").rstrip(".")
+
+
+def _mix_words(stock: int, debt: int, cash: int, rate: float, cash_rate: float) -> str:
+    parts = [f"{stock}% new stock" if stock else "", f"{debt}% new debt at {_num(rate)}% interest" if debt else "",
+             f"{cash}% cash on hand (which earns {_num(cash_rate)}% interest)" if cash else ""]
+    parts = [x for x in parts if x]
+    return parts[0] if len(parts) == 1 else ", ".join(parts[:-1]) + " and " + parts[-1]
+
+
+def _costs(a_pe: float, stock: int, debt: int, cash: int, rate: float, cash_rate: float, tax: int) -> tuple[float, list[str]]:
+    """The weighted after-tax cost of paying (in %), and the working."""
+    lines, parts, total = [], [], 0.0
+    if stock:
+        c = 100 / a_pe
+        total += stock / 100 * c
+        parts.append(f"{stock}% x {c:.2f}%")
+        lines.append(f"Stock: 1 / {_num(a_pe)}x = {c:.2f}%")
+    if debt:
+        c = rate * (1 - tax / 100)
+        total += debt / 100 * c
+        parts.append(f"{debt}% x {c:.2f}%")
+        lines.append(f"Debt: {_num(rate)}% x (1 - {tax}%) = {c:.2f}%")
+    if cash:
+        c = cash_rate * (1 - tax / 100)
+        total += cash / 100 * c
+        parts.append(f"{cash}% x {c:.2f}%")
+        lines.append(f"Cash: {_num(cash_rate)}% x (1 - {tax}%) = {c:.2f}% of forgone interest")
+    if len(parts) > 1:
+        lines.append(f"Weighted cost = {' + '.join(parts)} = {total:.2f}%")
+    return total, lines
+
+
+def ad_premium_stock(r: random.Random) -> Problem:
+    while True:
+        a_pe = r.choice([10, 12.5, 15, 16, 20, 25])
+        t_pe, prem = r.choice(PAID)
+        paid = t_pe * (1 + prem / 100)
+        if abs(paid - a_pe) >= 1:
+            break
+    acc = a_pe > paid
+    return Problem(
+        f"An acquirer trading at {_num(a_pe)}x P/E buys a target trading at {_num(t_pe)}x P/E, paying a {prem}% premium, all in new stock. "
+        f"Accretive or dilutive?",
+        f"{'Accretive' if acc else 'Dilutive'}: it pays {_num(paid)}x for the target vs its own {_num(a_pe)}x",
+        f"The P/E actually paid = {_num(t_pe)}x x (1 + {prem}%) = {_num(paid)}x.\n"
+        f"In an all-stock deal compare it with the acquirer's own P/E: the acquirer {'trades higher' if acc else 'trades lower'} "
+        f"({_num(a_pe)}x vs {_num(paid)}x), so it {'buys more earnings than it gives up: accretive' if acc else 'gives up more earnings than it buys: dilutive'}.\n"
+        f"Same thing in yields: target {100 / paid:.2f}% vs cost of stock {100 / a_pe:.2f}%. (Ignores synergies, fees and new amortization.)",
+        [],
+    )
+
+
+def ad_pe_mix(r: random.Random) -> Problem:
+    while True:
+        a_pe = r.choice([10, 12.5, 15, 16, 20, 25])
+        t_pe, prem = r.choice(PAID)
+        stock, debt, cash = r.choice(MIXES)
+        rate, cash_rate, tax = r.choice([4, 5, 6, 7, 8]), r.choice([2, 3, 4]), r.choice([20, 25, 30])
+        paid = t_pe * (1 + prem / 100)
+        yld = 100 / paid
+        cost, lines = _costs(a_pe, stock, debt, cash, rate, cash_rate, tax)
+        if abs(yld - cost) >= 0.3 and stock != 100:  # all stock is the easy version
+            break
+    acc = yld > cost
+    return Problem(
+        f"An acquirer trading at {_num(a_pe)}x P/E buys a target trading at {_num(t_pe)}x P/E and pays a {prem}% premium. "
+        f"It pays with {_mix_words(stock, debt, cash, rate, cash_rate)}. Tax rate {tax}%. No synergies. Accretive or dilutive?",
+        f"{'Accretive' if acc else 'Dilutive'}: the target yields {yld:.2f}% at the price paid vs a {cost:.2f}% after-tax cost of paying",
+        f"P/E paid = {_num(t_pe)}x x (1 + {prem}%) = {_num(paid)}x, so the target's earnings yield = 1 / {_num(paid)} = {yld:.2f}%.\n"
+        "After-tax cost of each way of paying:\n" + "\n".join(lines) + "\n"
+        f"{yld:.2f}% {'>' if acc else '<'} {cost:.2f}%: {'accretive' if acc else 'dilutive'}. "
+        "(Ignores synergies, fees and amortization of new intangibles.)",
+        [],
+    )
+
+
+def ad_eps_change(r: random.Random) -> Problem:
+    shares = 100
+    while True:
+        price, a_pe = r.choice([(20, 10), (25, 12.5), (30, 15), (40, 20), (50, 25), (40, 16), (50, 20)])
+        t_ni = r.choice([20, 40, 50, 80])
+        t_pe, prem = r.choice(PAID)
+        stock, debt, cash = r.choice(MIXES)
+        rate, cash_rate, tax = r.choice([4, 5, 6, 8]), r.choice([2, 4]), r.choice([20, 25])
+        eps0 = price / a_pe
+        a_ni = eps0 * shares
+        paid = t_pe * (1 + prem / 100)
+        purchase = t_ni * paid
+        new_shares = purchase * stock / 100 / price
+        interest = purchase * debt / 100 * rate / 100 * (1 - tax / 100)
+        forgone = purchase * cash / 100 * cash_rate / 100 * (1 - tax / 100)
+        ni1 = a_ni + t_ni - interest - forgone
+        eps1 = ni1 / (shares + new_shares)
+        change = (eps1 / eps0 - 1) * 100
+        if abs(change) >= 0.5:
+            break
+    acc = "accretive" if change > 0 else "dilutive"
+    steps = [f"Acquirer EPS = ${price} / {_num(a_pe)}x = ${eps0:.2f}; net income = ${eps0:.2f} x {shares}M shares = {_m(a_ni)}.",
+             f"Purchase price = {_m(t_ni)} x {_num(t_pe)}x x (1 + {prem}%) = {_m(t_ni)} x {_num(paid)}x = {_m(purchase)}."]
+    if stock:
+        steps.append(f"New shares = {_m(purchase)} x {stock}% / ${price} = {new_shares:.2f}M.")
+    if debt:
+        steps.append(f"After-tax interest on new debt = {_m(purchase)} x {debt}% x {_num(rate)}% x (1 - {tax}%) = {_m(interest)}.")
+    if cash:
+        steps.append(f"Forgone after-tax interest on cash = {_m(purchase)} x {cash}% x {_num(cash_rate)}% x (1 - {tax}%) = {_m(forgone)}.")
+    steps.append(f"Pro forma net income = {_num(a_ni)} + {_num(t_ni)}" + (f" - {interest:.2f}" if debt else "") + (f" - {forgone:.2f}" if cash else "")
+                 + f" = {_m(ni1)}" + (f"; shares = {shares} + {new_shares:.2f} = {shares + new_shares:.2f}M." if stock else f"; shares stay at {shares}M."))
+    steps.append(f"Pro forma EPS = {ni1:.2f} / {shares + new_shares:.2f} = ${eps1:.3f} vs ${eps0:.2f}: {change:+.1f}%, {acc}.")
+    return Problem(
+        f"The acquirer's shares trade at ${price} ({_num(a_pe)}x P/E, {shares} million shares). It buys a target with {_m(t_ni)} of net income "
+        f"that trades at {_num(t_pe)}x P/E, paying a {prem}% premium, with {_mix_words(stock, debt, cash, rate, cash_rate)}. "
+        f"Tax rate {tax}%. No synergies. By what % is the deal accretive or dilutive to EPS?",
+        f"{change:+.1f}% ({acc}): pro forma EPS ${eps1:.2f} vs ${eps0:.2f}",
+        "\n".join(steps),
+        [round(abs(change), 1)],
+    )
+
+
+def ad_max_premium(r: random.Random) -> Problem:
+    while True:
+        a_pe = r.choice([12.5, 15, 16, 20, 25])
+        t_pe = r.choice([8, 10, 12, 15])
+        stock, debt, cash = r.choice(MIXES)
+        rate, cash_rate, tax = r.choice([4, 5, 6, 8]), r.choice([2, 3, 4]), r.choice([20, 25, 30])
+        cost, lines = _costs(a_pe, stock, debt, cash, rate, cash_rate, tax)
+        breakeven = 100 / cost
+        prem = (breakeven / t_pe - 1) * 100
+        if 5 <= prem <= 100:
+            break
+    return Problem(
+        f"An acquirer trading at {_num(a_pe)}x P/E wants to buy a target trading at {_num(t_pe)}x P/E, paying with "
+        f"{_mix_words(stock, debt, cash, rate, cash_rate)}. Tax rate {tax}%. No synergies. What is the highest premium it can pay "
+        f"before the deal becomes dilutive?",
+        f"About {prem:.1f}%: break-even at {breakeven:.2f}x P/E",
+        "After-tax cost of paying:\n" + "\n".join(lines) + "\n"
+        f"The deal breaks even when the target's earnings yield equals that cost: P/E paid = 1 / {cost:.2f}% = {breakeven:.2f}x.\n"
+        f"Highest premium = {breakeven:.2f}x / {_num(t_pe)}x - 1 = {prem:.1f}%. Pay more and it is dilutive.",
+        [round(prem, 1)],
+    )
+
+
 # ---------------- LBO ----------------
 
 def lbo_moic(r: random.Random) -> Problem:
@@ -658,11 +811,17 @@ TEMPLATES = [
     Template("goodwill", "Merger Math", "medium", goodwill),
     Template("stock_deal_eps", "Merger Math", "hard", stock_deal_eps),
     Template("debt_deal_eps", "Merger Math", "hard", debt_deal_eps),
+    Template("ad_premium_stock", "Merger Math", "easy", ad_premium_stock),
+    Template("ad_pe_mix", "Merger Math", "medium", ad_pe_mix),
+    Template("ad_eps_change", "Merger Math", "hard", ad_eps_change),
+    Template("ad_max_premium", "Merger Math", "hard", ad_max_premium),
     Template("lbo_sources_uses", "LBO", "easy", lbo_sources_uses),
     Template("lbo_exit_moic", "LBO", "medium", lbo_exit_moic),
     Template("lbo_moic", "LBO", "hard", lbo_moic),
 ]
 BY_NAME = {t.name: t for t in TEMPLATES}
+# Drills: one kind of number problem on repeat (the student picks the drill in practice)
+DRILLS = {"accretion": ["pe_rule", "ad_premium_stock", "ad_pe_mix", "stock_deal_eps", "debt_deal_eps", "ad_eps_change", "ad_max_premium"]}
 
 
 def build(name: str, seed: int) -> tuple[Template, Problem]:
