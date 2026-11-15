@@ -36,6 +36,10 @@ async def start_filing_worker():
     # technical questions not yet rated on the club's difficulty scale get rated (levels)
     app.state.level_rating = asyncio.create_task(levels.on_start())
     app.state.greetings = asyncio.create_task(honorific.on_start())  # Mr./Ms. for recruiters saved without it
+    try:  # guide follow-ups an upload left on their own are tied to the question before them
+        reference.relink()
+    except Exception:  # noqa: BLE001 - practice still works; they are just asked on their own
+        pass
 app.add_middleware(
     CORSMiddleware,
     allow_origins=config.FRONTEND_ORIGINS,

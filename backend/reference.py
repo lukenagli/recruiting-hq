@@ -156,6 +156,47 @@ def follows_previous(question: str) -> bool:
     return bool(FOLLOW_UP.search(question or ""))
 
 
+# A question that changes the one before it ("Suppose that Company A now decides to use 100% Cash ... to do this deal"):
+# a "now" or "instead" together with a reference back. Narrower than follows_previous on purpose: plenty of
+# self-contained questions say "this deal", and they must not be tied to whatever came before them.
+CHANGES_PREVIOUS = re.compile(r"\b(now|instead)\b", re.I)
+REFERS_BACK = re.compile(r"\bCompany [A-Z]\b|\b(this|that|the same) (acquirer|buyer|target|seller|deal|transaction|scenario)\b", re.I)
+
+
+def changes_previous(question: str) -> bool:
+    q = question or ""
+    return bool(CHANGES_PREVIOUS.search(q) and (FOLLOW_UP.search(q) or REFERS_BACK.search(q)))
+
+
+def relink(uid: int | None = None) -> int:
+    """Tie each guide question that changes the one before it to that question (same chain, next step), so practice
+    asks it right after its setup and never on its own. A follow-up the upload left as a question of its own (a page
+    break between the two, say) is caught here. Returns how many were tied."""
+    ensure_guides()
+    tied = 0
+    with connect() as conn:
+        where, params = ("WHERE user_id = ?", (uid,)) if uid is not None else ("", ())
+        rows = conn.execute(f"SELECT id, user_id, source, chain, step, question FROM guide_questions {where} ORDER BY user_id, source, id",
+                            params).fetchall()
+        prev, new = None, {}  # new: id -> (chain, step) after relinking
+        for r in rows:
+            same_guide = prev is not None and (prev["user_id"], prev["source"]) == (r["user_id"], r["source"])
+            chain, step = r["chain"], r["step"]
+            if same_guide:
+                p_chain, p_step = new[prev["id"]]
+                if r["step"] > 1 and r["chain"] == prev["chain"]:  # already the next step of the question before it
+                    chain, step = p_chain, p_step + 1
+                elif r["step"] == 1 and p_step >= 1 and changes_previous(r["question"]):
+                    chain, step = p_chain, p_step + 1
+                    tied += 1
+            new[r["id"]] = (chain, step)
+            prev = r
+        old = {r["id"]: (r["chain"], r["step"]) for r in rows}
+        conn.executemany("UPDATE guide_questions SET chain = ?, step = ? WHERE id = ?",
+                         [(c, s, i) for i, (c, s) in new.items() if (c, s) != old[i]])
+    return tied
+
+
 def asks(question: str) -> bool:
     """True when the text asks for something, rather than only setting up a scenario."""
     return bool(ASKS.search(question or ""))
@@ -269,6 +310,7 @@ async def add_guide(uid: int, filename: str, data: bytes, name: str = "", chosen
         conn.executemany(
             "INSERT INTO guide_questions (user_id, source, location, category, question, answer, chain, step) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
             [(uid, name, q["location"], q["category"], q["question"], q["answer"], q["chain"], q["step"]) for q in questions])
+    relink(uid)
     return {"ok": True, "source": name, "passages": len(passages), "questions": len(questions)}
 
 
