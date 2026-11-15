@@ -504,7 +504,7 @@ main { padding-bottom: 90px; }
 .pq-meta span { font-size: 12px; background: var(--gray-soft); color: var(--muted); border-radius: 99px; padding: 3px 10px; }
 .pq-meta .pq-topic { background: var(--blue-soft); color: var(--blue); font-weight: 600; }
 .pq-tally { font-size: 13px; color: var(--muted); }
-.pq-question { font-size: 19px; font-weight: 600; margin: 14px 0 16px; line-height: 1.4; }
+.pq-question { font-size: 19px; font-weight: 600; margin: 14px 0 16px; line-height: 1.4; white-space: pre-line; }
 .pq-answer { width: 100%; font: inherit; border: 1.5px solid var(--line); border-radius: 12px; padding: 12px; resize: vertical; }
 .pq-answer:focus { outline: none; border-color: var(--blue); }
 .pq-actions { display: flex; flex-wrap: wrap; gap: 8px 0; margin-top: 12px; }
@@ -1799,3 +1799,6 @@ details.deal-docs.fold[open] > summary { margin-bottom: 10px; }
 .chips-label { font-size: 12.5px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; margin-right: 2px; }
 /* The accretion / dilution answer: accretive or dilutive, then the figures */
 .af-input select { flex: 1; border: 0; outline: none; font: inherit; background: transparent; color: var(--ink); padding: 8px 6px; min-width: 0; }
+
+/* Questions put back together from broken-up cells keep their line breaks */
+.questions .qtext { white-space: pre-line; }

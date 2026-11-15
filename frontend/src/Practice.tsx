@@ -14,7 +14,7 @@ const DIFFICULTIES = [
   ['easy', 'Easy'],
   ['medium', 'Medium'],
   ['hard', 'Hard'],
-  ['adaptive', 'Adaptive (harder where you are strong, more practice where you are weak)'],
+  ['adaptive', 'Adaptive'],
 ]
 const LEVELS = ['easy', 'medium', 'hard']
 /** "easy,hard" -> ['easy', 'hard']; adaptive (or anything else) -> [] */

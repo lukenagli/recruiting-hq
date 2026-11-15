@@ -9,6 +9,12 @@ the interviewer asked, so each entry with more than a plain question goes once t
 - skip: the entry isn't a question at all (notes about the interview with nothing to ask).
 The split is stored by question id (question_clean), so it happens once; new entries are split when the app starts.
 Until an entry is split, a plain rule cuts at an explicit "Answer:" or "Expected answer".
+
+Some multi-line cells were also broken into one row per line in the sheet itself ("1. Company A has options and
+convertible bonds", then "a. Strike price of bonds < market price", "- Bond conv rate = par value / strike price"...,
+with the cell's quote marks left on the first and last line). A row that can't stand on its own (a lettered part, an
+"=>" line, a bullet that only gives data) is folded back into the question just before it from the same sheet and
+bank, and isn't asked by itself (fragments()).
 """
 import asyncio
 import logging
@@ -80,10 +86,86 @@ def ensure() -> None:
 
 
 def splits() -> dict[int, dict]:
-    """Every stored split: {question id: {question, revealed, skip}}."""
+    """Every stored split, with the broken-up multi-line questions put back together: {question id: {question,
+    revealed, skip}}."""
     ensure()
     with connect(read_only=True) as conn:
-        return {r["question_id"]: dict(r) for r in conn.execute("SELECT * FROM question_clean")}
+        done = {r["question_id"]: dict(r) for r in conn.execute("SELECT * FROM question_clean")}
+    for qid, f in fragments().items():
+        if f["skip"]:
+            done[qid] = {"question": "", "revealed": "", "skip": 1}
+        elif qid in done:
+            done[qid] = {**done[qid], "question": "\n".join([done[qid]["question"], *f["more"]])}
+        else:
+            done[qid] = {"question": "\n".join([f["head"], *f["more"]]), "revealed": "", "skip": 0}
+    return done
+
+
+# A row that only continues the question above it: a lettered part ("a. ...", "(b) ..."), an "=>" line, or a bullet
+# that gives data rather than asking something ("- EBITDA = $200M", "- Luxury watch: high growth").
+PART = re.compile(r"^\(?[a-h][.)]\s|^(=>|->|→)", re.I)
+BULLET = re.compile(r"^[-•–*\ufffd]\s*")
+ASKS = re.compile(r"\?|\b(why|what|how|which|when|where|who|walk|name|explain|describe|tell|talk|give|list|compare|define|"
+                  r"calculate|pitch)\b", re.I)
+_FRAGMENTS: dict = {"key": None, "out": {}}
+
+
+def _unquote(text: str) -> str:
+    """Drop the stray quote mark a broken-up cell left at its start or end."""
+    text = text.strip()
+    if text.count('"') % 2:
+        text = text[1:] if text.startswith('"') else text[:-1] if text.endswith('"') else text
+    return text.strip()
+
+
+NOTE = re.compile(r"\bQ\s?&\s?A\b|\bQnAs?\b|\bmin(ute)?s?\b|\btold me\b|\btelling me\b|\basked about\b|\boffered\b|supportive|"
+                  r"\bfollow.?ups?\b|\bchat\b|\breview\b", re.I)
+DATA = re.compile(r"\d|=|:|/")
+
+
+def _continues(text: str) -> str:
+    """"add" for a line that belongs in the question above (a lettered part, an "=>" line, a bullet giving data),
+    "drop" for a bullet that is a note about the interview or not a question, "" for a row that stands on its own."""
+    if PART.match(text):
+        return "add"
+    if BULLET.match(text) or text.startswith("*"):
+        body = BULLET.sub("", text).strip("* ")
+        if ASKS.search(body):
+            return ""
+        return "add" if DATA.search(body) and not NOTE.search(body) else "drop"
+    return ""
+
+
+def fragments() -> dict[int, dict]:
+    """{head id: {skip: False, head, more: [lines]}, fragment id: {skip: True}} for the bank's broken-up questions.
+    Worked out once per set of questions (the bank only changes when it is re-imported)."""
+    init_db()
+    with connect(read_only=True) as conn:
+        key = tuple(conn.execute("SELECT COUNT(*), COALESCE(MAX(id), 0) FROM questions").fetchone())
+        if _FRAGMENTS["key"] == key:
+            return _FRAGMENTS["out"]
+        rows = conn.execute("SELECT id, source, bank, question FROM questions ORDER BY id").fetchall()
+    out: dict[int, dict] = {}
+    head = None  # the last row that stands on its own, in this run of consecutive rows from one sheet and bank
+    prev = None
+    for r in rows:
+        text = _unquote(r["question"] or "")
+        same_run = prev is not None and r["id"] == prev["id"] + 1 and r["source"] == prev["source"] and r["bank"] == prev["bank"]
+        if not same_run:
+            head = None
+        kind = _continues(text) if head is not None and text else ""
+        if kind:
+            if kind == "add":
+                entry = out.setdefault(head["id"], {"skip": False, "head": _unquote(head["question"] or ""), "more": []})
+                entry["more"].append(text)
+            out[r["id"]] = {"skip": True}
+        else:
+            head = r
+            if text != (r["question"] or "").strip():  # a stray quote mark only
+                out.setdefault(r["id"], {"skip": False, "head": text, "more": []})
+        prev = r
+    _FRAGMENTS.update(key=key, out=out)
+    return out
 
 
 def apply(qid: int, question: str, notes: str, done: dict[int, dict]) -> tuple[str, str, bool]:
