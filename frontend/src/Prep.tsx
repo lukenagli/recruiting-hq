@@ -28,21 +28,44 @@ function go(bank: string, round: string, who: string) {
   window.location.hash = `#/prep?${q}`
 }
 
+const AREA_LABEL: Record<string, string> = { 'Enterprise & Equity Value': 'EV & Equity Value' }
+
 function Results({ bank, round, who }: { bank: string; round: string; who: string }) {
-  const { data, error } = useApi<{ total: number; questions: Question[] }>('/api/prep/questions', { bank, round })
+  const [area, setArea] = useState('') // one type of technical (Accounting, DCF, LBO...), filtered on the server
+  const [areas, setAreas] = useState<{ area: string; n: number }[]>([]) // kept while a filtered list loads
+  const { data, error } = useApi<{ total: number; questions: Question[]; areas: { area: string; n: number }[] }>(
+    '/api/prep/questions', { bank, round, ...(area ? { area } : {}) })
   const [type, setType] = useState('All')
   const [open, setOpen] = useState<number | null>(null)
-  if (!data) return <Loading error={error} />
+  if (data && !area && data.areas.length && data.areas !== areas) setAreas(data.areas)
+  const pickArea = (a: string) => {
+    setArea(a)
+    if (a) setType('All')
+  }
+  const areaChips = areas.length > 1 && (
+    <div className="chips areas">
+      <span className="chips-label">Technicals</span>
+      <button className={`chip ${area === '' ? 'on' : ''}`} onClick={() => pickArea('')}>
+        All types
+      </button>
+      {areas.map((a) => (
+        <button key={a.area} className={`chip ${area === a.area ? 'on' : ''}`} onClick={() => pickArea(area === a.area ? '' : a.area)}>
+          {AREA_LABEL[a.area] ?? a.area} <em>{a.n}</em>
+        </button>
+      ))}
+    </div>
+  )
+  if (!data) return <>{areaChips}<Loading error={error} /></>
 
   const lastName = who.split(' ').slice(-1)[0]?.toLowerCase() ?? ''
   const fromWho = who ? data.questions.filter((q) => q.interviewer.toLowerCase().includes(lastName)) : []
-  const types = ['All', ...Array.from(new Set(data.questions.map((q) => q.qtype)))]
+  const types = area ? [] : ['All', ...Array.from(new Set(data.questions.map((q) => q.qtype)))]
   const shown = data.questions.filter((q) => type === 'All' || q.qtype === type)
 
   return (
     <section>
       <h2>
-        {data.total.toLocaleString()} questions on file
+        {data.total.toLocaleString()} {area ? `${AREA_LABEL[area] ?? area} questions` : 'questions'} on file
         {data.total > data.questions.length && <small> · showing the newest {data.questions.length}</small>}
       </h2>
       {who && (
@@ -53,6 +76,7 @@ function Results({ bank, round, who }: { bank: string; round: string; who: strin
         </p>
       )}
       {data.total === 0 && <p className="muted">Nothing logged for this combination yet. Try "Any round" or another bank.</p>}
+      {areaChips}
       <div className="chips">
         {types.length > 2 &&
           types.map((t) => (
@@ -71,7 +95,7 @@ function Results({ bank, round, who }: { bank: string; round: string; who: strin
                 <span className="qtext">
                   {q.question}
                   <small>
-                    {[q.bank !== 'Unknown' && bank === 'Any' ? q.bank : '', q.grp, q.interviewer, q.round !== 'Unknown' && round === 'Any' ? q.round : '', SOURCE_LABEL[q.source]]
+                    {[q.area ? AREA_LABEL[q.area] ?? q.area : '', q.bank !== 'Unknown' && bank === 'Any' ? q.bank : '', q.grp, q.interviewer, q.round !== 'Unknown' && round === 'Any' ? q.round : '', SOURCE_LABEL[q.source]]
                       .filter(Boolean)
                       .join(' · ')}
                     {q.answer_notes && (open === q.id ? ' · hide notes' : ' · show notes')}

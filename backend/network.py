@@ -473,8 +473,11 @@ def prep_options(uid: int) -> dict:
     return {"rounds": rounds, "counts": counts, "people": people, "domains": bank_info.DOMAINS}
 
 
-def prep_questions(bank: str, round_: str, limit: int = 400) -> dict:
-    """Questions for one bank and round. Bank "Any" or round "Any" drops that filter."""
+def prep_questions(bank: str, round_: str, area: str = "", limit: int = 400) -> dict:
+    """Questions for one bank and round. Bank "Any" or round "Any" drops that filter. Each technical question carries
+    its area (Accounting, DCF, LBO...) the way practice files it; `area` keeps only the technical questions in it."""
+    from . import practice, question_clean
+
     init_db()
     where, params = [], []
     if bank and bank != "Any":
@@ -489,17 +492,21 @@ def prep_questions(bank: str, round_: str, limit: int = 400) -> dict:
             conn,
             f"""SELECT id, source, year, qtype, bank, office, grp, round, interviewer, topic, question, answer_notes
                 FROM questions {clause}
-                ORDER BY source LIKE 'live%' DESC, year DESC, id LIMIT ?""",
-            (*params, limit),
+                ORDER BY source LIKE 'live%' DESC, year DESC, id""",
+            tuple(params),
         )
-        total = conn.execute(f"SELECT COUNT(*) FROM questions {clause}", params).fetchone()[0]
-    # the answer some students typed into the question goes with the notes here too, as it does in practice
-    from . import question_clean
-
+    technical = set(practice.CATEGORIES["Technical"]) - {"Brain Teaser"}
     done = question_clean.splits()
-    out = []
+    out, areas = [], {}
     for r in rows:
+        # the answer some students typed into the question goes with the notes here too, as it does in practice
         r["question"], r["answer_notes"], skip = question_clean.apply(r["id"], r["question"] or "", r["answer_notes"] or "", done)
-        if not skip:
+        if skip:
+            continue
+        r["area"] = practice.topic_of(r["question"], r["topic"] or "") if r["qtype"] in technical else ""
+        if r["area"]:
+            areas[r["area"]] = areas.get(r["area"], 0) + 1
+        if not area or r["area"] == area:
             out.append(r)
-    return {"total": total, "questions": out}
+    return {"total": len(out), "questions": out[:limit],
+            "areas": [{"area": a, "n": areas[a]} for a in practice.TOPICS if areas.get(a)]}

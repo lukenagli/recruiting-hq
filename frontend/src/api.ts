@@ -219,6 +219,7 @@ export type Question = {
   round: string
   interviewer: string
   topic: string
+  area?: string // a technical question's type (Accounting, DCF, LBO...), as practice files it
   question: string
   answer_notes: string
 }

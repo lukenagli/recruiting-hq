@@ -209,10 +209,10 @@ def prep_options(user: dict = Depends(current_user)):
 
 
 @app.get("/api/prep/questions")
-def prep_questions(bank: str = "Any", round: str = "Any", user: dict = Depends(current_user)):
+def prep_questions(bank: str = "Any", round: str = "Any", area: str = "", user: dict = Depends(current_user)):
     if not schools.for_user(user["id"])["club"]:
-        return {"total": 0, "questions": []}
-    return network.prep_questions(bank, round)
+        return {"total": 0, "questions": [], "areas": []}
+    return network.prep_questions(bank, round, area.strip())
 
 
 @app.get("/api/prep/superday")
