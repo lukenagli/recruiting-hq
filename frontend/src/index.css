@@ -1618,7 +1618,8 @@ details.card.fold > .card, details.card.fold section.card { box-shadow: none; bo
 .pq-note { margin: -4px 0 10px; font-size: 13px; color: var(--muted); font-style: italic; }
 .af { display: grid; gap: 10px; margin-bottom: 10px; }
 .af-row { display: grid; grid-template-columns: 150px 1fr; gap: 12px; align-items: start; }
-.af-returns .af-row, .af-value .af-row { grid-template-columns: 1fr; }
+.af-returns .af-row, .af-value .af-row, .af-accretion .af-row { grid-template-columns: 1fr; }
+.af-accretion .af-parts { grid-template-columns: repeat(auto-fill, minmax(170px, 210px)); }
 .af-row-label { font-size: 14px; font-weight: 700; padding-top: 7px; }
 .af-parts { display: grid; gap: 8px; grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .af-parts.n1 { grid-template-columns: 1fr; }
