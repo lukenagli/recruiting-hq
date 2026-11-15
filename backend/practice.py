@@ -318,7 +318,7 @@ def next_question(uid: int, categories: list[str], topics: list[str], stage: str
                  if q["key"] not in seen_set and q["category"] in categories and (not guides or q["guide"] in guides)
                  and answer_library.asks(q["question"])  # older uploads kept some scenarios without their question
                  # a follow-up is only asked right after the question it builds on (see next_part), never on its own
-                 and not (q["step"] > 1 or (q["step"] == 0 and answer_library.follows_previous(q["question"])))
+                 and not (q["step"] > 1 or q["step"] < 0 or (q["step"] == 0 and answer_library.follows_previous(q["question"])))
                  and (not superday or (q["category"] == "Technical" and q["difficulty"] == "hard"))]
     pool = [q for q in pool if q["category"] != "Technical" or q["topic"] in topics]
     # restructuring and LevFin questions only for someone recruiting for them

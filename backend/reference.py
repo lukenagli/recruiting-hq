@@ -168,29 +168,56 @@ def changes_previous(question: str) -> bool:
     return bool(CHANGES_PREVIOUS.search(q) and (FOLLOW_UP.search(q) or REFERS_BACK.search(q)))
 
 
+NAMED = re.compile(r"\bCompany [A-Z]\b")
+LOOK_BACK = 8  # how far back in the guide a follow-up's setup can be
+
+
+def _setup_for(question: str, earlier: list[dict]) -> dict | None:
+    """The question a follow-up changes: the nearest earlier one in the guide that gives numbers and, when the follow-up
+    names companies ("Company A"), names one of them too. None when there's no such question nearby."""
+    names = set(NAMED.findall(question))
+    for e in reversed(earlier[-LOOK_BACK:]):
+        if re.search(r"\d", e["question"]) and (not names or names & set(NAMED.findall(e["question"]))):
+            return e
+    return None
+
+
 def relink(uid: int | None = None) -> int:
-    """Tie each guide question that changes the one before it to that question (same chain, next step), so practice
-    asks it right after its setup and never on its own. A follow-up the upload left as a question of its own (a page
-    break between the two, say) is caught here. Returns how many were tied."""
+    """Tie each guide question that changes an earlier one ("Suppose that Company A now decides to use 100% Cash ... to
+    do this deal") to the question it changes: the end of that question's chain, so practice asks it right after its
+    setup. The setup is the nearest earlier question that gives numbers and names the same company; the question just
+    before it is often something else (the upload may also have split the two at a page break). A follow-up with no
+    setup nearby is never asked on its own (step -1), and the parts after it go with it. Returns how many were tied."""
     ensure_guides()
     tied = 0
     with connect() as conn:
         where, params = ("WHERE user_id = ?", (uid,)) if uid is not None else ("", ())
-        rows = conn.execute(f"SELECT id, user_id, source, chain, step, question FROM guide_questions {where} ORDER BY user_id, source, id",
-                            params).fetchall()
-        prev, new = None, {}  # new: id -> (chain, step) after relinking
+        rows = [dict(r) for r in conn.execute(
+            f"SELECT id, user_id, source, chain, step, question FROM guide_questions {where} ORDER BY user_id, source, id", params)]
+        new: dict[int, tuple[int, int]] = {}  # id -> (chain, step) after relinking
+        guide, earlier, last_step, spare = None, [], {}, 0
         for r in rows:
-            same_guide = prev is not None and (prev["user_id"], prev["source"]) == (r["user_id"], r["source"])
+            if (r["user_id"], r["source"]) != guide:
+                guide, earlier, last_step = (r["user_id"], r["source"]), [], {}
+                spare = max((x["chain"] for x in rows if (x["user_id"], x["source"]) == guide), default=0)
+            prev = earlier[-1] if earlier else None
             chain, step = r["chain"], r["step"]
-            if same_guide:
-                p_chain, p_step = new[prev["id"]]
-                if r["step"] > 1 and r["chain"] == prev["chain"]:  # already the next step of the question before it
-                    chain, step = p_chain, p_step + 1
-                elif r["step"] == 1 and p_step >= 1 and changes_previous(r["question"]):
-                    chain, step = p_chain, p_step + 1
+            if changes_previous(r["question"]):
+                setup = _setup_for(r["question"], earlier)
+                if setup is not None and new[setup["id"]][1] >= 1:
+                    chain = new[setup["id"]][0]
+                    step = last_step.get(chain, new[setup["id"]][1]) + 1
                     tied += 1
+                elif r["step"] != -1:  # nothing to ask it after: never on its own (kept as it is once set)
+                    spare += 1
+                    chain, step = spare, -1
+            elif prev is not None and r["step"] > 1 and r["chain"] == prev["chain"]:  # the next part of the question before it
+                p_chain, p_step = new[prev["id"]]
+                chain, step = p_chain, (p_step + 1 if p_step >= 1 else -1)
             new[r["id"]] = (chain, step)
-            prev = r
+            if step >= 1:
+                last_step[chain] = max(last_step.get(chain, 0), step)
+            earlier.append(r)
         old = {r["id"]: (r["chain"], r["step"]) for r in rows}
         conn.executemany("UPDATE guide_questions SET chain = ?, step = ? WHERE id = ?",
                          [(c, s, i) for i, (c, s) in new.items() if (c, s) != old[i]])
