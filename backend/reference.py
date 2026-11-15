@@ -208,7 +208,9 @@ def relink(uid: int | None = None) -> int:
                     chain = new[setup["id"]][0]
                     step = last_step.get(chain, new[setup["id"]][1]) + 1
                     tied += 1
-                elif r["step"] != -1:  # nothing to ask it after: never on its own (kept as it is once set)
+                elif r["step"] >= 2 or r["step"] < 0:  # already tied (at upload, or by find_setups), or already set aside
+                    pass
+                else:  # nothing to ask it after: never on its own, until find_setups places it
                     spare += 1
                     chain, step = spare, -1
             elif prev is not None and r["step"] > 1 and r["chain"] == prev["chain"]:  # the next part of the question before it
@@ -222,6 +224,57 @@ def relink(uid: int | None = None) -> int:
         conn.executemany("UPDATE guide_questions SET chain = ?, step = ? WHERE id = ?",
                          [(c, s, i) for i, (c, s) in new.items() if (c, s) != old[i]])
     return tied
+
+
+ORPHAN, CHECKED = -1, -2  # a follow-up with no setup found yet; one the model found no setup for either
+
+
+async def find_setups(chosen, uid: int) -> int:
+    """For each follow-up still without its setup (step -1), ask a small model which of the questions before it in the
+    guide it builds on, and make it the next part of that question. One it can't place is set aside for good (step -2),
+    so it is asked about once. Returns how many were placed."""
+    from . import guide_clarify
+
+    ensure_guides()
+    with connect(read_only=True) as conn:
+        rows = [dict(r) for r in conn.execute(
+            "SELECT id, source, chain, step, question FROM guide_questions WHERE user_id = ? ORDER BY source, id", (uid,))]
+    placed = 0
+    for r in [x for x in rows if x["step"] == ORPHAN]:
+        earlier = [x for x in rows if x["source"] == r["source"] and x["id"] < r["id"] and x["step"] >= 1][-LOOK_BACK:]
+        n = await guide_clarify.find_setup(chosen, r["question"], [x["question"] for x in earlier]) if earlier else 0
+        with connect() as conn:
+            if n:
+                setup = earlier[n - 1]
+                last = conn.execute("SELECT MAX(step) FROM guide_questions WHERE user_id = ? AND source = ? AND chain = ?",
+                                    (uid, r["source"], setup["chain"])).fetchone()[0] or setup["step"]
+                conn.execute("UPDATE guide_questions SET chain = ?, step = ? WHERE id = ?", (setup["chain"], last + 1, r["id"]))
+                placed += 1
+            else:
+                conn.execute("UPDATE guide_questions SET step = ? WHERE id = ?", (CHECKED, r["id"]))
+    return placed
+
+
+async def on_start() -> None:
+    """At start-up: tie guide follow-ups to their setups (the site owner's guides, on the owner's AI key)."""
+    import logging
+
+    from . import llm
+    from .db import owner_id
+
+    log = logging.getLogger(__name__)
+    try:
+        relink()
+        oid = owner_id()
+        if oid is None:
+            return
+        with connect(read_only=True) as conn:
+            if not conn.execute("SELECT 1 FROM guide_questions WHERE user_id = ? AND step = ?", (oid, ORPHAN)).fetchone():
+                return
+            owner = dict(conn.execute("SELECT * FROM users WHERE id = ?", (oid,)).fetchone())
+        log.info("guide follow-ups: placed %s after their setups", await find_setups(llm.model_for(owner), oid))
+    except Exception:  # noqa: BLE001 - follow-ups without a setup just stay out of practice
+        log.exception("tying guide follow-ups to their setups failed")
 
 
 def asks(question: str) -> bool:
@@ -338,6 +391,8 @@ async def add_guide(uid: int, filename: str, data: bytes, name: str = "", chosen
             "INSERT INTO guide_questions (user_id, source, location, category, question, answer, chain, step) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
             [(uid, name, q["location"], q["category"], q["question"], q["answer"], q["chain"], q["step"]) for q in questions])
     relink(uid)
+    if chosen is not None:
+        await find_setups(chosen, uid)
     return {"ok": True, "source": name, "passages": len(passages), "questions": len(questions)}
 
 

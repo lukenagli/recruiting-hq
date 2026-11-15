@@ -79,3 +79,30 @@ async def clarify(chosen: Chosen | None, questions: list[dict]) -> list[dict]:
 
     await asyncio.gather(*(run(ctx, b) for ctx, b in jobs))
     return [q for q in questions if q["question"]]
+
+
+# ---- A follow-up left without its setup: which earlier question does it build on? ----
+SETUP_INSTRUCTIONS = """\
+A study guide asks a follow-up question that builds on an earlier question ("Suppose that Company A now decides to \
+use 100% Cash ... to do this deal"). You get the questions that came before it in the guide, numbered, and the \
+follow-up. Return the number of the question whose scenario the follow-up changes or continues: the one that sets up \
+the same companies, deal or numbers. Return 0 if none of them clearly does. Never guess between two candidates.
+"""
+
+
+class Setup(BaseModel):
+    n: int = Field(description="The number of the question the follow-up builds on, or 0.")
+
+
+setup_agent = Agent(output_type=Setup, instructions=SETUP_INSTRUCTIONS, name="guide_setup_finder")
+
+
+async def find_setup(chosen: Chosen, follow_up: str, earlier: list[str]) -> int:
+    """1-based index into `earlier` of the question the follow-up builds on, or 0 (also when the call fails)."""
+    listed = "\n".join(f"{i}. {' '.join(q.split())[:600]}" for i, q in enumerate(earlier, 1))
+    try:
+        result = await setup_agent.run(f"Earlier questions:\n{listed}\n\nFollow-up:\n{follow_up}", model=chosen.model,
+                                       model_settings=chosen.settings, usage_limits=LIMITS)
+    except Exception:  # noqa: BLE001 - it stays out of practice, which is safe
+        return 0
+    return result.output.n if 1 <= result.output.n <= len(earlier) else 0
