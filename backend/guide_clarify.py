@@ -85,8 +85,9 @@ async def clarify(chosen: Chosen | None, questions: list[dict]) -> list[dict]:
 SETUP_INSTRUCTIONS = """\
 A study guide asks a follow-up question that builds on an earlier question ("Suppose that Company A now decides to \
 use 100% Cash ... to do this deal"). You get the questions that came before it in the guide, numbered, and the \
-follow-up. Return the number of the question whose scenario the follow-up changes or continues: the one that sets up \
-the same companies, deal or numbers. Return 0 if none of them clearly does. Never guess between two candidates.
+follow-up. Return the number of the question that itself states the scenario the follow-up changes: the same \
+companies, deal and the numbers the follow-up needs (for example both companies' P/E ratios). A question on the same \
+topic that doesn't state that scenario does not count. Return 0 if none of them states it. Never guess.
 """
 
 
@@ -106,3 +107,32 @@ async def find_setup(chosen: Chosen, follow_up: str, earlier: list[str]) -> int:
     except Exception:  # noqa: BLE001 - it stays out of practice, which is safe
         return 0
     return result.output.n if 1 <= result.output.n <= len(earlier) else 0
+
+
+REWRITE_INSTRUCTIONS = """\
+A study guide asks a follow-up question that refers to a scenario set up earlier ("Suppose that Company A now decides \
+to use 100% Cash ... to do this deal"). You get the guide's text just before the follow-up and the follow-up. Rewrite \
+the follow-up so a student can answer it on its own: start with the scenario facts it depends on (the companies, \
+prices, multiples, amounts) exactly as the guide states them, then the follow-up's own question in the guide's words. \
+Add nothing that isn't in the text. Leave out the earlier question's answer. If the text doesn't state the scenario, \
+return an empty string.
+"""
+
+
+class Rewritten(BaseModel):
+    question: str = Field(description="The follow-up with its scenario stated first, or an empty string.")
+
+
+rewrite_agent = Agent(output_type=Rewritten, instructions=REWRITE_INSTRUCTIONS, name="guide_followup_rewriter")
+
+
+async def with_setup(chosen: Chosen, follow_up: str, text_before: str) -> str:
+    """The follow-up with the scenario it refers to written in from the guide's text, or "" (also when the call fails)."""
+    try:
+        result = await rewrite_agent.run(f"Guide text before the follow-up:\n{text_before[-3500:]}\n\nFollow-up:\n{follow_up}",
+                                         model=chosen.model, model_settings=chosen.settings, usage_limits=LIMITS)
+    except Exception:  # noqa: BLE001 - it stays out of practice, which is safe
+        return ""
+    out = " ".join(result.output.question.split())
+    return out if len(out) > len(follow_up) + 20 else ""  # it must have gained a setup
+

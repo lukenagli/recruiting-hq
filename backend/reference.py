@@ -134,7 +134,8 @@ CREATE TABLE IF NOT EXISTS guide_questions (
 CREATE INDEX IF NOT EXISTS idx_guide_q_user ON guide_questions (user_id, source);
 """
 # A follow-up builds on the question before it: practice asks it only right after that one (same chain, next step).
-GUIDE_COLUMNS = {"chain": "INTEGER DEFAULT 0", "step": "INTEGER DEFAULT 0"}  # step 0: loaded before chains existed
+GUIDE_COLUMNS = {"chain": "INTEGER DEFAULT 0", "step": "INTEGER DEFAULT 0",  # step 0: loaded before chains existed
+                 "fixed": "INTEGER DEFAULT 0"}  # 1: a follow-up rewritten with its setup from the guide's text (stands alone)
 MAX_GUIDE_PAGES = 800
 QUESTION_START = re.compile(r"(?:^|\n)\s*(\d{1,3})\.\s+(?=[A-Z“\"(])")
 ASKING = re.compile(r"^(walk|how|what|why|when|where|which|who|would|could|should|can|do|does|is|are|if|explain|tell|"
@@ -193,7 +194,7 @@ def relink(uid: int | None = None) -> int:
     with connect() as conn:
         where, params = ("WHERE user_id = ?", (uid,)) if uid is not None else ("", ())
         rows = [dict(r) for r in conn.execute(
-            f"SELECT id, user_id, source, chain, step, question FROM guide_questions {where} ORDER BY user_id, source, id", params)]
+            f"SELECT id, user_id, source, chain, step, question, fixed FROM guide_questions {where} ORDER BY user_id, source, id", params)]
         new: dict[int, tuple[int, int]] = {}  # id -> (chain, step) after relinking
         guide, earlier, last_step, spare = None, [], {}, 0
         for r in rows:
@@ -202,13 +203,17 @@ def relink(uid: int | None = None) -> int:
                 spare = max((x["chain"] for x in rows if (x["user_id"], x["source"]) == guide), default=0)
             prev = earlier[-1] if earlier else None
             chain, step = r["chain"], r["step"]
-            if changes_previous(r["question"]):
+            if r["fixed"]:  # rewritten with its setup: it stands on its own
+                pass
+            elif changes_previous(r["question"]):
                 setup = _setup_for(r["question"], earlier)
                 if setup is not None and new[setup["id"]][1] >= 1:
                     chain = new[setup["id"]][0]
                     step = last_step.get(chain, new[setup["id"]][1]) + 1
                     tied += 1
-                elif r["step"] >= 2 or r["step"] < 0:  # already tied (at upload, or by find_setups), or already set aside
+                elif r["step"] < 0 or (r["step"] >= 2 and any(  # set aside, or tied to a question that states numbers
+                        new[e["id"]][0] == r["chain"] and 1 <= new[e["id"]][1] < r["step"] and re.search(r"\d", e["question"])
+                        for e in earlier)):
                     pass
                 else:  # nothing to ask it after: never on its own, until find_setups places it
                     spare += 1
@@ -238,11 +243,15 @@ async def find_setups(chosen, uid: int) -> int:
     ensure_guides()
     with connect(read_only=True) as conn:
         rows = [dict(r) for r in conn.execute(
-            "SELECT id, source, chain, step, question FROM guide_questions WHERE user_id = ? ORDER BY source, id", (uid,))]
+            "SELECT id, source, location, chain, step, question FROM guide_questions WHERE user_id = ? ORDER BY source, id", (uid,))]
     placed = 0
     for r in [x for x in rows if x["step"] == ORPHAN]:
-        earlier = [x for x in rows if x["source"] == r["source"] and x["id"] < r["id"] and x["step"] >= 1][-LOOK_BACK:]
+        # 1. an earlier question in the guide that states the scenario (it must give numbers)
+        earlier = [x for x in rows if x["source"] == r["source"] and x["id"] < r["id"] and x["step"] >= 1
+                   and re.search(r"\d", x["question"])][-LOOK_BACK:]
         n = await guide_clarify.find_setup(chosen, r["question"], [x["question"] for x in earlier]) if earlier else 0
+        # 2. otherwise the scenario written in from the guide's own text just before the follow-up
+        rewritten = "" if n else await guide_clarify.with_setup(chosen, r["question"], _text_before(uid, r))
         with connect() as conn:
             if n:
                 setup = earlier[n - 1]
@@ -250,9 +259,30 @@ async def find_setups(chosen, uid: int) -> int:
                                     (uid, r["source"], setup["chain"])).fetchone()[0] or setup["step"]
                 conn.execute("UPDATE guide_questions SET chain = ?, step = ? WHERE id = ?", (setup["chain"], last + 1, r["id"]))
                 placed += 1
-            else:
+            elif rewritten:
+                spare = conn.execute("SELECT COALESCE(MAX(chain), 0) + 1 FROM guide_questions WHERE user_id = ? AND source = ?",
+                                     (uid, r["source"])).fetchone()[0]
+                conn.execute("UPDATE guide_questions SET question = ?, chain = ?, step = 1, fixed = 1 WHERE id = ?", (rewritten, spare, r["id"]))
+                placed += 1
+            else:  # 3. nowhere to be found: it stays out of practice
                 conn.execute("UPDATE guide_questions SET step = ? WHERE id = ?", (CHECKED, r["id"]))
     return placed
+
+
+def _text_before(uid: int, row: dict) -> str:
+    """The guide's text up to where the follow-up starts: its page and the two before it, from the answer library."""
+    m = re.search(r"(\d+)", row.get("location") or "")
+    page = int(m.group(1)) if m else 0
+    texts = []
+    with connect(read_only=True) as conn:
+        for r in conn.execute("SELECT text, location FROM reference WHERE owner = ? AND source = ? ORDER BY rowid", (str(uid), row["source"])):
+            n = re.search(r"\d+", r["location"] or "")
+            if n and page - 2 <= int(n.group()) <= page:
+                texts.append(r["text"])
+    text = " ".join(texts)
+    start = " ".join(row["question"].split())[:40].lower()
+    at = text.lower().find(start[:30]) if start else -1
+    return text[:at] if at > 0 else text
 
 
 async def on_start() -> None:
