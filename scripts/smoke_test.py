@@ -103,12 +103,14 @@ def main() -> int:
                             json={"categories": ["Technical", "Behavioral"], "stage": stage, "difficulty": level, "bank": "Any", "guides": []})
             if r.status_code != 200:
                 problems.append(f"{who} POST /api/practice/next ({stage or 'any round'}, {level}): {r.status_code} {r.text[:200]}")
-        for level in ("adaptive", "hard"):  # the accretion / dilution drill: only its number problems
-            opened += 1
-            r = client.post("/api/practice/next", headers={"Authorization": f"Bearer {token}"},
-                            json={"categories": ["Technical"], "difficulty": level, "bank": "Any", "guides": [], "drill": "accretion"})
-            if r.status_code != 200 or not (r.json().get("question") or {}).get("key", "").startswith(("tpl:ad_", "tpl:pe_rule", "tpl:stock_deal", "tpl:debt_deal")):
-                problems.append(f"{who} POST /api/practice/next (accretion drill, {level}): {r.status_code} {r.text[:200]}")
+        for level in ("easy", "medium", "hard"):  # every technical area has questions at every level
+            for area in ("Accretion / Dilution", "Merger Math"):
+                opened += 1
+                r = client.post("/api/practice/next", headers={"Authorization": f"Bearer {token}"},
+                                json={"categories": ["Technical"], "topics": [area], "difficulty": level, "bank": "Any", "guides": []})
+                q = (r.json() or {}).get("question") if r.status_code == 200 else None
+                if not q or q.get("topic") != area:
+                    problems.append(f"{who} POST /api/practice/next ({area}, {level}): {r.status_code} {r.text[:200]}")
     # The story bank by hand (no AI): add a story, see it in the bank, take it out again
     uid, token = users["student"]
     auth = {"Authorization": f"Bearer {token}"}

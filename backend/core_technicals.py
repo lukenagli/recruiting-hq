@@ -7,6 +7,7 @@ Each entry: (topic, difficulty, question, model answer). Topics match practice.T
 
 ACC, EV, VAL, DCF, MA, DIL, LBO = ("Accounting", "Enterprise & Equity Value", "Valuation", "DCF", "Merger Math",
                                    "Diluted Share Count", "LBO")
+AD = "Accretion / Dilution"
 
 QUESTIONS = [
     # ---------------- Accounting ----------------
@@ -157,13 +158,13 @@ QUESTIONS = [
      "combine the income statements, adjusting for lost interest on cash used, new interest on debt, synergies and new "
      "D&A from asset write-ups, and divide combined net income by the new share count. Compare that pro forma EPS with the "
      "buyer's standalone EPS to see if the deal is accretive or dilutive."),
-    (MA, "easy", "What does accretive and dilutive mean?",
+    (AD, "easy", "What does accretive and dilutive mean?",
      "A deal is accretive if the buyer's pro forma earnings per share are higher than its standalone EPS, and dilutive if "
      "they are lower. It measures the deal's near-term effect on per-share earnings, not whether it creates value."),
-    (MA, "medium", "How can you quickly tell if an all-stock deal is accretive or dilutive?",
+    (AD, "medium", "How can you quickly tell if an all-stock deal is accretive or dilutive?",
      "Compare price-to-earnings ratios. If the buyer's P/E is higher than the P/E it pays for the seller, it is accretive, "
      "because it uses expensive stock to buy cheaper earnings. If the buyer's P/E is lower, it is dilutive."),
-    (MA, "medium", "What is the cheapest way to fund an acquisition, and why?",
+    (AD, "medium", "What is the cheapest way to fund an acquisition, and why?",
      "Usually cash on hand, because the only cost is the interest it would have earned, which is low. Debt is next, since "
      "interest is tax deductible. Stock is usually the most expensive, because its cost is the buyer's earnings yield "
      "(E/P) and it gives up ownership."),
@@ -179,7 +180,7 @@ QUESTIONS = [
      "The buyer pays a purchase price above the fair value of the seller's identifiable net assets. After writing assets "
      "up to fair value and recording new intangibles (and the deferred tax liability those write-ups create), the "
      "remaining excess of the purchase price is goodwill."),
-    (MA, "hard", "Why might a deal be dilutive but still a good idea?",
+    (AD, "hard", "Why might a deal be dilutive but still a good idea?",
      "EPS impact is short term. A deal can create long-term value through growth, strategic position, synergies that take "
      "time to realize, or a better business mix, even if near-term EPS falls. Accretion also ignores the cost of risk and "
      "of the capital used."),

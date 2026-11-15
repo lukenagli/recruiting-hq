@@ -37,7 +37,7 @@ CATEGORIES = {  # what the user picks -> question types in the bank
     "Deal": ["Deal"],
     "Markets": ["Trend"],
 }
-TOPICS = ["Accounting", "Enterprise & Equity Value", "Valuation", "DCF", "Merger Math", "Diluted Share Count", "LBO", "Other"]
+TOPICS = ["Accounting", "Enterprise & Equity Value", "Valuation", "DCF", "Merger Math", "Accretion / Dilution", "Diluted Share Count", "LBO", "Other"]
 STAGES = ["Coffee Chat", "Round 1", "Round 2", "Superday"]
 # Restructuring is a category of its own: RX interviews ask about distress, capital structures and recoveries, and no
 # other group's interview does. These questions are left out unless the student is recruiting for restructuring.
@@ -89,8 +89,10 @@ SOURCE_LABEL = {"live_1y": "Asked this year", "live_2y": "Asked this year (2Ys)"
                 "ib_2025": "Asked in 2025", "technical": "Technical question bank", "tech_session": "Finance Club technicals session"}
 
 # Order matters: the first match wins ("accretive/dilutive" is merger math, not share count).
+AD_RULE = r"accret|\bdilutive\b|pro.?forma eps|eps (accretion|dilution)|break.?even (synerg|premium)|cheapest way to (fund|pay|finance)"
 _TOPIC_RULES = [
-    ("Merger Math", r"accret|merger|acqui|goodwill|synerg|purchase price alloc|m&a"),
+    ("Accretion / Dilution", AD_RULE),
+    ("Merger Math", r"merger|acqui|goodwill|synerg|purchase price alloc|m&a"),
     ("Diluted Share Count", r"dilut|treasury stock|\btsm\b|options|warrants|convertible"),
     ("LBO", r"\blbo\b|leveraged buyout|\birr\b|sponsor|private equity|\bpe firm"),
     ("DCF", r"\bdcf\b|discounted cash|terminal|wacc|free cash flow|discount rate|cost of (equity|capital|debt)|\bbeta\b|capm|unlevered"),
@@ -103,6 +105,8 @@ _TOPIC_BY_FIELD = {"DCF": "DCF", "Accounting": "Accounting", "M&A": "Merger Math
 
 
 def topic_of(question: str, field: str = "") -> str:
+    if field in ("M&A", "") and re.search(AD_RULE, question, re.I):  # accretion / dilution is an area of its own
+        return "Accretion / Dilution"
     if field in _TOPIC_BY_FIELD:
         return _TOPIC_BY_FIELD[field]
     q = question.lower()
@@ -274,26 +278,13 @@ def _fresh(uid: int, pool: list[dict]) -> list[dict]:
 
 
 def next_question(uid: int, categories: list[str], topics: list[str], stage: str, difficulty: str, bank: str,
-                  seen: list[str], like: dict | None = None, club: bool = True, guides: list[str] | None = None,
-                  drill: str = "") -> dict | None:
+                  seen: list[str], like: dict | None = None, club: bool = True, guides: list[str] | None = None) -> dict | None:
     """One question matching the filters, not already in `seen`. Without `club`, the school question bank is left out.
     Where questions come from (all of both by default): `bank` "Any" for every bank plus the standard questions and
     number problems, one bank's name for only its questions, or "" for no banks; `guides` the student's own uploaded
     guides to include ([] for all of them, None for none)."""
     init_db()
     rng = random.Random()
-    if drill in pb.DRILLS:  # one kind of number problem on repeat, at the levels picked (all of them when adaptive)
-        names = pb.DRILLS[drill]
-        if like and like.get("kind") == "template" and like["key"].split(":")[1] in names:
-            names = [like["key"].split(":")[1]]
-        else:
-            picked = {d for d in difficulty.split(",") if d in LEVELS}
-            names = [n for n in names if not picked or pb.BY_NAME[n].difficulty in picked] or names
-        for _ in range(12):  # never the same numbers twice in a row
-            q = _template_question(rng.choice(names), rng.randrange(1, 10**9))[0]
-            if q["key"] not in seen and (not like or q["question"] != like["question"]):
-                break
-        return q
     categories = [c for c in categories if c in CATEGORIES] or list(CATEGORIES)
     topics = [t for t in topics if t in TOPICS] or TOPICS
     seen_set = set(seen)
@@ -389,6 +380,8 @@ def next_question(uid: int, categories: list[str], topics: list[str], stage: str
     # user has their own guides, favour real questions.
     has_guides = any(q["kind"] == "guide" for q in banked)
     template_share = 0.3 if (bank and bank != "Any") else 0.25 if has_guides else 0.5
+    if topic == "Accretion / Dilution":
+        template_share = max(template_share, 0.7)
     use_template = tpls and (not banked or rng.random() < template_share or (like and like.get("kind") == "template"))
     if use_template:
         name = rng.choice(tpls).name
@@ -477,10 +470,20 @@ def _numbers(text: str) -> list[float]:
 
 def _numeric_check(answer: str, problem: pb.Problem) -> str | None:
     if not problem.numbers:
+        if problem.direction:  # accretive or dilutive, no figure asked
+            said = answer.lower()
+            other = "dilutive" if problem.direction == "accretive" else "accretive"
+            return "correct" if problem.direction in said and other not in said else "incorrect"
         return None
-    got = _numbers(answer)
-    hits = sum(any(abs(g - n) <= max(0.011, abs(n) * 0.01) for g in got) for n in problem.numbers)
-    return "correct" if hits == len(problem.numbers) else "partial" if hits else "incorrect"
+    got = [abs(g) for g in _numbers(answer)]  # "-3.4%" and "dilutive by 3.4%" are the same answer
+    hits = sum(any(abs(g - abs(n)) <= max(0.011, abs(n) * 0.01) for g in got) for n in problem.numbers)
+    verdict = "correct" if hits == len(problem.numbers) else "partial" if hits else "incorrect"
+    if problem.direction and verdict == "correct":
+        other = "dilutive" if problem.direction == "accretive" else "accretive"
+        said = answer.lower()
+        if problem.direction not in said or other in said:
+            verdict = "partial"
+    return verdict
 
 
 def _background(uid: int, q: dict) -> str:

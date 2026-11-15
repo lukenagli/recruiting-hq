@@ -7,7 +7,7 @@ import { useDictation } from './dictation'
 import { useApi, useSchool } from './ui'
 import VoiceInterview, { voiceSupported } from './VoiceInterview'
 
-export const TOPICS = ['Accounting', 'Enterprise & Equity Value', 'Valuation', 'DCF', 'Merger Math', 'Diluted Share Count', 'LBO', 'Other']
+export const TOPICS = ['Accounting', 'Enterprise & Equity Value', 'Valuation', 'DCF', 'Merger Math', 'Accretion / Dilution', 'Diluted Share Count', 'LBO', 'Other']
 const CATEGORY_LABEL: Record<string, string> = { Behavioral: 'Behavioral', Technical: 'Technical', Deal: 'Deal questions', Markets: 'Markets & trends' }
 const STAGES = ['Coffee Chat', 'Round 1', 'Round 2', 'Superday']
 const DIFFICULTIES = [
@@ -25,8 +25,7 @@ const VERDICT_LABEL: Record<Verdict, string> ={ correct: 'Correct', partial: 'Pa
 
 // Where questions come from: bank "Any" (every bank), one bank, or "" (no banks); guides [] (all the student's own
 // guides), some of them, or null (none). Every session starts from all of both; a change lasts for that session only.
-export type Setup = { categories: string[]; topics: string[]; stage: string; difficulty: string; bank: string; guides: string[] | null; drill?: string }
-const DRILLS: Record<string, string> = { accretion: 'Accretion / dilution math' }
+export type Setup = { categories: string[]; topics: string[]; stage: string; difficulty: string; bank: string; guides: string[] | null }
 export const DEFAULT_SETUP: Setup = { categories: ['Technical'], topics: [], stage: '', difficulty: 'adaptive', bank: 'Any', guides: [] }
 const STORE = 'rhq-practice-setup'
 
@@ -35,6 +34,7 @@ function loadSetup(): Setup {
     const saved = JSON.parse(localStorage.getItem(STORE) ?? '{}')
     delete saved.bank // the sources always start from everything
     delete saved.guides
+    delete saved.drill // the old accretion / dilution drill is now a technical area
     return { ...DEFAULT_SETUP, ...saved }
   } catch {
     return DEFAULT_SETUP
@@ -75,9 +75,8 @@ function SetupBar({ setup, setSetup, banks, guides }: { setup: Setup; setSetup: 
   const toggle = (list: string[], item: string, on: boolean) => (on ? [...new Set([...list, item])] : list.filter((x) => x !== item))
   const technical = setup.categories.includes('Technical')
   const allTopics = setup.topics.length === 0
-  const studySummary = setup.drill && DRILLS[setup.drill]
-    ? `${DRILLS[setup.drill]} drill`
-    : setup.categories.length === 0
+  const studySummary =
+    setup.categories.length === 0
       ? 'Pick at least one'
       : setup.categories
           .map((c) => (c === 'Technical' && !allTopics ? `Technical (${setup.topics.length})` : CATEGORY_LABEL[c]))
@@ -88,10 +87,10 @@ function SetupBar({ setup, setSetup, banks, guides }: { setup: Setup; setSetup: 
       <Dropdown label="Study" summary={studySummary}>
         {Object.keys(CATEGORY_LABEL).map((c) => (
           <div key={c}>
-            <Check on={!setup.drill && setup.categories.includes(c)} onChange={(v) => setSetup({ ...setup, drill: '', categories: toggle(setup.drill ? [] : setup.categories, c, v) })}>
+            <Check on={setup.categories.includes(c)} onChange={(v) => setSetup({ ...setup, categories: toggle(setup.categories, c, v) })}>
               {CATEGORY_LABEL[c]}
             </Check>
-            {c === 'Technical' && technical && !setup.drill && (
+            {c === 'Technical' && technical && (
               <>
                 <Check indent on={allTopics} onChange={(v) => v && setSetup({ ...setup, topics: [] })}>
                   All technical areas
@@ -113,16 +112,9 @@ function SetupBar({ setup, setSetup, banks, guides }: { setup: Setup; setSetup: 
             )}
           </div>
         ))}
-        <p className="dd-note">Number drills: one kind of problem, new numbers each time</p>
-        {Object.entries(DRILLS).map(([id, label]) => (
-          <Check key={id} on={setup.drill === id}
-            onChange={(v) => setSetup(v ? { ...setup, drill: id, categories: ['Technical'], stage: '' } : { ...setup, drill: '' })}>
-            {label}
-          </Check>
-        ))}
       </Dropdown>
 
-      {!setup.drill && <label className="dd">
+      <label className="dd">
         <span className="dd-label">Preparing for</span>
         <select value={setup.stage} onChange={(e) => setSetup({ ...setup, stage: e.target.value })}>
           <option value="">General practice</option>
@@ -130,7 +122,7 @@ function SetupBar({ setup, setSetup, banks, guides }: { setup: Setup; setSetup: 
             <option key={s} value={s}>{s}</option>
           ))}
         </select>
-      </label>}
+      </label>
 
       {setup.stage === '' && (
         // any mix of easy, medium and hard; adaptive stands alone (it picks the level itself)
@@ -155,7 +147,7 @@ function SetupBar({ setup, setSetup, banks, guides }: { setup: Setup; setSetup: 
         </Dropdown>
       )}
 
-      {!setup.drill && (banks.length > 0 || guides.length > 0) && (
+      {(banks.length > 0 || guides.length > 0) && (
         <Dropdown label="Questions from" summary={sourceSummary(setup)}>
           {guides.length > 0 ? (
             <>
@@ -403,7 +395,7 @@ export default function Practice({ options, start }: { options: PrepOptions; sta
     setGraded({ ...graded, verdict })
   }
 
-  const ready = !!setup.drill || (setup.categories.length > 0 && (setup.guides !== null || setup.bank !== ''))
+  const ready = setup.categories.length > 0 && (setup.guides !== null || setup.bank !== '')
 
   return (
     <section className="practice">
@@ -423,20 +415,7 @@ export default function Practice({ options, start }: { options: PrepOptions; sta
               </button>
             )}
           </div>
-          {setup.drill ? (
-            <p className="muted">
-              {DRILLS[setup.drill]} drill: P/E ratios, the premium, the stock, debt and cash mix, interest and tax rates, with new numbers every
-              time, from "accretive or dilutive?" up to the exact % change in EPS and the highest premium before it turns dilutive.{' '}
-              <button className="link" onClick={() => setSetup({ ...setup, drill: '' })}>Back to all questions</button>
-            </p>
-          ) : (
-            <p className="muted practice-drill-link">
-              <button className="link" onClick={() => setSetup({ ...setup, drill: 'accretion', categories: ['Technical'], stage: '' })}>
-                Drill accretion / dilution math
-              </button>
-            </p>
-          )}
-          {setup.drill ? null : setup.stage === 'Superday' ? (
+          {setup.stage === 'Superday' ? (
             <p className="muted">
               Superday practice asks only questions logged from real Superdays{setup.guides === null ? '' : ', plus the hard technical questions from your guides'}.
             </p>

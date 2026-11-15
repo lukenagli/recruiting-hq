@@ -6,13 +6,15 @@ import type { PracticeQuestion } from './api'
  * - three statement walk-throughs: Income statement; Cash flow (CFO, CFI, CFF); Balance sheet (Assets, Liabilities,
  *   Shareholders' equity), one row per statement;
  * - enterprise and equity value calculations: EV and EqV;
- * - LBO returns: MOM and IRR.
+ * - LBO returns: MOM and IRR;
+ * - accretion / dilution: accretive or dilutive (a select), the % change in EPS and pro forma EPS when asked; the
+ *   highest premium, or the synergies needed, when that is the question.
  * The boxes are put together into one labeled answer for checking, with the free-text box below for anything else.
  */
 
-type Field = { key: string; label: string; placeholder?: string; prefix?: string; suffix?: string }
+type Field = { key: string; label: string; placeholder?: string; prefix?: string; suffix?: string; options?: string[] }
 type Row = { label: string; fields: Field[] }
-export type Form = { kind: 'statements' | 'value' | 'returns'; rows: Row[] }
+export type Form = { kind: 'statements' | 'value' | 'returns' | 'accretion'; rows: Row[] }
 
 // a concrete event with numbers, not "how do the three statements link?"
 const EVENT = /\d|\b(goes? up|goes? down|increases?|decreases?|falls?|rises?|buys?|sells?|writes? (down|off)|records?|pays?|raises?|issues?|repays?|acquires?|purchases?)\b/i
@@ -25,10 +27,24 @@ const ASKS = /\b(what (is|are|would|'s)|calculate|find|compute|how much|implied|
 const CHANGES = /\bhow (do|does|would|will|did)\b[^?]*\b(change|move|affected|impacted)\b|\bwhat happens to\b|\b(impact|effect) on\b|\bdirectionally\b|\b(go|goes) up or down\b/i
 const EV_EBITDA = /\bEV\s*\/\s*EBITDA\b/i
 const PE = /\bP\s*\/\s*E\b/i
+const ACCRETION = /accretive or dilutive|accretion or dilution|(accretive|dilutive) to EPS|pro forma EPS/i
+const MAX_PREMIUM = /highest premium|maximum premium|most it can pay/i
+const SYNERGIES = /synergies[^?]*break even|break even[^?]*synergies/i
 
 export function formFor(q: PracticeQuestion): Form | null {
   if (q.category !== 'Technical') return null
   const text = q.question
+  if (/\d/.test(text) && MAX_PREMIUM.test(text))
+    return { kind: 'accretion', rows: [{ label: 'Answer', fields: [{ key: 'premium', label: 'Highest premium', suffix: '%', placeholder: 'e.g. 35' }] }] }
+  if (/\d/.test(text) && SYNERGIES.test(text))
+    return { kind: 'accretion', rows: [{ label: 'Answer', fields: [{ key: 'synergies', label: 'Pre-tax synergies needed', prefix: '$', suffix: 'M', placeholder: 'e.g. 12.5' }] }] }
+  if (/\d/.test(text) && ACCRETION.test(text)) {
+    const fields: Field[] = [{ key: 'direction', label: 'Accretive or dilutive', options: ['Accretive', 'Dilutive'] }]
+    if (/pro forma EPS/i.test(text)) fields.push({ key: 'eps', label: 'Pro forma EPS', prefix: '$', placeholder: 'e.g. 2.07' })
+    const sized = /by (what|how much)|what %|how (accretive|dilutive)|pro forma EPS/i.test(text) // a % is asked for
+    fields.push({ key: 'pct', label: '% change in EPS', suffix: '%', placeholder: sized ? 'e.g. 3.4' : 'optional' })
+    return { kind: 'accretion', rows: [{ label: 'Answer', fields }] }
+  }
   if (STATEMENTS.test(text) && EVENT.test(text))
     return {
       kind: 'statements',
@@ -105,15 +121,24 @@ export default function AnswerForm({ form, parts, setParts, onSubmit }: {
                 {!(form.kind === 'statements' && row.fields.length === 1) && <small>{f.label}</small>}
                 <span className="af-input">
                   {f.prefix && <i>{f.prefix}</i>}
-                  <input
-                    value={parts[f.key] ?? ''}
-                    placeholder={f.placeholder}
-                    aria-label={`${row.label}: ${f.label}`}
-                    onChange={(e) => setParts({ ...parts, [f.key]: e.target.value })}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) onSubmit()
-                    }}
-                  />
+                  {f.options ? (
+                    <select value={parts[f.key] ?? ''} aria-label={f.label} onChange={(e) => setParts({ ...parts, [f.key]: e.target.value })}>
+                      <option value="">Choose…</option>
+                      {f.options.map((o) => (
+                        <option key={o} value={o}>{o}</option>
+                      ))}
+                    </select>
+                  ) : (
+                    <input
+                      value={parts[f.key] ?? ''}
+                      placeholder={f.placeholder}
+                      aria-label={`${row.label}: ${f.label}`}
+                      onChange={(e) => setParts({ ...parts, [f.key]: e.target.value })}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) onSubmit()
+                      }}
+                    />
+                  )}
                   {f.suffix && <i>{f.suffix}</i>}
                 </span>
               </label>
@@ -127,7 +152,7 @@ export default function AnswerForm({ form, parts, setParts, onSubmit }: {
 
 /** Technical questions that need a tax rate but don't give one are answered at 25%. */
 export function taxNote(q: PracticeQuestion) {
-  const taxed = ['Accounting', 'DCF', 'Merger Math', 'LBO'].includes(q.topic) || TAXED.test(q.question) // e.g. an EV question with a write-down
+  const taxed = ['Accounting', 'DCF', 'Merger Math', 'Accretion / Dilution', 'LBO'].includes(q.topic) || TAXED.test(q.question) // e.g. an EV question with a write-down
   return q.category === 'Technical' && taxed && /\d/.test(q.question) && !/tax/i.test(q.question) ? 'Assume a 25% tax rate.' : ''
 }
 
